@@ -53,6 +53,22 @@ export interface Formula {
   files: FormulaFile[];
 }
 
+// Formula.yml file types
+export interface FormulaDependency {
+  name: string;
+  version: string;
+}
+
+export interface FormulaYml {
+  name: string;
+  version: string;
+  description?: string;
+  keywords?: string[];
+  private?: boolean;
+  formulas?: FormulaDependency[];
+  'dev-formulas'?: FormulaDependency[];
+}
+
 // Command option types
 export interface CreateOptions {
   description?: string;

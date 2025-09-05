@@ -15,12 +15,22 @@
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["cli", "commander", "typescript", "g0", "gpm"],
+  "keywords": [
+    "cli",
+    "commander",
+    "typescript",
+    "g0",
+    "gpm"
+  ],
   "author": "",
   "license": "ISC",
   "description": "A basic CLI tool built with Commander and TypeScript",
   "dependencies": {
-    "commander": "^14.0.0"
+    "@types/js-yaml": "^4.0.9",
+    "@types/prompts": "^2.4.9",
+    "commander": "^14.0.0",
+    "js-yaml": "^4.1.0",
+    "prompts": "^2.4.2"
   },
   "devDependencies": {
     "@types/commander": "^2.12.0",
