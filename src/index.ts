@@ -114,8 +114,12 @@ async function main(): Promise<void> {
 
 // Only run main if this file is executed directly
 // Check if this module is the main module being executed
-if (process.argv[1] && process.argv[1].endsWith('index.js') || 
-    process.argv[1] && process.argv[1].endsWith('index.ts')) {
+if (process.argv[1] && (
+    process.argv[1].endsWith('index.js') || 
+    process.argv[1].endsWith('index.ts') ||
+    process.argv[1].endsWith('/g0') ||
+    process.argv[1].endsWith('\\g0')
+  )) {
   main().catch((error) => {
     logger.error('Fatal error in main execution', { error });
     console.error('❌ Fatal error occurred. Exiting.');
