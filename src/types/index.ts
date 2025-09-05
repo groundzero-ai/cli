@@ -77,6 +77,7 @@ export interface CreateOptions {
   author?: string;
   license?: string;
   keywords?: string;
+  force?: boolean;
 }
 
 export interface ListOptions {

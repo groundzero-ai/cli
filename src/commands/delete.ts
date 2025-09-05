@@ -1,9 +1,10 @@
 import { Command } from 'commander';
+import prompts from 'prompts';
 import { DeleteOptions, CommandResult } from '../types/index.js';
-import { formulaManager } from '../core/formula.js';
-import { ensureRegistryDirectories } from '../core/directory.js';
+import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { exists, remove } from '../utils/fs.js';
 
 /**
  * Delete formula command implementation
@@ -12,40 +13,57 @@ async function deleteFormulaCommand(
   formulaName: string, 
   options: DeleteOptions
 ): Promise<CommandResult> {
-  logger.info(`Deleting formula: ${formulaName}`, { options });
+  logger.info(`Deleting formula: ${formulaName}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Check if formula exists
-  const exists = await formulaManager.formulaExists(formulaName);
-  if (!exists) {
+  // Check if formula exists (aligned with create command structure)
+  const metadataPath = getFormulaMetadataPath(formulaName);
+  const formulaPath = getFormulaPath(formulaName);
+  
+  if (!(await exists(metadataPath))) {
     console.log(`❌ Formula '${formulaName}' not found`);
     return { success: false, error: 'Formula not found' };
   }
   
   // Confirmation prompt (if not forced)
   if (!options.force) {
-    console.log(`⚠️  This will permanently delete the formula '${formulaName}' from your local registry.`);
-    console.log('   Use --force to skip this confirmation.');
-    console.log('');
-    console.log(`   To continue, please run: g0 delete ${formulaName} --force`);
+    const { shouldDelete } = await prompts({
+      type: 'confirm',
+      name: 'shouldDelete',
+      message: `Are you sure you want to delete formula '${formulaName}'? This action cannot be undone.`,
+      initial: false
+    });
     
-    return {
-      success: false,
-      error: 'Operation cancelled - use --force to confirm deletion'
-    };
+    // Handle user cancellation (Ctrl+C or 'n')
+    if (shouldDelete === undefined || !shouldDelete) {
+      console.log('❌ Operation cancelled');
+      return {
+        success: true,
+        data: { cancelled: true }
+      };
+    }
   }
   
-  // Delete the formula
-  await formulaManager.deleteFormula(formulaName);
-  
-  console.log(`✓ Formula '${formulaName}' deleted successfully`);
-  
-  return {
-    success: true,
-    data: { formulaName }
-  };
+  // Delete the formula (both metadata and files directory)
+  try {
+    await remove(metadataPath);
+    if (await exists(formulaPath)) {
+      await remove(formulaPath);
+    }
+    
+    logger.info(`Formula '${formulaName}' deleted successfully`);
+    console.log(`✓ Formula '${formulaName}' deleted successfully`);
+    
+    return {
+      success: true,
+      data: { formulaName }
+    };
+  } catch (error) {
+    logger.error(`Failed to delete formula: ${formulaName}`, { error });
+    throw new Error(`Failed to delete formula: ${error}`);
+  }
 }
 
 /**
@@ -57,11 +75,15 @@ export function setupDeleteCommand(program: Command): void {
     .alias('del')
     .description('Delete a formula from local registry')
     .argument('<formula-name>', 'name of the formula to delete')
-    .option('--force', 'skip confirmation prompt')
+    .option('-f, --force', 'skip confirmation prompt')
     .action(withErrorHandling(async (formulaName: string, options: DeleteOptions) => {
       const result = await deleteFormulaCommand(formulaName, options);
       if (!result.success) {
         throw new Error(result.error || 'Delete operation failed');
+      }
+      // If operation was cancelled by user, exit gracefully without error
+      if (result.data?.cancelled) {
+        process.exit(0);
       }
     }));
 }

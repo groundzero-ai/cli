@@ -89,7 +89,21 @@ async function createFormulaCommand(
   }
   
   // Save formula to local registry
-  await saveFormulaToRegistry(formulaConfig, formulaFiles);
+  const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, options.force);
+  
+  // Handle cancellation
+  if (!saveResult.success) {
+    if (saveResult.cancelled) {
+      return {
+        success: true,
+        data: { cancelled: true }
+      };
+    }
+    return {
+      success: false,
+      error: 'Failed to save formula'
+    };
+  }
   
   // Success output
   console.log(`✓ Formula '${formulaConfig.name}' created successfully`);
@@ -261,12 +275,12 @@ async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; r
 /**
  * Save formula to local registry
  */
-async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[]): Promise<void> {
+async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], force?: boolean): Promise<{ success: boolean; cancelled?: boolean }> {
   const formulaPath = getFormulaPath(config.name);
   const metadataPath = getFormulaMetadataPath(config.name);
   
   // Check if formula already exists
-  if (await exists(metadataPath)) {
+  if (await exists(metadataPath) && !force) {
     const { overwrite } = await prompts({
       type: 'confirm',
       name: 'overwrite',
@@ -274,8 +288,10 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[]): 
       initial: false
     });
     
-    if (!overwrite) {
-      throw new Error('Formula creation cancelled - formula already exists');
+    // Handle user cancellation (Ctrl+C or 'n')
+    if (overwrite === undefined || !overwrite) {
+      console.log('❌ Operation cancelled');
+      return { success: false, cancelled: true };
     }
   }
   
@@ -303,6 +319,7 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[]): 
   }
   
   logger.info(`Formula '${config.name}' saved to local registry`);
+  return { success: true };
 }
 
 /**
@@ -321,6 +338,13 @@ export function setupCreateCommand(program: Command): void {
     .description('Create a new formula from the current directory and its formula.yml')
     .option('-f, --force', 'force creation even if formula already exists')
     .action(withErrorHandling(async (options: CreateOptions) => {
-      await createFormulaCommand(options);
+      const result = await createFormulaCommand(options);
+      if (!result.success) {
+        throw new Error(result.error || 'Create operation failed');
+      }
+      // If operation was cancelled by user, exit gracefully without error
+      if (result.data?.cancelled) {
+        process.exit(0);
+      }
     }));
 }
