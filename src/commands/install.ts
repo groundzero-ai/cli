@@ -37,10 +37,46 @@ async function promptOverwrite(formulaName: string, existingVersion: string, new
 }
 
 /**
+ * Get installed formula version from groundzero directory
+ */
+async function getInstalledFormulaVersion(formulaName: string, targetDir: string): Promise<string | null> {
+  const groundzeroPath = join(targetDir, 'groundzero');
+  const formulaGroundzeroPath = join(groundzeroPath, formulaName);
+  
+  if (!(await exists(formulaGroundzeroPath))) {
+    return null;
+  }
+  
+  // Check for .formula.yml (hidden file) first, then formula.yml
+  const hiddenFormulaYmlPath = join(formulaGroundzeroPath, '.formula.yml');
+  const formulaYmlPath = join(formulaGroundzeroPath, 'formula.yml');
+  
+  let configPath: string | null = null;
+  if (await exists(hiddenFormulaYmlPath)) {
+    configPath = hiddenFormulaYmlPath;
+  } else if (await exists(formulaYmlPath)) {
+    configPath = formulaYmlPath;
+  }
+  
+  if (!configPath) {
+    return null;
+  }
+  
+  try {
+    const config = await parseFormulaYml(configPath);
+    return config.version;
+  } catch (error) {
+    logger.warn(`Failed to parse formula config for ${formulaName}: ${error}`);
+    return null;
+  }
+}
+
+/**
  * Recursively resolve formula dependencies
  */
 async function resolveDependencies(
   formulaName: string,
+  targetDir: string,
   isRoot: boolean = true,
   visitedStack: Set<string> = new Set(),
   resolvedFormulas: Map<string, ResolvedFormula> = new Map()
@@ -134,6 +170,39 @@ async function resolveDependencies(
     return Array.from(resolvedFormulas.values());
   }
   
+  // 3.1. Check for already installed version in groundzero
+  const installedVersion = await getInstalledFormulaVersion(formulaName, targetDir);
+  if (installedVersion) {
+    const comparison = semver.compare(currentVersion, installedVersion);
+    
+    if (comparison > 0) {
+      // New version is greater than installed - allow installation but will prompt later
+      logger.debug(`Formula '${formulaName}' will be upgraded from v${installedVersion} to v${currentVersion}`);
+    } else if (comparison === 0) {
+      // Same version - skip installation
+      logger.debug(`Formula '${formulaName}' v${currentVersion} already installed, skipping`);
+      resolvedFormulas.set(formulaName, {
+        name: formulaName,
+        version: installedVersion,
+        formula,
+        isRoot,
+        conflictResolution: 'kept'
+      });
+      return Array.from(resolvedFormulas.values());
+    } else {
+      // New version is older than installed - skip installation
+      logger.debug(`Formula '${formulaName}' has newer version installed (v${installedVersion} > v${currentVersion}), skipping`);
+      resolvedFormulas.set(formulaName, {
+        name: formulaName,
+        version: installedVersion,
+        formula,
+        isRoot,
+        conflictResolution: 'kept'
+      });
+      return Array.from(resolvedFormulas.values());
+    }
+  }
+  
   // 4. Add to resolved map
   resolvedFormulas.set(formulaName, {
     name: formulaName,
@@ -154,14 +223,14 @@ async function resolveDependencies(
     const dependencies = config.formulas || [];
     
     for (const dep of dependencies) {
-      await resolveDependencies(dep.name, false, visitedStack, resolvedFormulas);
+      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
     }
     
     // For root formula, also process dev-formulas
     if (isRoot) {
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
-        await resolveDependencies(dep.name, false, visitedStack, resolvedFormulas);
+        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
       }
     }
     
@@ -339,36 +408,76 @@ async function installFormulaToGroundzero(
   formulaName: string,
   targetDir: string,
   options: InstallOptions
-): Promise<{ installedCount: number; files: string[]; overwritten: boolean }> {
+): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
   const groundzeroPath = join(targetDir, 'groundzero');
   const formulaGroundzeroPath = join(groundzeroPath, formulaName);
   
   await ensureDir(groundzeroPath);
   
-  // Check if formula directory already exists
+  // Load the formula from local registry first to get the version
+  const formula = await formulaManager.loadFormula(formulaName);
+  const newVersion = formula.metadata.version;
+  
+  // Check if formula directory already exists and compare versions
   let overwritten = false;
+  let skipped = false;
+  
   if (await exists(formulaGroundzeroPath)) {
-    if (options.dryRun) {
-      // In dry run, just note that it would be overwritten
-      overwritten = true;
-    } else {
-      // Prompt for confirmation
-      const { shouldOverwrite } = await prompts({
-        type: 'confirm',
-        name: 'shouldOverwrite',
-        message: `Formula directory '${formulaName}' already exists in groundzero. Overwrite?`,
-        initial: false
-      });
+    const installedVersion = await getInstalledFormulaVersion(formulaName, targetDir);
+    
+    if (installedVersion) {
+      const comparison = semver.compare(newVersion, installedVersion);
       
-      if (!shouldOverwrite) {
-        throw new ValidationError(`Installation cancelled - formula directory '${formulaName}' already exists`);
+      if (comparison > 0) {
+        // New version is greater - proceed with installation (will prompt in actual execution)
+        if (options.dryRun) {
+          overwritten = true;
+        } else {
+          const shouldOverwrite = await promptOverwrite(formulaName, installedVersion, newVersion);
+          if (!shouldOverwrite) {
+            return {
+              installedCount: 0,
+              files: [],
+              overwritten: false,
+              skipped: true
+            };
+          }
+          overwritten = true;
+        }
+      } else {
+        // Same or older version - skip installation
+        logger.debug(`Skipping ${formulaName}@${newVersion} (installed: v${installedVersion})`);
+        return {
+          installedCount: 0,
+          files: [],
+          overwritten: false,
+          skipped: true
+        };
       }
-      overwritten = true;
+    } else {
+      // Existing directory but no valid formula.yml - treat as overwrite case
+      if (options.dryRun) {
+        overwritten = true;
+      } else {
+        const { shouldOverwrite } = await prompts({
+          type: 'confirm',
+          name: 'shouldOverwrite',
+          message: `Formula directory '${formulaName}' already exists in groundzero. Overwrite?`,
+          initial: false
+        });
+        
+        if (!shouldOverwrite) {
+          return {
+            installedCount: 0,
+            files: [],
+            overwritten: false,
+            skipped: true
+          };
+        }
+        overwritten = true;
+      }
     }
   }
-  
-  // Load the formula from local registry
-  const formula = await formulaManager.loadFormula(formulaName);
   
   // Include MD files AND formula.yml in the installation
   const filesToInstall = formula.files.filter(file => 
@@ -398,7 +507,8 @@ async function installFormulaToGroundzero(
   return {
     installedCount: filesToInstall.length,
     files: installedFiles,
-    overwritten
+    overwritten,
+    skipped
   };
 }
 
@@ -648,7 +758,7 @@ async function installFormulaCommand(
   await ensureRegistryDirectories();
   
   // 1. Resolve complete dependency tree (always recursive now)
-  const resolvedFormulas = await resolveDependencies(formulaName, true);
+  const resolvedFormulas = await resolveDependencies(formulaName, targetDir, true);
   
   // 2. Display dependency tree
   displayDependencyTree(resolvedFormulas);
@@ -673,7 +783,18 @@ async function installFormulaCommand(
         continue;
       }
       
+      if (resolved.conflictResolution === 'kept') {
+        console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+        continue;
+      }
+      
       const dryRunResult = await installFormulaToGroundzero(resolved.name, targetDir, options);
+      
+      if (dryRunResult.skipped) {
+        console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+        continue;
+      }
+      
       console.log(`📁 Would install to groundzero/${resolved.name}: ${dryRunResult.installedCount} files`);
       
       if (dryRunResult.overwritten) {
@@ -711,7 +832,20 @@ async function installFormulaCommand(
       continue;
     }
     
+    if (resolved.conflictResolution === 'kept') {
+      skippedCount++;
+      console.log(`⏭️  Skipped ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      continue;
+    }
+    
     const groundzeroResult = await installFormulaToGroundzero(resolved.name, targetDir, options);
+    
+    if (groundzeroResult.skipped) {
+      skippedCount++;
+      console.log(`⏭️  Skipped ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      continue;
+    }
+    
     installedCount++;
     groundzeroResults.push({
       name: resolved.name,
@@ -719,7 +853,7 @@ async function installFormulaCommand(
       overwritten: groundzeroResult.overwritten
     });
     
-    if (resolved.conflictResolution === 'overwritten') {
+    if (resolved.conflictResolution === 'overwritten' || groundzeroResult.overwritten) {
       console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in groundzero`);
     }
   }
