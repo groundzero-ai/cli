@@ -1,4 +1,5 @@
 import { join } from 'path';
+import * as semver from 'semver';
 import { FormulaMetadata, RegistryEntry, SearchResult, CommandResult } from '../types/index.js';
 import { 
   listFiles, 
@@ -220,7 +221,7 @@ export class RegistryManager {
             issues.push(`Name mismatch in formula '${formula.name}': metadata says '${metadata.name}'`);
           }
           
-          if (metadata.version !== formula.version) {
+          if (semver.neq(metadata.version, formula.version)) {
             issues.push(`Version mismatch in formula '${formula.name}': registry says '${formula.version}', metadata says '${metadata.version}'`);
           }
           

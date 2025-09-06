@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { join } from 'path';
 import * as yaml from 'js-yaml';
 import prompts from 'prompts';
+import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -20,21 +21,6 @@ interface ResolvedFormula {
   conflictResolution?: 'kept' | 'overwritten' | 'skipped';
 }
 
-/**
- * Compare semantic versions
- */
-function compareVersions(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-  
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const a = parts1[i] || 0;
-    const b = parts2[i] || 0;
-    if (a > b) return 1;
-    if (a < b) return -1;
-  }
-  return 0;
-}
 
 /**
  * Prompt user for overwrite confirmation
@@ -129,7 +115,7 @@ async function resolveDependencies(
   // 3. Check for existing resolution
   const existing = resolvedFormulas.get(formulaName);
   if (existing) {
-    const comparison = compareVersions(currentVersion, existing.version);
+    const comparison = semver.compare(currentVersion, existing.version);
     
     if (comparison > 0) {
       // Current version is newer - prompt to overwrite
@@ -206,8 +192,7 @@ function displayDependencyTree(resolvedFormulas: ResolvedFormula[]): void {
     console.log(`├── ${dep.name}@${dep.version}${status}`);
   }
   
-  console.log(`\n🔍 Total: ${resolvedFormulas.length} formulas`);
-  console.log(`📁 All dependencies will be flattened in groundzero/\n`);
+  console.log(`\n🔍 Total: ${resolvedFormulas.length} formulas\n`);
 }
 
 /**
@@ -534,7 +519,7 @@ async function installAllFormulasCommand(
   const formulaYmlPath = join(targetDir, 'formula.yml');
   
   if (!(await exists(formulaYmlPath))) {
-    throw new Error(`No formula.yml found in ${targetDir}. Cannot install formulas without a formula.yml file.`);
+    return { success: false, error: 'formula.yml file not found' };
   }
   
   let cwdConfig: FormulaYml;

@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import * as yaml from 'js-yaml';
+import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { exists, readTextFile, listDirectories, isDirectory } from '../utils/fs.js';
@@ -131,8 +132,8 @@ async function analyzeFormulaStatus(
   status.availableVersion = availableFormula.version;
   status.path = availableFormula.path;
 
-  // Version comparison logic
-  if (requiredFormula.version === availableFormula.version) {
+  // Version comparison logic using semver
+  if (semver.eq(requiredFormula.version, availableFormula.version)) {
     status.status = 'installed';
   } else {
     status.status = 'outdated';
