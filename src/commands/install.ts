@@ -67,34 +67,61 @@ async function resolveDependencies(
     throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your formula dependencies to break the cycle.`);
   }
   
-  // 2. Load formula from local registry with enhanced error handling
+  // 2. Attempt to repair dependency from local registry
   let formula: Formula;
   try {
+    // First attempt: Load formula from local registry
+    logger.debug(`Attempting to load formula '${formulaName}' from local registry`);
     formula = await formulaManager.loadFormula(formulaName);
+    logger.debug(`Successfully loaded formula '${formulaName}' from local registry`);
   } catch (error) {
     if (error instanceof FormulaNotFoundError) {
-      // Create helpful error message with dependency chain context
-      const dependencyChain = Array.from(visitedStack);
-      let errorMessage = `❌ Missing dependency: Formula '${formulaName}' not found in local registry\n\n`;
+      // Auto-repair attempt: Check if formula exists in registry but needs to be loaded
+      logger.debug(`Formula '${formulaName}' not found in local registry, attempting repair`);
       
-      if (dependencyChain.length > 0) {
-        errorMessage += `📋 Dependency chain:\n`;
-        for (let i = 0; i < dependencyChain.length; i++) {
-          const indent = '  '.repeat(i);
-          errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
+      try {
+        // Check if formula exists in registry metadata (but files might be missing)
+        const { registryManager } = await import('../core/registry.js');
+        const hasFormula = await registryManager.hasFormula(formulaName);
+        
+        if (hasFormula) {
+          logger.info(`Found formula '${formulaName}' in registry metadata, attempting repair`);
+          // Try to reload the formula metadata
+          const metadata = await registryManager.getFormulaMetadata(formulaName);
+          // Attempt to load again - this might succeed if it was a temporary issue
+          formula = await formulaManager.loadFormula(formulaName);
+          logger.info(`Successfully repaired and loaded formula '${formulaName}'`);
+        } else {
+          throw error; // Formula truly doesn't exist in registry
         }
-        errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName} ❌ (missing)\n\n`;
+      } catch (repairError) {
+        // Repair failed - create helpful error message with dependency chain context
+        const dependencyChain = Array.from(visitedStack);
+        let errorMessage = `❌ Auto-repair failed: Formula '${formulaName}' not available in local registry\n\n`;
+        
+        if (dependencyChain.length > 0) {
+          errorMessage += `📋 Dependency chain:\n`;
+          for (let i = 0; i < dependencyChain.length; i++) {
+            const indent = '  '.repeat(i);
+            errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
+          }
+          errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName} ❌ (not available)\n\n`;
+        }
+        
+        errorMessage += `🔧 Auto-repair attempted but failed:\n`;
+        errorMessage += `   • Checked local registry: ${repairError instanceof FormulaNotFoundError ? 'not found' : 'access failed'}\n`;
+        errorMessage += `   • Formula is not available in the local registry\n\n`;
+        errorMessage += `💡 To resolve this issue:\n`;
+        errorMessage += `   • Create the formula locally: g0 create ${formulaName}\n`;
+        errorMessage += `   • Pull from remote registry: g0 pull ${formulaName}\n`;
+        errorMessage += `   • Remove the dependency from the requiring formula\n`;
+        
+        throw new Error(errorMessage);
       }
-      
-      errorMessage += `💡 To resolve this issue:\n`;
-      errorMessage += `   • Create the formula locally: g0 create ${formulaName}\n`;
-      errorMessage += `   • Pull from remote registry: g0 pull ${formulaName}\n`;
-      errorMessage += `   • Remove the dependency from the requiring formula\n`;
-      
-      throw new Error(errorMessage);
+    } else {
+      // Re-throw other errors
+      throw error;
     }
-    // Re-throw other errors
-    throw error;
   }
   
   const currentVersion = formula.metadata.version;
@@ -492,6 +519,137 @@ async function installMainFormulaFiles(
 }
 
 /**
+ * Install all formulas from CWD formula.yml file
+ */
+async function installAllFormulasCommand(
+  targetDir: string,
+  options: InstallOptions
+): Promise<CommandResult> {
+  logger.info(`Installing all formulas from formula.yml to: ${targetDir}`, { options });
+  
+  // Ensure registry directories exist
+  await ensureRegistryDirectories();
+  
+  // 1. Read CWD formula.yml to get list of formulas to install
+  const formulaYmlPath = join(targetDir, 'formula.yml');
+  
+  if (!(await exists(formulaYmlPath))) {
+    throw new Error(`No formula.yml found in ${targetDir}. Cannot install formulas without a formula.yml file.`);
+  }
+  
+  let cwdConfig: FormulaYml;
+  try {
+    cwdConfig = await parseFormulaYml(formulaYmlPath);
+  } catch (error) {
+    throw new Error(`Failed to parse formula.yml: ${error}`);
+  }
+  
+  const formulasToInstall: Array<{ name: string; isDev: boolean }> = [];
+  
+  // Add production formulas
+  for (const formula of cwdConfig.formulas || []) {
+    formulasToInstall.push({ name: formula.name, isDev: false });
+  }
+  
+  // Add dev formulas
+  for (const formula of cwdConfig['dev-formulas'] || []) {
+    formulasToInstall.push({ name: formula.name, isDev: true });
+  }
+  
+  if (formulasToInstall.length === 0) {
+    console.log('📦 No formulas found in formula.yml');
+    console.log('');
+    console.log('Tips:');
+    console.log('• Add formulas to the "formulas" array in formula.yml');
+    console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
+    console.log('• Use "g0 install <formula-name>" to install a specific formula');
+    
+    return { success: true, data: { installed: 0, skipped: 0 } };
+  }
+  
+  console.log(`📦 Installing ${formulasToInstall.length} formulas from formula.yml:`);
+  for (const formula of formulasToInstall) {
+    const prefix = formula.isDev ? '[dev] ' : '';
+    console.log(`  • ${prefix}${formula.name}`);
+  }
+  console.log('');
+  
+  // 2. Install each formula individually
+  let totalInstalled = 0;
+  let totalSkipped = 0;
+  const results: Array<{ name: string; success: boolean; error?: string }> = [];
+  
+  for (const formula of formulasToInstall) {
+    try {
+      console.log(`\n🔧 Installing ${formula.isDev ? '[dev] ' : ''}${formula.name}...`);
+      
+      const installOptions: InstallOptions = {
+        ...options,
+        dev: formula.isDev
+      };
+      
+      const result = await installFormulaCommand(formula.name, targetDir, installOptions);
+      
+      if (result.success) {
+        totalInstalled++;
+        results.push({ name: formula.name, success: true });
+        console.log(`✅ Successfully installed ${formula.name}`);
+      } else {
+        totalSkipped++;
+        results.push({ name: formula.name, success: false, error: result.error });
+        console.log(`❌ Failed to install ${formula.name}: ${result.error}`);
+      }
+    } catch (error) {
+      totalSkipped++;
+      results.push({ name: formula.name, success: false, error: String(error) });
+      console.log(`❌ Failed to install ${formula.name}: ${error}`);
+    }
+  }
+  
+  // 3. Display summary
+  console.log(`\n📊 Installation Summary:`);
+  console.log(`✅ Successfully installed: ${totalInstalled}/${formulasToInstall.length} formulas`);
+  
+  if (totalSkipped > 0) {
+    console.log(`❌ Failed to install: ${totalSkipped} formulas`);
+    console.log('\nFailed formulas:');
+    for (const result of results.filter(r => !r.success)) {
+      console.log(`  • ${result.name}: ${result.error}`);
+    }
+  }
+  
+  const allSuccessful = totalSkipped === 0;
+  
+  return {
+    success: allSuccessful,
+    data: {
+      installed: totalInstalled,
+      skipped: totalSkipped,
+      results
+    },
+    error: allSuccessful ? undefined : `${totalSkipped} formulas failed to install`,
+    warnings: totalSkipped > 0 ? [`${totalSkipped} formulas failed to install`] : undefined
+  };
+}
+
+/**
+ * Main install command router - handles both individual and bulk install
+ */
+async function installCommand(
+  formulaName: string | undefined,
+  targetDir: string,
+  options: InstallOptions
+): Promise<CommandResult> {
+  // If no formula name provided, install all from formula.yml
+  if (!formulaName) {
+    return await installAllFormulasCommand(targetDir, options);
+  }
+  
+  // Otherwise install the specific formula
+  return await installFormulaCommand(formulaName, targetDir, options);
+}
+
+/**
  * Install formula command implementation with recursive dependency resolution
  */
 async function installFormulaCommand(
@@ -648,15 +806,15 @@ async function installFormulaCommand(
 export function setupInstallCommand(program: Command): void {
   program
     .command('install')
-    .description('Install a formula from local registry to current directory')
-    .argument('<formula-name>', 'name of the formula to install')
+    .description('Install formulas from local registry to current directory')
+    .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified)')
     .argument('[target-dir]', 'target directory (defaults to current directory)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--set <key=value>', 'set template variables', [])
     .option('--force', 'overwrite existing files')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
-    .action(withErrorHandling(async (formulaName: string, targetDir: string, options: InstallOptions) => {
-      const result = await installFormulaCommand(formulaName, targetDir, options);
+    .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
+      const result = await installCommand(formulaName, targetDir, options);
       if (!result.success) {
         throw new Error(result.error || 'Install operation failed');
       }
