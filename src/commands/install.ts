@@ -42,7 +42,38 @@ async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml): Prom
 }
 
 /**
- * Add a formula dependency to formula.yml
+ * Find where a formula currently exists in formula.yml
+ */
+async function findFormulaLocation(
+  formulaYmlPath: string,
+  formulaName: string
+): Promise<'formulas' | 'dev-formulas' | null> {
+  if (!(await exists(formulaYmlPath))) {
+    return null;
+  }
+  
+  try {
+    const config = await parseFormulaYml(formulaYmlPath);
+    
+    // Check in formulas array
+    if (config.formulas?.some(dep => dep.name === formulaName)) {
+      return 'formulas';
+    }
+    
+    // Check in dev-formulas array
+    if (config['dev-formulas']?.some(dep => dep.name === formulaName)) {
+      return 'dev-formulas';
+    }
+    
+    return null;
+  } catch (error) {
+    logger.warn(`Failed to parse formula.yml: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Add a formula dependency to formula.yml with smart placement logic
  */
 async function addFormulaToYml(
   formulaYmlPath: string, 
@@ -64,14 +95,42 @@ async function addFormulaToYml(
     version: formulaVersion
   };
   
-  const targetArray = isDev ? 'dev-formulas' : 'formulas';
+  // Find current location of the formula
+  const currentLocation = await findFormulaLocation(formulaYmlPath, formulaName);
   
-  // Initialize array if it doesn't exist
-  if (!config[targetArray]) {
-    config[targetArray] = [];
+  // Determine target location based on current location and --dev option
+  let targetArray: 'formulas' | 'dev-formulas';
+  
+  if (currentLocation === 'dev-formulas' && !isDev) {
+    // Case 2: Formula exists in dev-formulas but --dev not specified, keep in dev-formulas
+    targetArray = 'dev-formulas';
+    logger.info(`Keeping formula in dev-formulas: ${formulaName}@${formulaVersion}`);
+  } else if (currentLocation === 'formulas' && isDev) {
+    // Case 3: Formula exists in formulas but --dev specified, move to dev-formulas
+    targetArray = 'dev-formulas';
+    logger.info(`Moving formula from formulas to dev-formulas: ${formulaName}@${formulaVersion}`);
+  } else {
+    // Default case: use --dev option to determine placement
+    targetArray = isDev ? 'dev-formulas' : 'formulas';
   }
   
-  // Check if formula already exists in the array
+  // Initialize arrays if they don't exist
+  if (!config.formulas) {
+    config.formulas = [];
+  }
+  if (!config['dev-formulas']) {
+    config['dev-formulas'] = [];
+  }
+  
+  // Remove from current location if moving between arrays
+  if (currentLocation && currentLocation !== targetArray) {
+    const currentIndex = config[currentLocation]!.findIndex(dep => dep.name === formulaName);
+    if (currentIndex >= 0) {
+      config[currentLocation]!.splice(currentIndex, 1);
+    }
+  }
+  
+  // Check if formula already exists in the target array
   const existingIndex = config[targetArray]!.findIndex(dep => dep.name === formulaName);
   
   if (existingIndex >= 0) {
@@ -291,8 +350,17 @@ async function installFormulaCommand(
     // Show formula.yml update
     const formulaYmlPath = join(targetDir, 'formula.yml');
     if (await exists(formulaYmlPath)) {
+      const currentLocation = await findFormulaLocation(formulaYmlPath, formulaName);
       const dependencyType = options.dev ? 'dev-formulas' : 'formulas';
-      console.log(`Would add to ${dependencyType}: ${formulaName}@${metadata.version}`);
+      
+      if (currentLocation === 'formulas' && options.dev) {
+        console.log(`⚠️  Would move formula from 'formulas' to 'dev-formulas': ${formulaName}@${metadata.version}`);
+        console.log(`   This will require confirmation during actual installation.`);
+      } else if (currentLocation === 'dev-formulas' && !options.dev) {
+        console.log(`Would keep in dev-formulas: ${formulaName}@${metadata.version}`);
+      } else {
+        console.log(`Would add to ${dependencyType}: ${formulaName}@${metadata.version}`);
+      }
     } else {
       console.log('No formula.yml found - skipping dependency addition');
     }
@@ -326,8 +394,29 @@ async function installFormulaCommand(
   // Install formula files to groundzero directory
   const groundzeroResult = await installFormulaToGroundzero(formulaName, targetDir, options);
   
-  // Add formula to formula.yml if it exists
+  // Check for formula movement scenario and confirm with user
   const formulaYmlPath = join(targetDir, 'formula.yml');
+  let originalLocation: 'formulas' | 'dev-formulas' | null = null;
+  
+  if (await exists(formulaYmlPath)) {
+    originalLocation = await findFormulaLocation(formulaYmlPath, formulaName);
+    
+    // Special confirmation for moving from formulas to dev-formulas
+    if (originalLocation === 'formulas' && options.dev) {
+      const { shouldMove } = await prompts({
+        type: 'confirm',
+        name: 'shouldMove',
+        message: `Formula '${formulaName}' will be overwritten and moved from 'formulas' to 'dev-formulas'. Continue?`,
+        initial: false
+      });
+      
+      if (!shouldMove) {
+        throw new ValidationError(`Installation cancelled - formula would be moved from formulas to dev-formulas`);
+      }
+    }
+  }
+  
+  // Add formula to formula.yml if it exists
   try {
     await addFormulaToYml(formulaYmlPath, formulaName, metadata.version, options.dev || false);
   } catch (error) {
@@ -344,7 +433,14 @@ async function installFormulaCommand(
   
   if (await exists(formulaYmlPath)) {
     const dependencyType = options.dev ? 'dev-formulas' : 'formulas';
-    console.log(`📋 Added to ${dependencyType}: ${formulaName}@${metadata.version}`);
+    
+    if (originalLocation === 'formulas' && options.dev) {
+      console.log(`📋 Moved from formulas to dev-formulas: ${formulaName}@${metadata.version}`);
+    } else if (originalLocation === 'dev-formulas' && !options.dev) {
+      console.log(`📋 Kept in dev-formulas: ${formulaName}@${metadata.version}`);
+    } else {
+      console.log(`📋 Added to ${dependencyType}: ${formulaName}@${metadata.version}`);
+    }
   }
   
   if (Object.keys(variables).length > 0) {

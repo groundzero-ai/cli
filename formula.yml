@@ -4,4 +4,8 @@ keywords:
 - ''
 private: true
 formulas: []
-dev-formulas: []
+dev-formulas:
+- name: test-formula
+  version: 0.1.0
+- name: manual-formula
+  version: 0.1.0
