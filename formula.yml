@@ -3,7 +3,9 @@ version: 0.1.0
 keywords:
 - ''
 private: true
-formulas: []
+formulas:
+- name: formula-main
+  version: 0.1.0
 dev-formulas:
 - name: test-formula
   version: 0.1.0
