@@ -100,6 +100,7 @@ export interface InstallOptions {
 export interface UninstallOptions {
   dryRun?: boolean;
   keepData?: boolean;
+  recursive?: boolean;
 }
 
 export interface PushOptions {
