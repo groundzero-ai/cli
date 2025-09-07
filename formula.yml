@@ -3,6 +3,7 @@ version: 0.1.0
 keywords:
 - ''
 private: true
+platforms: [cursor, claude]
 formulas:
 - name: formula-main
   version: 0.1.0

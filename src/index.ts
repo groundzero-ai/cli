@@ -8,6 +8,7 @@ import { logger } from './utils/logger.js';
 import { ensureG0Directories } from './core/directory.js';
 
 // Import command setup functions
+import { setupInitCommand } from './commands/init.js';
 import { setupCreateCommand } from './commands/create.js';
 import { setupListCommand } from './commands/list.js';
 import { setupDeleteCommand } from './commands/delete.js';
@@ -45,6 +46,7 @@ program
   .version(packageJson.version);
 
 // === FORMULA LIFECYCLE COMMANDS ===
+setupInitCommand(program);
 setupCreateCommand(program);
 setupListCommand(program);
 setupDeleteCommand(program);
