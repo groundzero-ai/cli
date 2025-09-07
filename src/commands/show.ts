@@ -5,6 +5,7 @@ import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } fro
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { exists, readJsonFile, readTextFile } from '../utils/fs.js';
+import { detectTemplateFile } from '../utils/template.js';
 
 /**
  * Show formula details command implementation
@@ -121,12 +122,6 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
   }
 }
 
-/**
- * Detect if a file contains template variables
- */
-function detectTemplateFile(content: string): boolean {
-  return /\{\{\s*\w+\s*\}\}/.test(content);
-}
 
 /**
  * Setup the show command

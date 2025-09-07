@@ -4,6 +4,7 @@ import { ListOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories, getRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { displayFormulaTable, FormulaTableEntry } from '../utils/formatters.js';
 import { 
   listFiles, 
   readJsonFile, 
@@ -84,21 +85,14 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
   if (options.format === 'json') {
     console.log(JSON.stringify(formulas, null, 2));
   } else {
-    // Table format
-    console.log('Local formulas:');
-    console.log('');
-    console.log('NAME'.padEnd(20) + 'VERSION'.padEnd(12) + 'DESCRIPTION');
-    console.log('----'.padEnd(20) + '-------'.padEnd(12) + '-----------');
+    // Table format using shared formatter
+    const tableEntries: FormulaTableEntry[] = formulas.map(formula => ({
+      name: formula.name,
+      version: formula.version,
+      description: formula.description
+    }));
     
-    for (const formula of formulas) {
-      const name = formula.name.padEnd(20);
-      const version = formula.version.padEnd(12);
-      const description = formula.description || '(no description)';
-      console.log(`${name}${version}${description}`);
-    }
-    
-    console.log('');
-    console.log(`Total: ${formulas.length} formulas`);
+    displayFormulaTable(tableEntries, 'Local formulas:');
   }
   
   return {

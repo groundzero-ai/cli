@@ -4,6 +4,7 @@ import { registryManager } from '../core/registry.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { displayFormulaTable, FormulaTableEntry } from '../utils/formatters.js';
 
 /**
  * Search formulas command implementation
@@ -41,12 +42,25 @@ async function searchFormulasCommand(
     return { success: true, data: searchResult };
   }
   
+  // Table format using shared formatter
+  const tableEntries: FormulaTableEntry[] = searchResult.entries.map(entry => ({
+    name: entry.name,
+    version: entry.version,
+    description: entry.description
+  }));
+  
+  // Display results without title since we already have the search header
+  if (tableEntries.length === 0) {
+    console.log('No formulas found.');
+    return { success: true, data: searchResult };
+  }
+  
   // Table header
   console.log('NAME'.padEnd(20) + 'VERSION'.padEnd(12) + 'DESCRIPTION');
   console.log('----'.padEnd(20) + '-------'.padEnd(12) + '-----------');
   
   // Display each result
-  for (const entry of searchResult.entries) {
+  for (const entry of tableEntries) {
     const name = entry.name.padEnd(20);
     const version = entry.version.padEnd(12);
     const description = entry.description || '(no description)';

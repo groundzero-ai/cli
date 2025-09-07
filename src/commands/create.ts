@@ -1,8 +1,9 @@
 import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
-import * as yaml from 'js-yaml';
-import prompts from 'prompts';
 import { CreateOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
+import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
+import { promptCreateFormula, promptFormulaDetails, promptFormulaOverwrite, logCancellation, isCancelled } from '../utils/prompts.js';
+import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
@@ -39,12 +40,7 @@ async function createFormulaCommand(
     logger.info('No formula.yml found, creating new formula...');
     
     // Confirm with user if they want to create a new formula
-    const { shouldCreate } = await prompts({
-      type: 'confirm',
-      name: 'shouldCreate',
-      message: 'No formula.yml found. Would you like to create a new formula?',
-      initial: true
-    });
+    const shouldCreate = await promptCreateFormula();
     
     if (!shouldCreate) {
       return {
@@ -128,106 +124,7 @@ async function createFormulaCommand(
   };
 }
 
-/**
- * Parse formula.yml file
- */
-async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYml> {
-  try {
-    const content = await readTextFile(formulaYmlPath);
-    const parsed = yaml.load(content) as FormulaYml;
-    
-    // Validate required fields
-    if (!parsed.name || !parsed.version) {
-      throw new Error('formula.yml must contain name and version fields');
-    }
-    
-    return parsed;
-  } catch (error) {
-    throw new Error(`Failed to parse formula.yml: ${error}`);
-  }
-}
 
-/**
- * Write formula.yml file
- */
-async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml): Promise<void> {
-  const content = yaml.dump(config, {
-    indent: 2,
-    noArrayIndent: true,
-    sortKeys: false
-  });
-  
-  await writeTextFile(formulaYmlPath, content);
-}
-
-/**
- * Prompt user for formula details (npm init style)
- */
-async function promptFormulaDetails(): Promise<FormulaYml> {
-  const cwd = process.cwd();
-  const defaultName = basename(cwd);
-  
-  const response = await prompts([
-    {
-      type: 'text',
-      name: 'name',
-      message: 'Formula name:',
-      initial: defaultName,
-      validate: (value: string) => {
-        if (!value) return 'Name is required';
-        if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
-          return 'Name can only contain letters, numbers, hyphens, and underscores';
-        }
-        return true;
-      }
-    },
-    {
-      type: 'text',
-      name: 'version',
-      message: 'Version:',
-      initial: '0.1.0',
-      validate: (value: string) => {
-        if (!value) return 'Version is required';
-        if (!/^\d+\.\d+\.\d+/.test(value)) {
-          return 'Version should follow semantic versioning (e.g., 1.0.0)';
-        }
-        return true;
-      }
-    },
-    {
-      type: 'text',
-      name: 'description',
-      message: 'Description:'
-    },
-    {
-      type: 'list',
-      name: 'keywords',
-      message: 'Keywords (comma-separated):',
-      separator: ','
-    },
-    {
-      type: 'confirm',
-      name: 'private',
-      message: 'Private formula?',
-      initial: false
-    }
-  ]);
-  
-  // Handle user cancellation
-  if (!response.name) {
-    throw new Error('Formula creation cancelled');
-  }
-  
-  const config: FormulaYml = {
-    name: response.name,
-    version: response.version,
-    ...(response.description && { description: response.description }),
-    ...(response.keywords && response.keywords.length > 0 && { keywords: response.keywords }),
-    ...(response.private && { private: response.private })
-  };
-  
-  return config;
-}
 
 /**
  * Discover MD files based on groundzero directory rules
@@ -281,16 +178,11 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], f
   
   // Check if formula already exists
   if (await exists(metadataPath) && !force) {
-    const { overwrite } = await prompts({
-      type: 'confirm',
-      name: 'overwrite',
-      message: `Formula '${config.name}' already exists. Overwrite?`,
-      initial: false
-    });
+    const overwrite = await promptFormulaOverwrite(config.name);
     
     // Handle user cancellation (Ctrl+C or 'n')
-    if (overwrite === undefined || !overwrite) {
-      console.log('❌ Operation cancelled');
+    if (!overwrite) {
+      logCancellation();
       return { success: false, cancelled: true };
     }
   }
@@ -322,12 +214,6 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], f
   return { success: true };
 }
 
-/**
- * Detect if a file contains template variables
- */
-function detectTemplateFile(content: string): boolean {
-  return /\{\{\s*\w+\s*\}\}/.test(content);
-}
 
 /**
  * Setup the create command

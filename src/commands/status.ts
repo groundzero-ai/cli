@@ -1,10 +1,11 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import * as yaml from 'js-yaml';
 import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
+import { parseFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { exists, readTextFile, listDirectories, isDirectory } from '../utils/fs.js';
+import { scanGroundzeroFormulas, GroundzeroFormula } from '../core/groundzero.js';
+import { exists, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 
@@ -22,85 +23,8 @@ interface FormulaStatusInfo {
   issues?: string[];
 }
 
-/**
- * Formula metadata from groundzero
- */
-interface GroundzeroFormula {
-  name: string;
-  version: string;
-  description?: string;
-  formulas?: FormulaDependency[];
-  path: string;
-}
 
-/**
- * Parse formula.yml file
- */
-async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYml> {
-  try {
-    const content = await readTextFile(formulaYmlPath);
-    const parsed = yaml.load(content) as FormulaYml;
-    
-    // Validate required fields
-    if (!parsed.name || !parsed.version) {
-      throw new Error('formula.yml must contain name and version fields');
-    }
-    
-    return parsed;
-  } catch (error) {
-    throw new Error(`Failed to parse formula.yml: ${error}`);
-  }
-}
 
-/**
- * Scan groundzero directory for available formulas
- */
-async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Map<string, GroundzeroFormula>> {
-  const formulas = new Map<string, GroundzeroFormula>();
-  
-  if (!(await exists(groundzeroPath)) || !(await isDirectory(groundzeroPath))) {
-    logger.debug('Groundzero directory not found or not a directory', { groundzeroPath });
-    return formulas;
-  }
-
-  try {
-    const subdirectories = await listDirectories(groundzeroPath);
-    
-    for (const subdir of subdirectories) {
-      const subdirPath = join(groundzeroPath, subdir);
-      
-      // Check for formula.yml or .formula.yml
-      const formulaYmlPath = join(subdirPath, 'formula.yml');
-      const hiddenFormulaYmlPath = join(subdirPath, '.formula.yml');
-      
-      let formulaFilePath: string | null = null;
-      if (await exists(formulaYmlPath)) {
-        formulaFilePath = formulaYmlPath;
-      } else if (await exists(hiddenFormulaYmlPath)) {
-        formulaFilePath = hiddenFormulaYmlPath;
-      }
-      
-      if (formulaFilePath) {
-        try {
-          const formulaConfig = await parseFormulaYml(formulaFilePath);
-          formulas.set(formulaConfig.name, {
-            name: formulaConfig.name,
-            version: formulaConfig.version,
-            description: formulaConfig.description,
-            formulas: formulaConfig.formulas || [],
-            path: subdirPath
-          });
-        } catch (error) {
-          logger.warn(`Failed to parse formula file ${formulaFilePath}: ${error}`);
-        }
-      }
-      }
-    } catch (error) {
-    logger.error(`Failed to scan groundzero directory: ${error}`);
-  }
-  
-  return formulas;
-}
 
 /**
  * Analyze status of a single formula

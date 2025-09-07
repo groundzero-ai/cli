@@ -1,10 +1,10 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
 import { DeleteOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { exists, remove } from '../utils/fs.js';
+import { promptFormulaDelete, logCancellation } from '../utils/prompts.js';
 
 /**
  * Delete formula command implementation
@@ -29,16 +29,11 @@ async function deleteFormulaCommand(
   
   // Confirmation prompt (if not forced)
   if (!options.force) {
-    const { shouldDelete } = await prompts({
-      type: 'confirm',
-      name: 'shouldDelete',
-      message: `Are you sure you want to delete formula '${formulaName}'? This action cannot be undone.`,
-      initial: false
-    });
+    const shouldDelete = await promptFormulaDelete(formulaName);
     
     // Handle user cancellation (Ctrl+C or 'n')
-    if (shouldDelete === undefined || !shouldDelete) {
-      console.log('❌ Operation cancelled');
+    if (!shouldDelete) {
+      logCancellation();
       return {
         success: true,
         data: { cancelled: true }
