@@ -25,11 +25,42 @@ export async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYm
  * Write formula.yml file with consistent formatting
  */
 export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml): Promise<void> {
-  const content = yaml.dump(config, {
+  // First generate YAML with default block style
+  let content = yaml.dump(config, {
     indent: 2,
     noArrayIndent: true,
     sortKeys: false
   });
+  
+  // Convert keywords array from block style to flow style
+  if (config.keywords && config.keywords.length > 0) {
+    // Split content into lines for easier processing
+    const lines = content.split('\n');
+    const result: string[] = [];
+    let i = 0;
+    
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      if (line.trim() === 'keywords:') {
+        // Found keywords section, create flow style
+        const keywordsFlow = `keywords: [${config.keywords.join(', ')}]`;
+        result.push(keywordsFlow);
+        
+        // Skip the following dash lines
+        i++;
+        while (i < lines.length && lines[i].trim().startsWith('-')) {
+          i++;
+        }
+        continue;
+      }
+      
+      result.push(line);
+      i++;
+    }
+    
+    content = result.join('\n');
+  }
   
   await writeTextFile(formulaYmlPath, content);
 }

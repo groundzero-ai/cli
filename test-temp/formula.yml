@@ -1,0 +1,9 @@
+name: test-keywords-formula
+version: 1.0.0
+description: Testing keywords flow style
+keywords:
+  - web
+  - cli
+  - testing
+  - nodejs
+private: false

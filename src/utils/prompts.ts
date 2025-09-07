@@ -100,10 +100,9 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
       message: 'Description:'
     },
     {
-      type: 'list',
+      type: 'text',
       name: 'keywords',
-      message: 'Keywords (comma-separated):',
-      separator: ','
+      message: 'Keywords (space-separated):'
     },
     {
       type: 'confirm',
@@ -118,11 +117,16 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     throw new Error('Formula creation cancelled');
   }
   
+  // Process keywords from space-separated string to array
+  const keywordsArray = response.keywords 
+    ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
+    : [];
+
   const config: FormulaYml = {
     name: response.name,
     version: response.version,
     ...(response.description && { description: response.description }),
-    ...(response.keywords && response.keywords.length > 0 && { keywords: response.keywords }),
+    ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
     ...(response.private && { private: response.private })
   };
   
