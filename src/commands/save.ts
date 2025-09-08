@@ -1,0 +1,220 @@
+import { Command } from 'commander';
+import { join, dirname, basename } from 'path';
+import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
+import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
+import { promptCreateFormula, promptFormulaDetails, promptFormulaOverwrite } from '../utils/prompts.js';
+import { detectTemplateFile } from '../utils/template.js';
+import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
+import { logger } from '../utils/logger.js';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
+import { 
+  exists, 
+  readTextFile, 
+  writeTextFile, 
+  writeJsonFile, 
+  listFiles, 
+  isDirectory 
+} from '../utils/fs.js';
+
+/**
+ * Save formula command implementation
+ */
+async function saveFormulaCommand(
+  options: SaveOptions
+): Promise<CommandResult> {
+  const cwd = process.cwd();
+  const formulaYmlPath = join(cwd, 'formula.yml');
+  
+  logger.info(`Saving formula from current directory: ${cwd}`);
+  
+  // Ensure registry directories exist
+  await ensureRegistryDirectories();
+  
+  let formulaConfig: FormulaYml;
+  
+  // Check if formula.yml exists
+  if (await exists(formulaYmlPath)) {
+    logger.info('Found existing formula.yml, parsing...');
+    formulaConfig = await parseFormulaYml(formulaYmlPath);
+  } else {
+    logger.info('No formula.yml found, prompting to create...');
+    
+    // Confirm with user if they want to create a new formula
+    const shouldCreate = await promptCreateFormula();
+    
+    if (!shouldCreate) {
+      throw new UserCancellationError('Formula creation cancelled by user');
+    }
+    
+    // Prompt for formula details (npm init style)
+    const defaultName = basename(cwd);
+    formulaConfig = await promptFormulaDetails(defaultName);
+    
+    // Create the formula.yml file
+    await writeFormulaYml(formulaYmlPath, formulaConfig);
+    console.log(`✓ Created formula.yml`);
+  }
+  
+  // Discover and include MD files based on groundzero directory rules
+  const mdFiles = await discoverMdFiles(cwd);
+  console.log(`📄 Found ${mdFiles.length} markdown files`);
+  
+  // Create formula files array
+  const formulaFiles: FormulaFile[] = [];
+  
+  // Add formula.yml as the first file
+  const formulaYmlContent = await readTextFile(formulaYmlPath);
+  formulaFiles.push({
+    path: 'formula.yml',
+    content: formulaYmlContent,
+    isTemplate: false,
+    encoding: 'utf8'
+  });
+  
+  // Add discovered MD files
+  for (const mdFile of mdFiles) {
+    const content = await readTextFile(mdFile.fullPath);
+    formulaFiles.push({
+      path: mdFile.relativePath,
+      content,
+      isTemplate: detectTemplateFile(content),
+      encoding: 'utf8'
+    });
+  }
+  
+  // Save formula to local registry
+  const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, options.force);
+  
+  // Handle save failure
+  if (!saveResult.success) {
+    return {
+      success: false,
+      error: 'Failed to save formula'
+    };
+  }
+  
+  // Success output
+  console.log(`✓ Formula '${formulaConfig.name}' saved successfully`);
+  console.log(`📦 Version: ${formulaConfig.version}`);
+  if (formulaConfig.description) {
+    console.log(`📝 Description: ${formulaConfig.description}`);
+  }
+  console.log(`📁 Files: ${formulaFiles.length} files included`);
+  if (formulaConfig.keywords && formulaConfig.keywords.length > 0) {
+    console.log(`🏷️  Keywords: ${formulaConfig.keywords.join(', ')}`);
+  }
+  if (formulaConfig.formulas && formulaConfig.formulas.length > 0) {
+    console.log(`📋 Dependencies: ${formulaConfig.formulas.map(f => `${f.name}@${f.version}`).join(', ')}`);
+  }
+  if (formulaConfig['dev-formulas'] && formulaConfig['dev-formulas'].length > 0) {
+    console.log(`🔧 Dev Dependencies: ${formulaConfig['dev-formulas'].map(f => `${f.name}@${f.version}`).join(', ')}`);
+  }
+  
+  return {
+    success: true,
+    data: formulaConfig
+  };
+}
+
+/**
+ * Discover MD files based on groundzero directory rules
+ */
+async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
+  const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
+  const parentDir = dirname(cwd);
+  const groundzeroPath = join(parentDir, 'groundzero');
+  
+  // Check if adjacent groundzero directory exists
+  if (await exists(groundzeroPath) && await isDirectory(groundzeroPath)) {
+    logger.debug('Found adjacent groundzero directory, including its immediate MD files (flattened)');
+    
+    // Include all immediate MD files from groundzero directory (not recursive)
+    // Store them flattened without the groundzero/ prefix
+    const files = await listFiles(groundzeroPath);
+    for (const file of files) {
+      if (file.endsWith('.md')) {
+        const fullPath = join(groundzeroPath, file);
+        mdFiles.push({
+          fullPath,
+          relativePath: file // Store directly without 'groundzero/' prefix
+        });
+      }
+    }
+  } else {
+    logger.debug('No groundzero directory found, including adjacent MD files');
+    
+    // Include all MD files adjacent (siblings) to formula.yml
+    const files = await listFiles(cwd);
+    for (const file of files) {
+      if (file.endsWith('.md')) {
+        const fullPath = join(cwd, file);
+        mdFiles.push({
+          fullPath,
+          relativePath: file
+        });
+      }
+    }
+  }
+  
+  return mdFiles;
+}
+
+/**
+ * Save formula to local registry
+ */
+async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], force?: boolean): Promise<{ success: boolean }> {
+  const formulaPath = getFormulaPath(config.name);
+  const metadataPath = getFormulaMetadataPath(config.name);
+  
+  // Check if formula already exists
+  if (await exists(metadataPath) && !force) {
+    const overwrite = await promptFormulaOverwrite(config.name);
+    
+    // Handle user cancellation (Ctrl+C or 'n')
+    if (!overwrite) {
+      throw new UserCancellationError();
+    }
+  }
+  
+  // Create metadata from formula config
+  const metadata = {
+    name: config.name,
+    version: config.version,
+    description: config.description,
+    keywords: config.keywords || [],
+    private: config.private || false,
+    dependencies: config.formulas || [],
+    devDependencies: config['dev-formulas'] || [],
+    created: new Date().toISOString(),
+    updated: new Date().toISOString(),
+    files: files.map(f => f.path)
+  };
+  
+  // Save metadata
+  await writeJsonFile(metadataPath, metadata);
+  
+  // Save files to formula directory
+  for (const file of files) {
+    const filePath = join(formulaPath, file.path);
+    await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
+  }
+  
+  logger.info(`Formula '${config.name}' saved to local registry`);
+  return { success: true };
+}
+
+/**
+ * Setup the save command
+ */
+export function setupSaveCommand(program: Command): void {
+  program
+    .command('save')
+    .description('Save the current formula to local registry (creates formula.yml if needed)')
+    .option('-f, --force', 'force save even if formula already exists')
+    .action(withErrorHandling(async (options: SaveOptions) => {
+      const result = await saveFormulaCommand(options);
+      if (!result.success) {
+        throw new Error(result.error || 'Save operation failed');
+      }
+    }));
+}

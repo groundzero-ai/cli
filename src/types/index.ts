@@ -119,6 +119,10 @@ export interface SearchOptions {
   registry?: string;
 }
 
+export interface SaveOptions {
+  force?: boolean;
+}
+
 // Registry types
 export interface RegistryEntry {
   name: string;

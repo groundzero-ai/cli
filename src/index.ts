@@ -10,6 +10,7 @@ import { ensureG0Directories } from './core/directory.js';
 // Import command setup functions
 import { setupInitCommand } from './commands/init.js';
 import { setupCreateCommand } from './commands/create.js';
+import { setupSaveCommand } from './commands/save.js';
 import { setupListCommand } from './commands/list.js';
 import { setupDeleteCommand } from './commands/delete.js';
 import { setupShowCommand } from './commands/show.js';
@@ -48,6 +49,7 @@ program
 // === FORMULA LIFECYCLE COMMANDS ===
 setupInitCommand(program);
 setupCreateCommand(program);
+setupSaveCommand(program);
 setupListCommand(program);
 setupDeleteCommand(program);
 setupShowCommand(program);
