@@ -1,12 +1,14 @@
 import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
+import * as semver from 'semver';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
-import { promptCreateFormula, promptFormulaDetails, promptFormulaOverwrite } from '../utils/prompts.js';
+import { promptCreateFormula, promptFormulaDetails, promptNewVersion, promptVersionOverwrite } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
+import { registryManager } from '../core/registry.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import { 
   exists, 
   readTextFile, 
@@ -20,12 +22,14 @@ import {
  * Save formula command implementation
  */
 async function saveFormulaCommand(
-  options: SaveOptions
+  targetDir?: string,
+  options?: SaveOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  const formulaYmlPath = join(cwd, 'formula.yml');
+  const formulaDir = targetDir ? join(cwd, targetDir) : cwd;
+  const formulaYmlPath = join(formulaDir, 'formula.yml');
   
-  logger.info(`Saving formula from current directory: ${cwd}`);
+  logger.info(`Saving formula from directory: ${formulaDir}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
@@ -47,7 +51,7 @@ async function saveFormulaCommand(
     }
     
     // Prompt for formula details (npm init style)
-    const defaultName = basename(cwd);
+    const defaultName = basename(formulaDir);
     formulaConfig = await promptFormulaDetails(defaultName);
     
     // Create the formula.yml file
@@ -56,7 +60,7 @@ async function saveFormulaCommand(
   }
   
   // Discover and include MD files based on groundzero directory rules
-  const mdFiles = await discoverMdFiles(cwd);
+  const mdFiles = await discoverMdFiles(formulaDir);
   console.log(`📄 Found ${mdFiles.length} markdown files`);
   
   // Create formula files array
@@ -82,15 +86,26 @@ async function saveFormulaCommand(
     });
   }
   
-  // Save formula to local registry
-  const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, options.force);
+  // Save formula to local registry with version handling
+  const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, formulaYmlPath, options?.force);
   
   // Handle save failure
   if (!saveResult.success) {
+    // Check if it's a version error (show simple message)
+    if (saveResult.error && saveResult.error.includes('cannot be lower than existing version')) {
+      console.error(`❌ ${saveResult.error}`);
+      process.exit(1);
+    }
+    
     return {
       success: false,
-      error: 'Failed to save formula'
+      error: saveResult.error || 'Failed to save formula'
     };
+  }
+  
+  // Update formulaConfig if version was changed during save
+  if (saveResult.updatedConfig) {
+    formulaConfig = saveResult.updatedConfig;
   }
   
   // Success output
@@ -119,9 +134,9 @@ async function saveFormulaCommand(
 /**
  * Discover MD files based on groundzero directory rules
  */
-async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
+async function discoverMdFiles(formulaDir: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
   const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
-  const parentDir = dirname(cwd);
+  const parentDir = dirname(formulaDir);
   const groundzeroPath = join(parentDir, 'groundzero');
   
   // Check if adjacent groundzero directory exists
@@ -144,10 +159,10 @@ async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; r
     logger.debug('No groundzero directory found, including adjacent MD files');
     
     // Include all MD files adjacent (siblings) to formula.yml
-    const files = await listFiles(cwd);
+    const files = await listFiles(formulaDir);
     for (const file of files) {
       if (file.endsWith('.md')) {
-        const fullPath = join(cwd, file);
+        const fullPath = join(formulaDir, file);
         mdFiles.push({
           fullPath,
           relativePath: file
@@ -160,31 +175,91 @@ async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; r
 }
 
 /**
- * Save formula to local registry
+ * Save formula to local registry with version handling
  */
-async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], force?: boolean): Promise<{ success: boolean }> {
+async function saveFormulaToRegistry(
+  config: FormulaYml, 
+  files: FormulaFile[], 
+  formulaYmlPath: string,
+  force?: boolean
+): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
   const formulaPath = getFormulaPath(config.name);
   const metadataPath = getFormulaMetadataPath(config.name);
   
-  // Check if formula already exists
-  if (await exists(metadataPath) && !force) {
-    const overwrite = await promptFormulaOverwrite(config.name);
+  let finalConfig = { ...config };
+  
+  // Check if formula already exists and handle version logic
+  try {
+    const existingMetadata = await registryManager.getFormulaMetadata(config.name);
+    const existingVersion = existingMetadata.version;
+    const newVersion = config.version;
     
-    // Handle user cancellation (Ctrl+C or 'n')
-    if (!overwrite) {
-      throw new UserCancellationError();
+    logger.debug(`Existing formula found`, { existingVersion, newVersion });
+    
+    // Compare versions
+    const versionComparison = semver.compare(newVersion, existingVersion);
+    
+    if (versionComparison === 0) {
+      // Same version - prompt for new version
+      logger.info(`Formula '${config.name}' already exists with same version ${existingVersion}`);
+      
+      if (force) {
+        logger.info('Force flag provided, overwriting same version');
+      } else {
+        try {
+          const updatedVersion = await promptNewVersion(config.name, existingVersion);
+          finalConfig.version = updatedVersion;
+          
+          // Update formula.yml file with new version
+          await writeFormulaYml(formulaYmlPath, finalConfig);
+          logger.info(`Updated formula.yml with new version: ${updatedVersion}`);
+        } catch (error) {
+          if (error instanceof UserCancellationError) {
+            throw error;
+          }
+          return {
+            success: false,
+            error: `Failed to update version: ${error}`
+          };
+        }
+      }
+    } else if (versionComparison > 0) {
+      // New version is higher - prompt for confirmation
+      logger.info(`Upgrading formula '${config.name}' from ${existingVersion} to ${newVersion}`);
+      
+      if (!force) {
+        const confirmed = await promptVersionOverwrite(config.name, existingVersion, newVersion);
+        if (!confirmed) {
+          throw new UserCancellationError();
+        }
+      }
+    } else {
+      // New version is lower - show error
+      return {
+        success: false,
+        error: `Version ${newVersion} cannot be lower than existing version ${existingVersion}`
+      };
+    }
+    
+  } catch (error) {
+    if (error instanceof FormulaNotFoundError) {
+      // Formula doesn't exist - proceed with creation
+      logger.info(`Creating new formula '${config.name}' version ${config.version}`);
+    } else {
+      // Re-throw other errors (like UserCancellationError)
+      throw error;
     }
   }
   
   // Create metadata from formula config
   const metadata = {
-    name: config.name,
-    version: config.version,
-    description: config.description,
-    keywords: config.keywords || [],
-    private: config.private || false,
-    dependencies: config.formulas || [],
-    devDependencies: config['dev-formulas'] || [],
+    name: finalConfig.name,
+    version: finalConfig.version,
+    description: finalConfig.description,
+    keywords: finalConfig.keywords || [],
+    private: finalConfig.private || false,
+    dependencies: finalConfig.formulas || [],
+    devDependencies: finalConfig['dev-formulas'] || [],
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
     files: files.map(f => f.path)
@@ -199,8 +274,11 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], f
     await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
   }
   
-  logger.info(`Formula '${config.name}' saved to local registry`);
-  return { success: true };
+  logger.info(`Formula '${finalConfig.name}' saved to local registry`);
+  return { 
+    success: true, 
+    updatedConfig: finalConfig !== config ? finalConfig : undefined 
+  };
 }
 
 /**
@@ -209,10 +287,11 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], f
 export function setupSaveCommand(program: Command): void {
   program
     .command('save')
+    .argument('[directory]', 'target directory to save formula from (relative to current directory)')
     .description('Save the current formula to local registry (creates formula.yml if needed)')
     .option('-f, --force', 'force save even if formula already exists')
-    .action(withErrorHandling(async (options: SaveOptions) => {
-      const result = await saveFormulaCommand(options);
+    .action(withErrorHandling(async (directory?: string, options?: SaveOptions) => {
+      const result = await saveFormulaCommand(directory, options);
       if (!result.success) {
         throw new Error(result.error || 'Save operation failed');
       }

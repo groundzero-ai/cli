@@ -146,6 +146,44 @@ export function isCancelled(result: any): boolean {
 }
 
 /**
+ * Prompt user to enter a new version number
+ */
+export async function promptNewVersion(formulaName: string, currentVersion: string): Promise<string> {
+  const response = await prompts({
+    type: 'text',
+    name: 'version',
+    message: `Enter a new version for '${formulaName}' (current: ${currentVersion}):`,
+    initial: currentVersion,
+    validate: (value: string) => {
+      if (!value) return 'Version is required';
+      if (!/^\d+\.\d+\.\d+/.test(value)) {
+        return 'Version should follow semantic versioning (e.g., 1.0.0)';
+      }
+      if (value === currentVersion) {
+        return 'New version must be different from current version';
+      }
+      return true;
+    }
+  });
+
+  if (isCancelled(response) || !response.version) {
+    throw new UserCancellationError('Version update cancelled');
+  }
+
+  return response.version;
+}
+
+/**
+ * Prompt user to confirm version overwrite
+ */
+export async function promptVersionOverwrite(formulaName: string, oldVersion: string, newVersion: string): Promise<boolean> {
+  return await promptConfirmation(
+    `Overwrite formula '${formulaName}' version ${oldVersion} with version ${newVersion}?`,
+    false
+  );
+}
+
+/**
  * Prompt user to select platform they're using
  */
 export async function promptPlatformSelection(): Promise<string[]> {
