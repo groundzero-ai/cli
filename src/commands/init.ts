@@ -1,20 +1,21 @@
 import { Command } from 'commander';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { CommandResult, FormulaYml } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { promptCreateFormula, promptFormulaDetails, logCancellation } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
-import { exists } from '../utils/fs.js';
+import { exists, ensureDir } from '../utils/fs.js';
 
 /**
  * Initialize formula.yml command implementation
  */
-async function initFormulaCommand(): Promise<CommandResult> {
+async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
   const cwd = process.cwd();
-  const formulaYmlPath = join(cwd, 'formula.yml');
+  const formulaDir = targetDir ? join(cwd, targetDir) : cwd;
+  const formulaYmlPath = join(formulaDir, 'formula.yml');
   
-  logger.info(`Initializing formula.yml in current directory: ${cwd}`);
+  logger.info(`Initializing formula.yml in directory: ${formulaDir}`);
   
   let formulaConfig: FormulaYml;
   
@@ -58,8 +59,12 @@ async function initFormulaCommand(): Promise<CommandResult> {
     }
     
     try {
+      // Ensure the target directory exists
+      await ensureDir(formulaDir);
+      
       // Prompt for formula details (npm init style)
-      formulaConfig = await promptFormulaDetails();
+      const defaultName = basename(formulaDir);
+      formulaConfig = await promptFormulaDetails(defaultName);
       
       // Create the formula.yml file
       await writeFormulaYml(formulaYmlPath, formulaConfig);
@@ -104,9 +109,10 @@ async function initFormulaCommand(): Promise<CommandResult> {
 export function setupInitCommand(program: Command): void {
   program
     .command('init')
-    .description('Initialize a new formula.yml file in the current directory')
-    .action(withErrorHandling(async () => {
-      const result = await initFormulaCommand();
+    .argument('[directory]', 'target directory to create formula.yml (relative to current directory)')
+    .description('Initialize a new formula.yml file in the current directory or specified directory')
+    .action(withErrorHandling(async (directory?: string) => {
+      const result = await initFormulaCommand(directory);
       if (!result.success) {
         throw new Error(result.error || 'Init operation failed');
       }
