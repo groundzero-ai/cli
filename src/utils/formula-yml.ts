@@ -32,34 +32,39 @@ export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml
     sortKeys: false
   });
   
-  // Convert keywords array from block style to flow style
-  if (config.keywords && config.keywords.length > 0) {
-    // Split content into lines for easier processing
-    const lines = content.split('\n');
-    const result: string[] = [];
-    let i = 0;
-    
-    while (i < lines.length) {
-      const line = lines[i];
+  // Convert arrays from block style to flow style
+  const flowStyleArrays = ['keywords', 'platforms'];
+  
+  for (const arrayField of flowStyleArrays) {
+    const arrayValue = config[arrayField as keyof FormulaYml];
+    if (Array.isArray(arrayValue) && arrayValue.length > 0) {
+      // Split content into lines for easier processing
+      const lines = content.split('\n');
+      const result: string[] = [];
+      let i = 0;
       
-      if (line.trim() === 'keywords:') {
-        // Found keywords section, create flow style
-        const keywordsFlow = `keywords: [${config.keywords.join(', ')}]`;
-        result.push(keywordsFlow);
+      while (i < lines.length) {
+        const line = lines[i];
         
-        // Skip the following dash lines
-        i++;
-        while (i < lines.length && lines[i].trim().startsWith('-')) {
+        if (line.trim() === `${arrayField}:`) {
+          // Found array section, create flow style
+          const arrayFlow = `${arrayField}: [${arrayValue.join(', ')}]`;
+          result.push(arrayFlow);
+          
+          // Skip the following dash lines
           i++;
+          while (i < lines.length && lines[i].trim().startsWith('-')) {
+            i++;
+          }
+          continue;
         }
-        continue;
+        
+        result.push(line);
+        i++;
       }
       
-      result.push(line);
-      i++;
+      content = result.join('\n');
     }
-    
-    content = result.join('\n');
   }
   
   await writeTextFile(formulaYmlPath, content);

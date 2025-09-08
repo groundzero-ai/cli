@@ -64,6 +64,7 @@ export interface FormulaYml {
   version: string;
   description?: string;
   keywords?: string[];
+  platforms?: string[];
   private?: boolean;
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];

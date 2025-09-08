@@ -141,6 +141,36 @@ export function isCancelled(result: any): boolean {
 }
 
 /**
+ * Prompt user to select platform they're using
+ */
+export async function promptPlatformSelection(): Promise<string[]> {
+  const response = await prompts({
+    type: 'select',
+    name: 'platform',
+    message: 'Which platform are you using for AI-assisted development?',
+    choices: [
+      { title: 'Cursor IDE', value: 'cursor' },
+      { title: 'Claude Code', value: 'claude' },
+      { title: 'Other/None', value: 'other' }
+    ],
+    hint: 'Use arrow keys to navigate, Enter to select'
+  });
+
+  if (isCancelled(response)) {
+    logCancellation();
+    return [];
+  }
+
+  // If user selected "other", return empty array
+  if (response.platform === 'other') {
+    return [];
+  }
+
+  // Return single selection as array for consistency
+  return response.platform ? [response.platform] : [];
+}
+
+/**
  * Standard cancellation message
  */
 export function logCancellation(): void {

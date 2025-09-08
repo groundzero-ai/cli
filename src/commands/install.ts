@@ -1,22 +1,180 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import * as yaml from 'js-yaml';
-import prompts from 'prompts';
 import * as semver from 'semver';
-import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
+import { InstallOptions, CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, promptOverwrite, ResolvedFormula } from '../core/dependency-resolver.js';
-import { promptDirectoryOverwrite } from '../utils/prompts.js';
-import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
+import { promptDirectoryOverwrite, promptPlatformSelection } from '../utils/prompts.js';
+import { writeTextFile, exists, ensureDir } from '../utils/fs.js';
+import { CURSOR_TEMPLATES, CLAUDE_TEMPLATES, Platform } from '../utils/embedded-templates.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, FormulaNotFoundError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError } from '../utils/errors.js';
 
+/**
+ * Detect existing platforms and manage platform configuration
+ */
+async function detectAndManagePlatforms(
+  targetDir: string,
+  options: InstallOptions
+): Promise<{ platforms: string[]; created: string[] }> {
+  const cursorDir = join(targetDir, '.cursor');
+  const claudeDir = join(targetDir, '.claude');
+  const formulaYmlPath = join(targetDir, 'formula.yml');
+  
+  const detectedPlatforms: string[] = [];
+  const created: string[] = [];
+  
+  // Auto-detect existing platforms
+  if (await exists(cursorDir)) {
+    detectedPlatforms.push('cursor');
+  }
+  if (await exists(claudeDir)) {
+    detectedPlatforms.push('claude');
+  }
+  
+  // Check formula.yml for existing platforms configuration
+  let formulaConfig: FormulaYml | null = null;
+  let shouldPrompt = false;
+  
+  if (await exists(formulaYmlPath)) {
+    try {
+      formulaConfig = await parseFormulaYml(formulaYmlPath);
+      
+      // Prompt only if platforms field doesn't exist AND no platforms detected
+      shouldPrompt = (
+        formulaConfig.platforms === undefined && detectedPlatforms.length === 0
+      );
+    } catch (error) {
+      logger.warn(`Failed to parse formula.yml: ${error}`);
+      shouldPrompt = detectedPlatforms.length === 0;
+    }
+  } else {
+    // No formula.yml - prompt only if no platforms detected
+    shouldPrompt = detectedPlatforms.length === 0;
+  }
+  
+  // Determine final platforms
+  let finalPlatforms: string[];
+  
+  if (formulaConfig && formulaConfig.platforms !== undefined) {
+    // Use existing platforms from formula.yml
+    finalPlatforms = formulaConfig.platforms;
+    logger.debug(`Using existing platforms from formula.yml: ${finalPlatforms.join(', ')}`);
+  } else if (detectedPlatforms.length > 0) {
+    // Use auto-detected platforms
+    finalPlatforms = detectedPlatforms;
+    logger.info(`Auto-detected platforms: ${finalPlatforms.join(', ')}`);
+  } else if (shouldPrompt) {
+    // Prompt user for platforms
+    console.log('\n🤖 Platform Detection');
+    console.log('No AI development platform detected in this project.');
+    
+    const selectedPlatforms = await promptPlatformSelection();
+    finalPlatforms = selectedPlatforms;
+    
+    // Create directories for selected platforms
+    for (const platform of selectedPlatforms) {
+      if (platform === 'cursor' && !(await exists(cursorDir))) {
+        await ensureDir(cursorDir);
+        await ensureDir(join(cursorDir, 'rules'));
+        created.push('.cursor');
+        logger.info('Created .cursor directory structure');
+      }
+      if (platform === 'claude' && !(await exists(claudeDir))) {
+        await ensureDir(claudeDir);
+        created.push('.claude');
+        logger.info('Created .claude directory');
+      }
+    }
+  } else {
+    // Fallback to empty platforms
+    finalPlatforms = [];
+  }
+  
+  // Update formula.yml with final platforms (only if platforms field didn't exist before)
+  if (formulaConfig && formulaConfig.platforms === undefined && finalPlatforms.length >= 0) {
+    formulaConfig.platforms = finalPlatforms;
+    await writeFormulaYml(formulaYmlPath, formulaConfig);
+    logger.debug(`Updated formula.yml platforms: ${finalPlatforms.join(', ')}`);
+  }
+  
+  return { platforms: finalPlatforms, created };
+}
 
-
-
+/**
+ * Provide IDE-specific template files based on detected platforms
+ */
+async function provideIdeTemplateFiles(
+  targetDir: string,
+  platforms: string[],
+  options: InstallOptions
+): Promise<{ cursor: string[]; claude: string[]; skipped: string[]; directoriesCreated: string[] }> {
+  const cursorDir = join(targetDir, '.cursor');
+  const claudeDir = join(targetDir, '.claude');
+  const cursorRulesDir = join(cursorDir, 'rules');
+  
+  const provided: { cursor: string[]; claude: string[]; skipped: string[]; directoriesCreated: string[] } = { 
+    cursor: [], 
+    claude: [], 
+    skipped: [], 
+    directoriesCreated: [] 
+  };
+  
+  // Provide Cursor templates if cursor platform is configured
+  if (platforms.includes('cursor')) {
+    logger.info('Providing Cursor IDE templates');
+    
+    // Check if .cursor directory needs to be created
+    const cursorDirExists = await exists(cursorDir);
+    if (!cursorDirExists) {
+      provided.directoriesCreated.push('.cursor');
+    }
+    
+    // Ensure .cursor/rules directory exists (create if missing)
+    await ensureDir(cursorRulesDir);
+    
+    // Add groundzero.mdc to .cursor/rules
+    const groundzeroPath = join(cursorRulesDir, 'groundzero.mdc');
+    
+    if (await exists(groundzeroPath) && !options.force) {
+      provided.skipped.push('.cursor/rules/groundzero.mdc');
+    } else {
+      await writeTextFile(groundzeroPath, CURSOR_TEMPLATES['groundzero.mdc']);
+      provided.cursor.push('groundzero.mdc');
+      logger.debug(`Provided cursor template: groundzero.mdc`);
+    }
+  }
+  
+  // Provide Claude templates if claude platform is configured  
+  if (platforms.includes('claude')) {
+    logger.info('Providing Claude Code templates');
+    
+    // Check if .claude directory needs to be created
+    const claudeDirExists = await exists(claudeDir);
+    if (!claudeDirExists) {
+      provided.directoriesCreated.push('.claude');
+    }
+    
+    // Ensure .claude directory exists (create if missing)
+    await ensureDir(claudeDir);
+    
+    // Add groundzero.md to .claude directory
+    const groundzeroPath = join(claudeDir, 'groundzero.md');
+    
+    if (await exists(groundzeroPath) && !options.force) {
+      provided.skipped.push('.claude/groundzero.md');
+    } else {
+      await writeTextFile(groundzeroPath, CLAUDE_TEMPLATES['groundzero.md']);
+      provided.claude.push('groundzero.md');
+      logger.debug(`Provided claude template: groundzero.md`);
+    }
+  }
+  
+  return provided;
+}
 
 /**
  * Find where a formula currently exists in formula.yml
@@ -207,18 +365,16 @@ async function installFormulaToGroundzero(
     await ensureDir(formulaGroundzeroPath);
     
     for (const file of filesToInstall) {
-      // Rename formula.yml to .formula.yml (hidden file)
-      const targetFileName = file.path === 'formula.yml' ? '.formula.yml' : file.path;
+      // Keep original filename (including formula.yml as non-hidden file)
+      const targetFileName = file.path;
       const targetPath = join(formulaGroundzeroPath, targetFileName);
       await writeTextFile(targetPath, file.content);
       installedFiles.push(targetFileName);
       logger.debug(`Installed file to groundzero/${formulaName}: ${targetFileName}`);
     }
   } else {
-    // For dry run, show the correct target filenames
-    installedFiles.push(...filesToInstall.map(f => 
-      f.path === 'formula.yml' ? '.formula.yml' : f.path
-    ));
+    // For dry run, show the original filenames
+    installedFiles.push(...filesToInstall.map(f => f.path));
   }
   
   return {
@@ -592,7 +748,13 @@ async function installFormulaCommand(
     await addFormulaToYml(formulaYmlPath, formulaName, mainFormula.version, options.dev || false);
   }
   
-  // 7. Success output
+  // 7. Detect and manage platform configuration
+  const platformResult = await detectAndManagePlatforms(targetDir, options);
+
+  // 8. Provide IDE-specific template files
+  const ideTemplateResult = await provideIdeTemplateFiles(targetDir, platformResult.platforms, options);
+  
+  // 9. Success output
   console.log(`\n✓ Formula '${formulaName}' and ${resolvedFormulas.length - 1} dependencies installed`);
   console.log(`📁 Target directory: ${targetDir}`);
   console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
@@ -618,6 +780,31 @@ async function installFormulaCommand(
   if (await exists(formulaYmlPath) && mainFormula) {
     const dependencyType = options.dev ? 'dev-formulas' : 'formulas';
     console.log(`📋 Added to ${dependencyType}: ${formulaName}@${mainFormula.version}`);
+  }
+  
+  // Platform and IDE template output
+  if (platformResult.created.length > 0) {
+    console.log(`📁 Created platform directories: ${platformResult.created.join(', ')}`);
+  }
+
+  if (ideTemplateResult.directoriesCreated.length > 0) {
+    console.log(`📁 Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
+  }
+
+  if (platformResult.platforms.length > 0) {
+    console.log(`🎯 Detected platforms: ${platformResult.platforms.join(', ')}`);
+  }
+
+  if (ideTemplateResult.cursor.length > 0) {
+    console.log(`🎯 Provided Cursor templates: ${ideTemplateResult.cursor.join(', ')}`);
+  }
+
+  if (ideTemplateResult.claude.length > 0) {
+    console.log(`🤖 Provided Claude templates: ${ideTemplateResult.claude.join(', ')}`);
+  }
+
+  if (ideTemplateResult.skipped.length > 0) {
+    console.log(`⏭️  Skipped existing IDE files: ${ideTemplateResult.skipped.join(', ')}`);
   }
   
   return {
