@@ -59,6 +59,13 @@ export class ConfigError extends G0Error {
   }
 }
 
+export class UserCancellationError extends Error {
+  constructor(message: string = 'Operation cancelled by user') {
+    super(message);
+    this.name = 'UserCancellationError';
+  }
+}
+
 /**
  * Error handler function that provides consistent error handling across commands
  */
@@ -94,6 +101,12 @@ export function withErrorHandling<T extends any[]>(
     try {
       await fn(...args);
     } catch (error) {
+      // Handle user cancellation gracefully - just exit without error message
+      if (error instanceof UserCancellationError) {
+        process.exit(0);
+        return;
+      }
+      
       const result = handleError(error);
       console.error(`❌ ${result.error}`);
       process.exit(1);

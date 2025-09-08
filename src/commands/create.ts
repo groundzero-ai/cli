@@ -2,11 +2,11 @@ import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
 import { CreateOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
-import { promptCreateFormula, promptFormulaDetails, promptFormulaOverwrite, logCancellation, isCancelled } from '../utils/prompts.js';
+import { promptCreateFormula, promptFormulaDetails, promptFormulaOverwrite } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { 
   exists, 
   readTextFile, 
@@ -43,10 +43,7 @@ async function createFormulaCommand(
     const shouldCreate = await promptCreateFormula();
     
     if (!shouldCreate) {
-      return {
-        success: false,
-        error: 'Formula creation cancelled by user'
-      };
+      throw new UserCancellationError('Formula creation cancelled by user');
     }
     
     // Prompt for formula details (npm init style)
@@ -87,14 +84,8 @@ async function createFormulaCommand(
   // Save formula to local registry
   const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, options.force);
   
-  // Handle cancellation
+  // Handle save failure
   if (!saveResult.success) {
-    if (saveResult.cancelled) {
-      return {
-        success: true,
-        data: { cancelled: true }
-      };
-    }
     return {
       success: false,
       error: 'Failed to save formula'
@@ -172,7 +163,7 @@ async function discoverMdFiles(cwd: string): Promise<Array<{ fullPath: string; r
 /**
  * Save formula to local registry
  */
-async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], force?: boolean): Promise<{ success: boolean; cancelled?: boolean }> {
+async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], force?: boolean): Promise<{ success: boolean }> {
   const formulaPath = getFormulaPath(config.name);
   const metadataPath = getFormulaMetadataPath(config.name);
   
@@ -182,8 +173,7 @@ async function saveFormulaToRegistry(config: FormulaYml, files: FormulaFile[], f
     
     // Handle user cancellation (Ctrl+C or 'n')
     if (!overwrite) {
-      logCancellation();
-      return { success: false, cancelled: true };
+      throw new UserCancellationError();
     }
   }
   
@@ -227,10 +217,6 @@ export function setupCreateCommand(program: Command): void {
       const result = await createFormulaCommand(options);
       if (!result.success) {
         throw new Error(result.error || 'Create operation failed');
-      }
-      // If operation was cancelled by user, exit gracefully without error
-      if (result.data?.cancelled) {
-        process.exit(0);
       }
     }));
 }

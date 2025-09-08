@@ -6,7 +6,7 @@ import { FormulaYml, FormulaDependency, Formula } from '../types/index.js';
 import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
-import { FormulaNotFoundError } from '../utils/errors.js';
+import { FormulaNotFoundError, UserCancellationError } from '../utils/errors.js';
 
 /**
  * Resolved formula interface for dependency resolution
@@ -34,14 +34,19 @@ export interface DependencyNode {
  * Prompt user for overwrite confirmation
  */
 export async function promptOverwrite(formulaName: string, existingVersion: string, newVersion: string): Promise<boolean> {
-  const { shouldOverwrite } = await prompts({
+  const response = await prompts({
     type: 'confirm',
     name: 'shouldOverwrite',
     message: `Formula '${formulaName}' conflict: existing v${existingVersion} vs required v${newVersion}. Overwrite with v${newVersion}?`,
     initial: true
   });
   
-  return shouldOverwrite || false;
+  // Check for cancellation
+  if (response.shouldOverwrite === undefined) {
+    throw new UserCancellationError();
+  }
+  
+  return response.shouldOverwrite || false;
 }
 
 /**

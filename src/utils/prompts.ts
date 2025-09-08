@@ -1,6 +1,7 @@
 import prompts from 'prompts';
 import { basename } from 'path';
 import { FormulaYml } from '../types/index.js';
+import { UserCancellationError } from './errors.js';
 
 /**
  * Common prompt types and utilities for user interaction
@@ -10,14 +11,18 @@ import { FormulaYml } from '../types/index.js';
  * Prompt for simple confirmation
  */
 export async function promptConfirmation(message: string, initial: boolean = false): Promise<boolean> {
-  const { confirmed } = await prompts({
+  const response = await prompts({
     type: 'confirm',
     name: 'confirmed',
     message,
     initial
   });
   
-  return confirmed || false;
+  if (isCancelled(response)) {
+    throw new UserCancellationError();
+  }
+  
+  return response.confirmed || false;
 }
 
 /**
@@ -113,8 +118,8 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
   ]);
   
   // Handle user cancellation
-  if (!response.name) {
-    throw new Error('Formula creation cancelled');
+  if (isCancelled(response) || !response.name) {
+    throw new UserCancellationError('Formula creation cancelled');
   }
   
   // Process keywords from space-separated string to array
@@ -157,8 +162,7 @@ export async function promptPlatformSelection(): Promise<string[]> {
   });
 
   if (isCancelled(response)) {
-    logCancellation();
-    return [];
+    throw new UserCancellationError();
   }
 
   // If user selected "other", return empty array
@@ -170,9 +174,3 @@ export async function promptPlatformSelection(): Promise<string[]> {
   return response.platform ? [response.platform] : [];
 }
 
-/**
- * Standard cancellation message
- */
-export function logCancellation(): void {
-  console.log('❌ Operation cancelled');
-}

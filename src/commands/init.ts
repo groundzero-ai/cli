@@ -2,9 +2,9 @@ import { Command } from 'commander';
 import { join, basename } from 'path';
 import { CommandResult, FormulaYml } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
-import { promptCreateFormula, promptFormulaDetails, logCancellation } from '../utils/prompts.js';
+import { promptCreateFormula, promptFormulaDetails } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
 
 /**
@@ -51,11 +51,7 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
     const shouldCreate = await promptCreateFormula();
     
     if (!shouldCreate) {
-      logCancellation();
-      return {
-        success: false,
-        error: 'Formula creation cancelled by user'
-      };
+      throw new UserCancellationError('Formula creation cancelled by user');
     }
     
     try {
@@ -88,12 +84,8 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
         data: formulaConfig
       };
     } catch (error) {
-      if (error instanceof Error && error.message === 'Formula creation cancelled') {
-        logCancellation();
-        return {
-          success: false,
-          error: 'Formula creation cancelled by user'
-        };
+      if (error instanceof UserCancellationError) {
+        throw error; // Re-throw to be handled by withErrorHandling
       }
       return {
         success: false,

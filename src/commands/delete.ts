@@ -2,9 +2,9 @@ import { Command } from 'commander';
 import { DeleteOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, remove } from '../utils/fs.js';
-import { promptFormulaDelete, logCancellation } from '../utils/prompts.js';
+import { promptFormulaDelete } from '../utils/prompts.js';
 
 /**
  * Delete formula command implementation
@@ -33,11 +33,7 @@ async function deleteFormulaCommand(
     
     // Handle user cancellation (Ctrl+C or 'n')
     if (!shouldDelete) {
-      logCancellation();
-      return {
-        success: true,
-        data: { cancelled: true }
-      };
+      throw new UserCancellationError();
     }
   }
   
@@ -75,10 +71,6 @@ export function setupDeleteCommand(program: Command): void {
       const result = await deleteFormulaCommand(formulaName, options);
       if (!result.success) {
         throw new Error(result.error || 'Delete operation failed');
-      }
-      // If operation was cancelled by user, exit gracefully without error
-      if (result.data?.cancelled) {
-        process.exit(0);
       }
     }));
 }
