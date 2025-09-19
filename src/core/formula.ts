@@ -1,12 +1,10 @@
 import { join, relative, basename } from 'path';
-import { Formula, FormulaMetadata, FormulaFile, TemplateVariable } from '../types/index.js';
+import { Formula, FormulaYml, FormulaFile, TemplateVariable } from '../types/index.js';
 import { 
   exists, 
   walkFiles, 
   readTextFile, 
   writeTextFile, 
-  writeJsonFile, 
-  readJsonFile, 
   copyFile, 
   remove,
   isDirectory 
@@ -18,7 +16,8 @@ import {
   InvalidFormulaError,
   ValidationError 
 } from '../utils/errors.js';
-import { getFormulaPath, getFormulaMetadataPath } from './directory.js';
+import { getFormulaPath } from './directory.js';
+import { parseFormulaYml } from '../utils/formula-yml.js';
 
 /**
  * Formula management operations
@@ -35,36 +34,28 @@ export class FormulaManager {
     
     this.validateFormulaName(formulaName);
     
-    const metadataPath = getFormulaMetadataPath(formulaName);
-    if (!(await exists(metadataPath))) {
+    const formulaPath = getFormulaPath(formulaName);
+    if (!(await exists(formulaPath))) {
       throw new FormulaNotFoundError(formulaName);
     }
     
     try {
-      const metadata = await readJsonFile<FormulaMetadata>(metadataPath);
-      const formulaPath = getFormulaPath(formulaName);
-      const files: FormulaFile[] = [];
-      
-      // Load all files
-      for (const filePath of metadata.files) {
-        const fullPath = join(formulaPath, filePath);
-        if (await exists(fullPath)) {
-          const content = await readTextFile(fullPath);
-          const isTemplate = this.detectTemplateFile(content);
-          
-          files.push({
-            path: filePath,
-            content,
-            isTemplate,
-            encoding: 'utf8'
-          });
-        } else {
-          logger.warn(`Formula file missing: ${filePath}`, { formulaName, filePath });
-        }
+      // Load formula.yml for metadata
+      const formulaYmlPath = join(formulaPath, 'formula.yml');
+      if (!(await exists(formulaYmlPath))) {
+        throw new FormulaNotFoundError(formulaName);
       }
+      
+      const metadata = await parseFormulaYml(formulaYmlPath);
+      
+      // Discover all files in the formula directory
+      const files = await this.discoverFormulaFiles(formulaPath);
       
       return { metadata, files };
     } catch (error) {
+      if (error instanceof FormulaNotFoundError) {
+        throw error;
+      }
       logger.error(`Failed to load formula: ${formulaName}`, { error });
       throw new InvalidFormulaError(`Failed to load formula: ${error}`);
     }
@@ -76,14 +67,10 @@ export class FormulaManager {
   async saveFormula(formula: Formula): Promise<void> {
     const { metadata, files } = formula;
     const formulaPath = getFormulaPath(metadata.name);
-    const metadataPath = getFormulaMetadataPath(metadata.name);
     
-    logger.debug(`Saving formula: ${metadata.name}`, { formulaPath, metadataPath });
+    logger.debug(`Saving formula: ${metadata.name}`, { formulaPath });
     
     try {
-      // Save metadata
-      await writeJsonFile(metadataPath, metadata);
-      
       // Save files
       for (const file of files) {
         const fullPath = join(formulaPath, file.path);
@@ -106,15 +93,13 @@ export class FormulaManager {
     this.validateFormulaName(formulaName);
     
     const formulaPath = getFormulaPath(formulaName);
-    const metadataPath = getFormulaMetadataPath(formulaName);
     
-    if (!(await exists(metadataPath))) {
+    if (!(await exists(formulaPath))) {
       throw new FormulaNotFoundError(formulaName);
     }
     
     try {
       await remove(formulaPath);
-      await remove(metadataPath);
       logger.info(`Formula '${formulaName}' deleted successfully`);
     } catch (error) {
       logger.error(`Failed to delete formula: ${formulaName}`, { error });
@@ -127,10 +112,40 @@ export class FormulaManager {
    */
   async formulaExists(formulaName: string): Promise<boolean> {
     this.validateFormulaName(formulaName);
-    const metadataPath = getFormulaMetadataPath(formulaName);
-    return await exists(metadataPath);
+    const formulaPath = getFormulaPath(formulaName);
+    const formulaYmlPath = join(formulaPath, 'formula.yml');
+    return await exists(formulaYmlPath);
   }
   
+  /**
+   * Discover all files in a formula directory
+   */
+  private async discoverFormulaFiles(formulaPath: string): Promise<FormulaFile[]> {
+    const files: FormulaFile[] = [];
+    
+    try {
+      // Get all files recursively in the formula directory
+      for await (const fullPath of walkFiles(formulaPath)) {
+        const relativePath = relative(formulaPath, fullPath);
+        const content = await readTextFile(fullPath);
+        const isTemplate = this.detectTemplateFile(content);
+        
+        files.push({
+          path: relativePath,
+          content,
+          isTemplate,
+          encoding: 'utf8'
+        });
+      }
+      
+      logger.debug(`Discovered ${files.length} files in formula directory`, { formulaPath });
+      return files;
+    } catch (error) {
+      logger.error(`Failed to discover files in formula directory: ${formulaPath}`, { error });
+      throw new InvalidFormulaError(`Failed to discover formula files: ${error}`);
+    }
+  }
+
   /**
    * Apply template variables to a formula's content
    */

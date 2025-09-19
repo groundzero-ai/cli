@@ -1,11 +1,12 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { CommandResult } from '../types/index.js';
-import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
+import { ensureRegistryDirectories, getFormulaPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
-import { exists, readJsonFile, readTextFile } from '../utils/fs.js';
+import { exists, readTextFile, walkFiles } from '../utils/fs.js';
 import { detectTemplateFile } from '../utils/template.js';
+import { parseFormulaYml } from '../utils/formula-yml.js';
 
 /**
  * Show formula details command implementation
@@ -16,40 +17,36 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Check if formula exists (aligned with create command structure)
-  const metadataPath = getFormulaMetadataPath(formulaName);
+  // Check if formula exists
   const formulaPath = getFormulaPath(formulaName);
+  const formulaYmlPath = join(formulaPath, 'formula.yml');
   
-  if (!(await exists(metadataPath))) {
+  if (!(await exists(formulaYmlPath))) {
     console.log(`❌ Formula '${formulaName}' not found`);
     return { success: false, error: 'Formula not found' };
   }
   
   try {
-    // Load metadata directly (aligned with create command structure)
-    const metadata = await readJsonFile(metadataPath);
+    // Load metadata from formula.yml
+    const metadata = await parseFormulaYml(formulaYmlPath);
     
-    // Load files from formula directory
+    // Discover all files in the formula directory
     const files: Array<{
       path: string;
       content: string;
       isTemplate: boolean;
     }> = [];
     
-    for (const filePath of metadata.files || []) {
-      const fullPath = join(formulaPath, filePath);
-      if (await exists(fullPath)) {
-        const content = await readTextFile(fullPath);
-        const isTemplate = detectTemplateFile(content);
-        
-        files.push({
-          path: filePath,
-          content,
-          isTemplate
-        });
-      } else {
-        logger.warn(`Formula file missing: ${filePath}`, { formulaName, filePath });
-      }
+    for await (const fullPath of walkFiles(formulaPath)) {
+      const relativePath = fullPath.replace(formulaPath + '/', '');
+      const content = await readTextFile(fullPath);
+      const isTemplate = detectTemplateFile(content);
+      
+      files.push({
+        path: relativePath,
+        content,
+        isTemplate
+      });
     }
     
     // Display formula details
@@ -68,22 +65,20 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
       console.log(`🔒 Private: Yes`);
     }
     
-    console.log(`📅 Created: ${new Date(metadata.created).toLocaleString()}`);
-    console.log(`📅 Updated: ${new Date(metadata.updated).toLocaleString()}`);
     console.log('');
     
     // Dependencies section
-    if (metadata.dependencies && metadata.dependencies.length > 0) {
-      console.log(`📋 Dependencies (${metadata.dependencies.length}):`);
-      for (const dep of metadata.dependencies) {
+    if (metadata.formulas && metadata.formulas.length > 0) {
+      console.log(`📋 Dependencies (${metadata.formulas.length}):`);
+      for (const dep of metadata.formulas) {
         console.log(`  • ${dep.name}@${dep.version}`);
       }
       console.log('');
     }
     
-    if (metadata.devDependencies && metadata.devDependencies.length > 0) {
-      console.log(`🔧 Dev Dependencies (${metadata.devDependencies.length}):`);
-      for (const dep of metadata.devDependencies) {
+    if (metadata['dev-formulas'] && metadata['dev-formulas'].length > 0) {
+      console.log(`🔧 Dev Dependencies (${metadata['dev-formulas'].length}):`);
+      for (const dep of metadata['dev-formulas']) {
         console.log(`  • ${dep.name}@${dep.version}`);
       }
       console.log('');

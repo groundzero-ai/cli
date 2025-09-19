@@ -408,21 +408,8 @@ async function installMainFormulaFiles(
   // Merge with options.variables if provided
   Object.assign(variables, options.variables || {});
   
-  // Validate required template variables
-  if (formula.metadata.templateVariables) {
-    for (const templateVar of formula.metadata.templateVariables) {
-      if (templateVar.required && !(templateVar.name in variables)) {
-        if (templateVar.default !== undefined) {
-          variables[templateVar.name] = templateVar.default;
-        } else {
-          throw new ValidationError(
-            `Required template variable '${templateVar.name}' is missing. ` +
-            `Use --set ${templateVar.name}=value to provide it.`
-          );
-        }
-      }
-    }
-  }
+  // Note: Template variable validation is not implemented in the simplified metadata system
+  // Template variables are detected dynamically from file content
   
   // Prepare installation plan - exclude formula.yml and MD files
   const installPlan = formula.files

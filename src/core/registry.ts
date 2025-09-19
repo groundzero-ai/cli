@@ -1,9 +1,8 @@
 import { join } from 'path';
 import * as semver from 'semver';
-import { FormulaMetadata, RegistryEntry, SearchResult, CommandResult } from '../types/index.js';
+import { FormulaYml, RegistryEntry, SearchResult, CommandResult } from '../types/index.js';
 import { 
-  listFiles, 
-  readJsonFile, 
+  listDirectories, 
   exists 
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -12,6 +11,7 @@ import {
   RegistryError 
 } from '../utils/errors.js';
 import { getRegistryDirectories } from './directory.js';
+import { parseFormulaYml } from '../utils/formula-yml.js';
 
 /**
  * Local registry operations for managing formulas
@@ -26,22 +26,27 @@ export class RegistryManager {
     logger.debug('Listing local formulas', { filter });
     
     try {
-      const { metadata: metadataDir } = getRegistryDirectories();
+      const { formulas: formulasDir } = getRegistryDirectories();
       
-      if (!(await exists(metadataDir))) {
-        logger.debug('Metadata directory does not exist, returning empty list');
+      if (!(await exists(formulasDir))) {
+        logger.debug('Formulas directory does not exist, returning empty list');
         return [];
       }
       
-      const metadataFiles = await listFiles(metadataDir);
+      const formulaDirs = await listDirectories(formulasDir);
       const entries: RegistryEntry[] = [];
       
-      for (const file of metadataFiles) {
-        if (!file.endsWith('.json')) continue;
-        
+      for (const formulaDir of formulaDirs) {
         try {
-          const metadataPath = join(metadataDir, file);
-          const metadata = await readJsonFile<FormulaMetadata>(metadataPath);
+          const formulaPath = join(formulasDir, formulaDir);
+          const formulaYmlPath = join(formulaPath, 'formula.yml');
+          
+          if (!(await exists(formulaYmlPath))) {
+            logger.warn(`No formula.yml found in directory: ${formulaDir}`);
+            continue;
+          }
+          
+          const metadata = await parseFormulaYml(formulaYmlPath);
           
           // Apply filter if provided
           if (filter && !this.matchesFilter(metadata.name, filter)) {
@@ -52,11 +57,11 @@ export class RegistryManager {
             name: metadata.name,
             version: metadata.version,
             description: metadata.description,
-            author: metadata.author,
-            lastUpdated: metadata.updated
+            author: undefined, // Not available in formula.yml
+            lastUpdated: new Date().toISOString() // We don't track this anymore
           });
         } catch (error) {
-          logger.warn(`Failed to read metadata file: ${file}`, { error });
+          logger.warn(`Failed to read formula.yml in directory: ${formulaDir}`, { error });
         }
       }
       
@@ -74,18 +79,19 @@ export class RegistryManager {
   /**
    * Get formula metadata
    */
-  async getFormulaMetadata(formulaName: string): Promise<FormulaMetadata> {
+  async getFormulaMetadata(formulaName: string): Promise<FormulaYml> {
     logger.debug(`Getting metadata for formula: ${formulaName}`);
     
     try {
-      const { metadata: metadataDir } = getRegistryDirectories();
-      const metadataPath = join(metadataDir, `${formulaName}.json`);
+      const { formulas: formulasDir } = getRegistryDirectories();
+      const formulaPath = join(formulasDir, formulaName);
+      const formulaYmlPath = join(formulaPath, 'formula.yml');
       
-      if (!(await exists(metadataPath))) {
+      if (!(await exists(formulaYmlPath))) {
         throw new FormulaNotFoundError(formulaName);
       }
       
-      const metadata = await readJsonFile<FormulaMetadata>(metadataPath);
+      const metadata = await parseFormulaYml(formulaYmlPath);
       return metadata;
     } catch (error) {
       if (error instanceof FormulaNotFoundError) {
@@ -205,24 +211,13 @@ export class RegistryManager {
         try {
           const metadata = await this.getFormulaMetadata(formula.name);
           
-          // Check if all referenced files exist
-          const { formulas: formulasDir } = getRegistryDirectories();
-          const formulaDir = join(formulasDir, formula.name);
-          
-          for (const filePath of metadata.files) {
-            const fullPath = join(formulaDir, filePath);
-            if (!(await exists(fullPath))) {
-              issues.push(`Missing file in formula '${formula.name}': ${filePath}`);
-            }
-          }
-          
           // Check metadata consistency
           if (metadata.name !== formula.name) {
-            issues.push(`Name mismatch in formula '${formula.name}': metadata says '${metadata.name}'`);
+            issues.push(`Name mismatch in formula '${formula.name}': formula.yml says '${metadata.name}'`);
           }
           
           if (semver.neq(metadata.version, formula.version)) {
-            issues.push(`Version mismatch in formula '${formula.name}': registry says '${formula.version}', metadata says '${metadata.version}'`);
+            issues.push(`Version mismatch in formula '${formula.name}': registry says '${formula.version}', formula.yml says '${metadata.version}'`);
           }
           
         } catch (error) {

@@ -59,8 +59,6 @@ async function pushFormulaCommand(
   console.log(`  Version: ${versionToPush}`);
   console.log(`  Description: ${formula.metadata.description || '(no description)'}`);
   console.log(`  Files: ${formula.files.length}`);
-  console.log(`  Author: ${formula.metadata.author || '(not specified)'}`);
-  console.log(`  License: ${formula.metadata.license || '(not specified)'}`);
   
   return {
     success: true,

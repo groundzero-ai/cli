@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import { DeleteOptions, CommandResult } from '../types/index.js';
-import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
+import { ensureRegistryDirectories } from '../core/directory.js';
+import { formulaManager } from '../core/formula.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
-import { exists, remove } from '../utils/fs.js';
 import { promptFormulaDelete } from '../utils/prompts.js';
 
 /**
@@ -18,11 +18,8 @@ async function deleteFormulaCommand(
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Check if formula exists (aligned with create command structure)
-  const metadataPath = getFormulaMetadataPath(formulaName);
-  const formulaPath = getFormulaPath(formulaName);
-  
-  if (!(await exists(metadataPath))) {
+  // Check if formula exists
+  if (!(await formulaManager.formulaExists(formulaName))) {
     console.log(`❌ Formula '${formulaName}' not found`);
     return { success: false, error: 'Formula not found' };
   }
@@ -37,14 +34,10 @@ async function deleteFormulaCommand(
     }
   }
   
-  // Delete the formula (both metadata and files directory)
+  // Delete the formula using formula manager
   try {
-    await remove(metadataPath);
-    if (await exists(formulaPath)) {
-      await remove(formulaPath);
-    }
+    await formulaManager.deleteFormula(formulaName);
     
-    logger.info(`Formula '${formulaName}' deleted successfully`);
     console.log(`✓ Formula '${formulaName}' deleted successfully`);
     
     return {

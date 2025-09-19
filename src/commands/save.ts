@@ -5,7 +5,7 @@ import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/in
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { promptCreateFormula, promptFormulaDetails, promptNewVersion, promptVersionOverwrite } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
-import { ensureRegistryDirectories, getFormulaPath, getFormulaMetadataPath } from '../core/directory.js';
+import { ensureRegistryDirectories, getFormulaPath } from '../core/directory.js';
 import { registryManager } from '../core/registry.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
@@ -15,7 +15,8 @@ import {
   writeTextFile, 
   writeJsonFile, 
   listFiles, 
-  isDirectory 
+  isDirectory,
+  ensureDir
 } from '../utils/fs.js';
 
 /**
@@ -184,7 +185,6 @@ async function saveFormulaToRegistry(
   force?: boolean
 ): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
   const formulaPath = getFormulaPath(config.name);
-  const metadataPath = getFormulaMetadataPath(config.name);
   
   let finalConfig = { ...config };
   
@@ -251,26 +251,20 @@ async function saveFormulaToRegistry(
     }
   }
   
-  // Create metadata from formula config
-  const metadata = {
-    name: finalConfig.name,
-    version: finalConfig.version,
-    description: finalConfig.description,
-    keywords: finalConfig.keywords || [],
-    private: finalConfig.private || false,
-    dependencies: finalConfig.formulas || [],
-    devDependencies: finalConfig['dev-formulas'] || [],
-    created: new Date().toISOString(),
-    updated: new Date().toISOString(),
-    files: files.map(f => f.path)
-  };
-  
-  // Save metadata
-  await writeJsonFile(metadataPath, metadata);
-  
   // Save files to formula directory
   for (const file of files) {
-    const filePath = join(formulaPath, file.path);
+    let filePath: string;
+    
+    // If it's a markdown file, save it to the ai/ subdirectory
+    if (file.path.endsWith('.md')) {
+      const aiDir = join(formulaPath, 'ai');
+      await ensureDir(aiDir);
+      filePath = join(aiDir, file.path);
+    } else {
+      // Save non-MD files (like formula.yml) directly to the formula directory
+      filePath = join(formulaPath, file.path);
+    }
+    
     await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
   }
   

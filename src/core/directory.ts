@@ -83,27 +83,23 @@ export async function ensureG0Directories(): Promise<G0Directories> {
 /**
  * Get the registry directories
  */
-export function getRegistryDirectories(): { formulas: string; metadata: string } {
+export function getRegistryDirectories(): { formulas: string } {
   const g0Dirs = getG0Directories();
   const registryDir = path.join(g0Dirs.data, 'registry');
   
   return {
-    formulas: path.join(registryDir, 'formulas'),
-    metadata: path.join(registryDir, 'metadata')
+    formulas: path.join(registryDir, 'formulas')
   };
 }
 
 /**
  * Ensure registry directories exist
  */
-export async function ensureRegistryDirectories(): Promise<{ formulas: string; metadata: string }> {
+export async function ensureRegistryDirectories(): Promise<{ formulas: string }> {
   const dirs = getRegistryDirectories();
   
   try {
-    await Promise.all([
-      ensureDir(dirs.formulas),
-      ensureDir(dirs.metadata)
-    ]);
+    await ensureDir(dirs.formulas);
     
     logger.debug('Registry directories ensured', { directories: dirs });
     return dirs;
@@ -137,10 +133,3 @@ export function getFormulaPath(formulaName: string): string {
   return path.join(dirs.formulas, formulaName);
 }
 
-/**
- * Get the path to store formula metadata
- */
-export function getFormulaMetadataPath(formulaName: string): string {
-  const dirs = getRegistryDirectories();
-  return path.join(dirs.metadata, `${formulaName}.json`);
-}

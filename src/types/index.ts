@@ -49,7 +49,7 @@ export interface FormulaFile {
 }
 
 export interface Formula {
-  metadata: FormulaMetadata;
+  metadata: FormulaYml;
   files: FormulaFile[];
 }
 
