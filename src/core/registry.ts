@@ -26,10 +26,10 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 export class RegistryManager {
   
   /**
-   * List all local formulas (shows latest version by default)
+   * List local formulas (latest version by default, all versions with --all)
    */
-  async listFormulas(filter?: string): Promise<RegistryEntry[]> {
-    logger.debug('Listing local formulas', { filter });
+  async listFormulas(filter?: string, showAllVersions: boolean = false): Promise<RegistryEntry[]> {
+    logger.debug('Listing local formulas', { filter, showAllVersions });
     
     try {
       const { formulas: formulasDir } = getRegistryDirectories();
@@ -44,36 +44,79 @@ export class RegistryManager {
       
       for (const formulaDir of formulaDirs) {
         try {
-          const latestVersion = await getLatestFormulaVersion(formulaDir);
-          if (!latestVersion) continue;
-          
-          const formulaYmlPath = getFormulaVersionPath(formulaDir, latestVersion);
-          const metadata = await parseFormulaYml(formulaYmlPath);
-          
-          // Apply filter if provided
-          if (filter && !this.matchesFilter(metadata.name, filter)) {
-            continue;
+          if (showAllVersions) {
+            // Get all versions for this formula
+            const versions = await listFormulaVersions(formulaDir);
+            if (versions.length === 0) continue;
+            
+            // Process each version
+            for (const version of versions) {
+              const formulaPath = getFormulaVersionPath(formulaDir, version);
+              const formulaYmlPath = join(formulaPath, 'formula.yml');
+              const metadata = await parseFormulaYml(formulaYmlPath);
+              
+              // Apply filter if provided
+              if (filter && !this.matchesFilter(metadata.name, filter)) {
+                continue;
+              }
+              
+              entries.push({
+                name: metadata.name,
+                version: metadata.version,
+                description: metadata.description,
+                author: undefined, // Not available in formula.yml
+                lastUpdated: new Date().toISOString() // We don't track this anymore
+              });
+            }
+          } else {
+            // Show only latest version
+            const latestVersion = await getLatestFormulaVersion(formulaDir);
+            if (!latestVersion) continue;
+            
+            const formulaPath = getFormulaVersionPath(formulaDir, latestVersion);
+            const formulaYmlPath = join(formulaPath, 'formula.yml');
+            const metadata = await parseFormulaYml(formulaYmlPath);
+            
+            // Apply filter if provided
+            if (filter && !this.matchesFilter(metadata.name, filter)) {
+              continue;
+            }
+            
+            entries.push({
+              name: metadata.name,
+              version: metadata.version,
+              description: metadata.description,
+              author: undefined, // Not available in formula.yml
+              lastUpdated: new Date().toISOString() // We don't track this anymore
+            });
           }
-          
-          entries.push({
-            name: metadata.name,
-            version: metadata.version,
-            description: metadata.description,
-            author: undefined, // Not available in formula.yml
-            lastUpdated: new Date().toISOString() // We don't track this anymore
-          });
         } catch (error) {
-          logger.warn(`Failed to read formula: ${formulaDir}`, { error });
+          logger.warn(`Failed to read formula: ${formulaDir}`, { 
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
         }
       }
       
-      // Sort by name
-      entries.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort by name first, then by version (highest first) if showing all versions
+      if (showAllVersions) {
+        entries.sort((a, b) => {
+          const nameCompare = a.name.localeCompare(b.name);
+          if (nameCompare !== 0) return nameCompare;
+          return semver.compare(b.version, a.version); // Higher versions first
+        });
+      } else {
+        // Sort by name only when showing latest versions
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+      }
       
-      logger.debug(`Found ${entries.length} formulas`);
+      logger.debug(`Found ${entries.length} formula${showAllVersions ? ' versions' : 's'}`);
       return entries;
     } catch (error) {
-      logger.error('Failed to list formulas', { error });
+      logger.error('Failed to list formulas', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw new RegistryError(`Failed to list formulas: ${error}`);
     }
   }
@@ -90,7 +133,8 @@ export class RegistryManager {
         throw new FormulaNotFoundError(formulaName);
       }
       
-      const formulaYmlPath = getFormulaVersionPath(formulaName, targetVersion);
+      const formulaPath = getFormulaVersionPath(formulaName, targetVersion);
+      const formulaYmlPath = join(formulaPath, 'formula.yml');
       
       if (!(await exists(formulaYmlPath))) {
         throw new FormulaNotFoundError(formulaName);
@@ -103,7 +147,10 @@ export class RegistryManager {
         throw error;
       }
       
-      logger.error(`Failed to get metadata for formula: ${formulaName}`, { error });
+      logger.error(`Failed to get metadata for formula: ${formulaName}`, { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw new RegistryError(`Failed to get formula metadata: ${error}`);
     }
   }
@@ -150,7 +197,12 @@ export class RegistryManager {
         limit
       };
     } catch (error) {
-      logger.error('Failed to search formulas', { error, term, limit });
+      logger.error('Failed to search formulas', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        term, 
+        limit 
+      });
       throw new RegistryError(`Failed to search formulas: ${error}`);
     }
   }
@@ -208,7 +260,10 @@ export class RegistryManager {
         lastUpdated
       };
     } catch (error) {
-      logger.error('Failed to get registry stats', { error });
+      logger.error('Failed to get registry stats', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw new RegistryError(`Failed to get registry stats: ${error}`);
     }
   }
@@ -252,7 +307,10 @@ export class RegistryManager {
         data: { valid, issues }
       };
     } catch (error) {
-      logger.error('Failed to validate registry', { error });
+      logger.error('Failed to validate registry', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return {
         success: false,
         error: `Failed to validate registry: ${error}`
@@ -270,8 +328,13 @@ export class RegistryManager {
       .replace(/\?/g, '.')
       .toLowerCase();
     
-    const regex = new RegExp(`^${pattern}$`);
-    return regex.test(name.toLowerCase());
+    // If pattern contains wildcards, use exact match, otherwise use substring match
+    if (pattern.includes('*') || pattern.includes('.')) {
+      const regex = new RegExp(`^${pattern}$`);
+      return regex.test(name.toLowerCase());
+    } else {
+      return name.toLowerCase().includes(pattern);
+    }
   }
 }
 

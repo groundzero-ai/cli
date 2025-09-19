@@ -17,7 +17,7 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
   
   try {
     // Use registry manager to list formulas
-    const entries = await registryManager.listFormulas(options.filter);
+    const entries = await registryManager.listFormulas(options.filter, options.all);
     
     if (entries.length === 0) {
       if (options.filter) {
@@ -39,7 +39,8 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
         description: entry.description
       }));
       
-      displayFormulaTable(tableEntries, 'Local formulas:');
+      const title = options.all ? 'Local formulas (all versions):' : 'Local formulas:';
+      displayFormulaTable(tableEntries, title, options.all);
     }
     
     return {
@@ -63,6 +64,7 @@ export function setupListCommand(program: Command): void {
     .description('List local formulas')
     .option('--format <format>', 'output format (table|json)', 'table')
     .option('--filter <pattern>', 'filter formulas by name pattern')
+    .option('--all', 'show all versions (default shows only latest)')
     .action(withErrorHandling(async (options: ListOptions) => {
       await listFormulasCommand(options);
     }));

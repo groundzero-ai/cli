@@ -17,7 +17,7 @@ export interface FormulaTableEntry {
 /**
  * Format and display a simple formula table (used by list and search commands)
  */
-export function displayFormulaTable(formulas: FormulaTableEntry[], title?: string): void {
+export function displayFormulaTable(formulas: FormulaTableEntry[], title?: string, showAllVersions: boolean = false): void {
   if (title) {
     console.log(title);
     console.log('');
@@ -28,20 +28,26 @@ export function displayFormulaTable(formulas: FormulaTableEntry[], title?: strin
     return;
   }
   
-  // Table header
-  console.log('NAME'.padEnd(20) + 'VERSION'.padEnd(12) + 'DESCRIPTION');
-  console.log('----'.padEnd(20) + '-------'.padEnd(12) + '-----------');
+  // Calculate column widths dynamically
+  const maxNameLength = Math.max(4, ...formulas.map(f => f.name.length));
+  const maxVersionLength = Math.max(7, ...formulas.map(f => f.version.length));
+  const nameWidth = Math.min(maxNameLength + 2, 30); // Cap at 30 chars
+  const versionWidth = Math.min(maxVersionLength + 6, 20); // Cap at 20 chars, more spacing
+  
+  // Table header (similar to docker image ls)
+  console.log('REPOSITORY'.padEnd(nameWidth) + 'VERSION'.padEnd(versionWidth) + 'DESCRIPTION');
+  console.log('-'.repeat(nameWidth) + '-'.repeat(versionWidth) + '-----------');
   
   // Display each formula
   for (const formula of formulas) {
-    const name = formula.name.padEnd(20);
-    const version = formula.version.padEnd(12);
+    const name = formula.name.padEnd(nameWidth);
+    const version = formula.version.padEnd(versionWidth);
     const description = formula.description || '(no description)';
     console.log(`${name}${version}${description}`);
   }
   
   console.log('');
-  console.log(`Total: ${formulas.length} formulas`);
+  console.log(`Total: ${formulas.length} formula${showAllVersions ? ' versions' : 's'}`);
 }
 
 /**

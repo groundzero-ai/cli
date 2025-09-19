@@ -81,6 +81,7 @@ export interface FormulaYml {
 export interface ListOptions {
   format: 'table' | 'json';
   filter?: string;
+  all?: boolean;
 }
 
 export interface DeleteOptions {
