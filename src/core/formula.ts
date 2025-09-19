@@ -1,5 +1,5 @@
 import { join, relative, basename } from 'path';
-import { Formula, FormulaMetadata, FormulaFile, CreateOptions, TemplateVariable } from '../types/index.js';
+import { Formula, FormulaMetadata, FormulaFile, TemplateVariable } from '../types/index.js';
 import { 
   exists, 
   walkFiles, 
@@ -26,93 +26,6 @@ import { getFormulaPath, getFormulaMetadataPath } from './directory.js';
 
 export class FormulaManager {
   
-  /**
-   * Create a new formula from a source directory
-   */
-  async createFormula(
-    formulaName: string, 
-    sourceDir: string, 
-    options: CreateOptions
-  ): Promise<Formula> {
-    logger.info(`Creating formula '${formulaName}' from '${sourceDir}'`);
-    
-    // Validate inputs
-    this.validateFormulaName(formulaName);
-    
-    if (!(await exists(sourceDir))) {
-      throw new ValidationError(`Source directory does not exist: ${sourceDir}`);
-    }
-    
-    if (!(await isDirectory(sourceDir))) {
-      throw new ValidationError(`Source path is not a directory: ${sourceDir}`);
-    }
-    
-    // Check if formula already exists
-    const formulaPath = getFormulaPath(formulaName);
-    if (await exists(formulaPath)) {
-      throw new FormulaAlreadyExistsError(formulaName);
-    }
-    
-    // Parse exclude patterns
-    const excludePatterns = options.exclude ? 
-      options.exclude.split(',').map(p => p.trim()) : 
-      this.getDefaultExcludePatterns();
-    
-    // Collect files from source directory
-    const files: FormulaFile[] = [];
-    const filePaths: string[] = [];
-    
-    for await (const filePath of walkFiles(sourceDir, excludePatterns)) {
-      const relativePath = relative(sourceDir, filePath);
-      filePaths.push(relativePath);
-      
-      try {
-        const content = await readTextFile(filePath);
-        const isTemplate = this.detectTemplateFile(content);
-        
-        files.push({
-          path: relativePath,
-          content,
-          isTemplate,
-          encoding: 'utf8'
-        });
-        
-        logger.debug(`Added file to formula: ${relativePath}`, { isTemplate });
-      } catch (error) {
-        logger.warn(`Skipping file due to read error: ${relativePath}`, { error });
-      }
-    }
-    
-    if (files.length === 0) {
-      throw new InvalidFormulaError('No files found in source directory');
-    }
-    
-    // Extract template variables from template files
-    const templateVariables = this.extractTemplateVariables(files);
-    
-    // Create metadata
-    const metadata: FormulaMetadata = {
-      name: formulaName,
-      version: options.version,
-      description: options.description,
-      author: options.author,
-      license: options.license,
-      keywords: options.keywords ? options.keywords.split(',').map(k => k.trim()) : [],
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      files: filePaths,
-      excludePatterns,
-      templateVariables
-    };
-    
-    const formula: Formula = { metadata, files };
-    
-    // Save formula to registry
-    await this.saveFormula(formula);
-    
-    logger.info(`Formula '${formulaName}' created successfully with ${files.length} files`);
-    return formula;
-  }
   
   /**
    * Load a formula from the registry

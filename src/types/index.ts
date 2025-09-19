@@ -71,15 +71,6 @@ export interface FormulaYml {
 }
 
 // Command option types
-export interface CreateOptions {
-  description?: string;
-  version: string;
-  exclude?: string;
-  author?: string;
-  license?: string;
-  keywords?: string;
-  force?: boolean;
-}
 
 export interface ListOptions {
   format: 'table' | 'json';

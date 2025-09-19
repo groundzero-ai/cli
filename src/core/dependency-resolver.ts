@@ -112,7 +112,7 @@ export async function resolveDependencies(
         errorMessage += `   • Checked local registry: ${repairError instanceof FormulaNotFoundError ? 'not found' : 'access failed'}\n`;
         errorMessage += `   • Formula is not available in the local registry\n\n`;
         errorMessage += `💡 To resolve this issue:\n`;
-        errorMessage += `   • Create the formula locally: g0 create ${formulaName}\n`;
+        errorMessage += `   • Create the formula locally: g0 init && g0 save\n`;
         errorMessage += `   • Pull from remote registry: g0 pull ${formulaName}\n`;
         errorMessage += `   • Remove the dependency from the requiring formula\n`;
         

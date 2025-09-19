@@ -52,7 +52,7 @@ async function pullFormulaCommand(
   console.log(`  g0 pull ${formulaName} --registry <url>  # Pull from specific registry`);
   console.log('');
   
-  console.log('For now, you can only use formulas that you create locally with "g0 create".');
+  console.log('For now, you can only use formulas that you create locally with "g0 init" and "g0 save".');
   
   return {
     success: true,

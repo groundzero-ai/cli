@@ -25,7 +25,7 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
   
   if (!(await exists(metadataDir))) {
     logger.debug('Metadata directory does not exist, returning empty list');
-    console.log('No formulas found. Use "g0 create" to create your first formula.');
+    console.log('No formulas found. Use "g0 init" to create your first formula.');
     return { success: true, data: [] };
   }
   
@@ -73,7 +73,7 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
     if (options.filter) {
       console.log(`No formulas found matching filter: ${options.filter}`);
     } else {
-      console.log('No formulas found. Use "g0 create" to create your first formula.');
+      console.log('No formulas found. Use "g0 init" to create your first formula.');
     }
     return { success: true, data: [] };
   }
