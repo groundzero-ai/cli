@@ -282,14 +282,14 @@ async function addFormulaToYml(
 }
 
 /**
- * Install formula files to groundzero/formulaName directory
+ * Install formula files to ai/formulaName directory
  */
 async function installFormulaToGroundzero(
   formulaName: string,
   targetDir: string,
   options: InstallOptions
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
-  const groundzeroPath = join(targetDir, 'groundzero');
+  const groundzeroPath = join(targetDir, 'ai');
   const formulaGroundzeroPath = join(groundzeroPath, formulaName);
   
   await ensureDir(groundzeroPath);
@@ -370,7 +370,7 @@ async function installFormulaToGroundzero(
       const targetPath = join(formulaGroundzeroPath, targetFileName);
       await writeTextFile(targetPath, file.content);
       installedFiles.push(targetFileName);
-      logger.debug(`Installed file to groundzero/${formulaName}: ${targetFileName}`);
+      logger.debug(`Installed file to ai/${formulaName}: ${targetFileName}`);
     }
   } else {
     // For dry run, show the original filenames
@@ -649,7 +649,7 @@ async function installFormulaCommand(
       console.log('');
     }
     
-    // Show what would be installed to groundzero
+    // Show what would be installed to ai
     for (const resolved of resolvedFormulas) {
       if (resolved.conflictResolution === 'skipped') {
         console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (user would decline overwrite)`);
@@ -668,7 +668,7 @@ async function installFormulaCommand(
         continue;
       }
       
-      console.log(`📁 Would install to groundzero/${resolved.name}: ${dryRunResult.installedCount} files`);
+      console.log(`📁 Would install to ai/${resolved.name}: ${dryRunResult.installedCount} files`);
       
       if (dryRunResult.overwritten) {
         console.log(`  ⚠️  Would overwrite existing directory`);
@@ -693,7 +693,7 @@ async function installFormulaCommand(
     };
   }
   
-  // 4. Install all resolved formulas to groundzero (flattened)
+  // 4. Install all resolved formulas to ai (flattened)
   let installedCount = 0;
   let skippedCount = 0;
   const groundzeroResults: Array<{ name: string; filesInstalled: number; overwritten: boolean }> = [];
@@ -727,7 +727,7 @@ async function installFormulaCommand(
     });
     
     if (resolved.conflictResolution === 'overwritten' || groundzeroResult.overwritten) {
-      console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in groundzero`);
+      console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in ai`);
     }
   }
   
@@ -768,10 +768,10 @@ async function installFormulaCommand(
   for (const result of groundzeroResults) {
     totalGroundzeroFiles += result.filesInstalled;
     if (result.overwritten) {
-      console.log(`⚠️  Overwrote existing groundzero/${result.name} directory`);
+      console.log(`⚠️  Overwrote existing ai/${result.name} directory`);
     }
   }
-  console.log(`📝 Total files added to groundzero: ${totalGroundzeroFiles}`);
+  console.log(`📝 Total files added to ai: ${totalGroundzeroFiles}`);
   
   if (mainFileConflicts.length > 0) {
     console.log(`⚠️  Overwrote ${mainFileConflicts.length} existing main files`);

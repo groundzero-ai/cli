@@ -113,24 +113,24 @@ async function uninstallFormulaCommand(
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  const groundzeroPath = join(targetDir, 'groundzero');
+  const groundzeroPath = join(targetDir, 'ai');
   
-  // Check if groundzero directory exists
+  // Check if ai directory exists
   if (!(await exists(groundzeroPath))) {
     console.log(`❌ Formula '${formulaName}' not found`);
-    console.log(`Groundzero directory not found in: ${targetDir}`);
+    console.log(`AI directory not found in: ${targetDir}`);
     return {
       success: false,
       error: 'Formula not found'
     };
   }
   
-  // Find the formula directory in groundzero
+  // Find the formula directory in ai
   const formulaDirectoryPath = await findFormulaDirectory(groundzeroPath, formulaName);
   
   if (!formulaDirectoryPath) {
     console.log(`❌ Formula '${formulaName}' not found`);
-    console.log(`No matching formula found in groundzero directory`);
+    console.log(`No matching formula found in ai directory`);
     return {
       success: false,
       error: 'Formula not found'
@@ -231,16 +231,16 @@ async function uninstallFormulaCommand(
     console.log(`📁 Target directory: ${targetDir}`);
     
     if (options.recursive && danglingDependencies.size > 0) {
-      console.log(`🗑️  Removed main formula: groundzero/${formulaName}`);
+      console.log(`🗑️  Removed main formula: ai/${formulaName}`);
       console.log(`🗑️  Removed ${danglingDependencies.size} dangling dependencies:`);
       for (const dep of danglingDependencies) {
         if (removedDirectories.includes(dep)) {
-          console.log(`   ├── groundzero/${dep}`);
+          console.log(`   ├── ai/${dep}`);
         }
       }
       console.log(`📊 Total directories removed: ${removedDirectories.length}`);
     } else {
-      console.log(`🗑️  Removed directory: groundzero/${formulaName}`);
+      console.log(`🗑️  Removed directory: ai/${formulaName}`);
     }
     
     if (removedFromYml) {
@@ -274,7 +274,7 @@ async function uninstallFormulaCommand(
 export function setupUninstallCommand(program: Command): void {
   program
     .command('uninstall')
-    .description('Remove a formula from the groundzero directory and update dependencies')
+    .description('Remove a formula from the ai directory and update dependencies')
     .argument('<formula-name>', 'name of the formula to uninstall')
     .argument('[target-dir]', 'target directory (defaults to current directory)', '.')
     .option('--dry-run', 'preview changes without applying them')

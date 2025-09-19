@@ -2,15 +2,15 @@
 
 This file provides an overview of the information required to construct and maintain a given codebase or set of code. The purpose of the provided information is to ensure the maintainability, consistency, and scalability of the given software.
 
-# The /groundzero directory
+# The /ai directory
 
-- **Description**: A /groundzero directory contains information for the directory of the code it is placed in. Information is provided in the form of markdown files. Follow the given information within these markdown files to construct and update the code for it's given scope.
-- **Scope**: A codebase may have multiple /groundzero directories, each scoped to their respective parent directories and children.
-  - Ex: /project/foo/bar/groundzero contains information for the set of code and child directories under /project/foo/bar.
-  - Ex: /project/foo/groundzero contains information for the set of code and child directories under /project/foo, including and applied to /project/foo/bar.
-- **Immutability**: Content within the /groundzero directory are NOT meant to be edited and are IMMUTABLE. If a user requests editing of any content under a /groundzero directory, warn the user that any changes will be overwritten by future updates to the Formula.
+- **Description**: A /ai directory contains information for the directory of the code it is placed in. Information is provided in the form of markdown files. Follow the given information within these markdown files to construct and update the code for it's given scope.
+- **Scope**: A codebase may have multiple /ai directories, each scoped to their respective parent directories and children.
+  - Ex: /project/foo/bar/ai contains information for the set of code and child directories under /project/foo/bar.
+  - Ex: /project/foo/ai contains information for the set of code and child directories under /project/foo, including and applied to /project/foo/bar.
+- **Immutability**: Content within the /ai directory are NOT meant to be edited and are IMMUTABLE. If a user requests editing of any content under a /ai directory, warn the user that any changes will be overwritten by future updates to the Formula.
 
-# Steps to update /groundzero documentation
+# Steps to update /ai documentation
 
 1. Read relevant markdown files carefully and note existing information.
 2. Determine if new markdown files are required for clean separation of domain/concerns, if so, create.

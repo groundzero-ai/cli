@@ -36,7 +36,7 @@ async function findFormulaConfigFile(directoryPath: string): Promise<string | nu
  * Get the version of an installed formula by formula name
  */
 export async function getInstalledFormulaVersion(formulaName: string, targetDir: string): Promise<string | null> {
-  const groundzeroPath = join(targetDir, 'groundzero');
+  const groundzeroPath = join(targetDir, 'ai');
   const formulaGroundzeroPath = join(groundzeroPath, formulaName);
   
   if (!(await exists(formulaGroundzeroPath))) {
@@ -58,7 +58,7 @@ export async function getInstalledFormulaVersion(formulaName: string, targetDir:
 }
 
 /**
- * Find formula directory in groundzero by matching formula name
+ * Find formula directory in ai by matching formula name
  */
 export async function findFormulaDirectory(groundzeroPath: string, formulaName: string): Promise<string | null> {
   if (!(await exists(groundzeroPath)) || !(await isDirectory(groundzeroPath))) {
@@ -86,19 +86,19 @@ export async function findFormulaDirectory(groundzeroPath: string, formulaName: 
     
     return null;
   } catch (error) {
-    logger.error(`Failed to search groundzero directory: ${error}`);
+    logger.error(`Failed to search ai directory: ${error}`);
     return null;
   }
 }
 
 /**
- * Scan groundzero directory for all available formulas
+ * Scan ai directory for all available formulas
  */
 export async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Map<string, GroundzeroFormula>> {
   const formulas = new Map<string, GroundzeroFormula>();
   
   if (!(await exists(groundzeroPath)) || !(await isDirectory(groundzeroPath))) {
-    logger.debug('Groundzero directory not found or not a directory', { groundzeroPath });
+    logger.debug('AI directory not found or not a directory', { groundzeroPath });
     return formulas;
   }
 
@@ -126,14 +126,14 @@ export async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Ma
       }
     }
   } catch (error) {
-    logger.error(`Failed to scan groundzero directory: ${error}`);
+    logger.error(`Failed to scan ai directory: ${error}`);
   }
   
   return formulas;
 }
 
 /**
- * Get formula configuration from groundzero directory
+ * Get formula configuration from ai directory
  */
 export async function getGroundzeroFormulaConfig(groundzeroPath: string, formulaName: string): Promise<FormulaYml | null> {
   const formulaPath = await findFormulaDirectory(groundzeroPath, formulaName);

@@ -42,13 +42,13 @@ async function analyzeFormulaStatus(
     status: 'missing'
   };
 
-  // Case 1: Formula not found in groundzero
+  // Case 1: Formula not found in ai
   if (!availableFormula) {
     return {
       ...status,
       status: 'missing',
       availableVersion: undefined,
-      issues: [`Formula '${requiredFormula.name}' not found in groundzero directory`]
+      issues: [`Formula '${requiredFormula.name}' not found in ai directory`]
     };
   }
 
@@ -127,8 +127,8 @@ async function performStatusAnalysis(targetDir: string): Promise<{
     throw new Error(`Failed to parse formula.yml: ${error}`);
   }
   
-  // 2. Scan groundzero formulas
-  const groundzeroPath = join(targetDir, 'groundzero');
+  // 2. Scan ai formulas
+  const groundzeroPath = join(targetDir, 'ai');
   const availableFormulas = await scanGroundzeroFormulas(groundzeroPath);
   
   // 3. Analyze each required formula
@@ -304,7 +304,7 @@ async function statusCommand(targetDir: string, options: { flat?: boolean; depth
     console.log(`Summary: ${installedCount}/${totalFormulas} installed`);
     
     if (missingCount > 0) {
-      console.log(`⚠️  ${missingCount} formulas missing from groundzero`);
+      console.log(`⚠️  ${missingCount} formulas missing from ai`);
     }
     
     if (outdatedCount > 0) {

@@ -59,7 +59,7 @@ async function saveFormulaCommand(
     console.log(`✓ Created formula.yml`);
   }
   
-  // Discover and include MD files based on groundzero directory rules
+  // Discover and include MD files based on ai directory rules
   const mdFiles = await discoverMdFiles(formulaDir);
   console.log(`📄 Found ${mdFiles.length} markdown files`);
   
@@ -132,31 +132,31 @@ async function saveFormulaCommand(
 }
 
 /**
- * Discover MD files based on groundzero directory rules
+ * Discover MD files based on ai directory rules
  */
 async function discoverMdFiles(formulaDir: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
   const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
   const parentDir = dirname(formulaDir);
-  const groundzeroPath = join(parentDir, 'groundzero');
+  const groundzeroPath = join(parentDir, 'ai');
   
-  // Check if adjacent groundzero directory exists
+  // Check if adjacent ai directory exists
   if (await exists(groundzeroPath) && await isDirectory(groundzeroPath)) {
-    logger.debug('Found adjacent groundzero directory, including its immediate MD files (flattened)');
+    logger.debug('Found adjacent ai directory, including its immediate MD files (flattened)');
     
-    // Include all immediate MD files from groundzero directory (not recursive)
-    // Store them flattened without the groundzero/ prefix
+    // Include all immediate MD files from ai directory (not recursive)
+    // Store them flattened without the ai/ prefix
     const files = await listFiles(groundzeroPath);
     for (const file of files) {
       if (file.endsWith('.md')) {
         const fullPath = join(groundzeroPath, file);
         mdFiles.push({
           fullPath,
-          relativePath: file // Store directly without 'groundzero/' prefix
+          relativePath: file // Store directly without 'ai/' prefix
         });
       }
     }
   } else {
-    logger.debug('No groundzero directory found, including adjacent MD files');
+    logger.debug('No ai directory found, including adjacent MD files');
     
     // Include all MD files adjacent (siblings) to formula.yml
     const files = await listFiles(formulaDir);
