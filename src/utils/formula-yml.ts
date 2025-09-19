@@ -1,4 +1,5 @@
 import * as yaml from 'js-yaml';
+import matter from 'gray-matter';
 import { FormulaYml } from '../types/index.js';
 import { readTextFile, writeTextFile } from './fs.js';
 
@@ -83,25 +84,17 @@ export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml
  * Parse YAML frontmatter from markdown file content
  */
 export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter | null {
-  // Check if content starts with frontmatter delimiter
-  if (!content.startsWith('---\n')) {
-    return null;
-  }
-  
-  // Find the closing delimiter
-  const endIndex = content.indexOf('\n---\n', 4);
-  if (endIndex === -1) {
-    return null;
-  }
-  
-  // Extract frontmatter content
-  const frontmatterContent = content.substring(4, endIndex);
-  
   try {
-    const parsed = yaml.load(frontmatterContent) as MarkdownFrontmatter;
-    return parsed;
+    const parsed = matter(content);
+    
+    // If no frontmatter was found, return null
+    if (!parsed.data || Object.keys(parsed.data).length === 0) {
+      return null;
+    }
+    
+    return parsed.data as MarkdownFrontmatter;
   } catch (error) {
-    // If YAML parsing fails, return null (no valid frontmatter)
+    // If parsing fails, return null (no valid frontmatter)
     return null;
   }
 }
