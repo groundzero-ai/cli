@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
+import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
 import { promptCreateFormula, promptFormulaDetails, promptNewVersion, promptConfirmation } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion, getLatestFormulaVersion } from '../core/directory.js';
@@ -18,6 +18,38 @@ import {
   isDirectory,
   ensureDir
 } from '../utils/fs.js';
+
+/**
+ * Recursively find all markdown files in a directory
+ */
+async function findAllMarkdownFiles(dir: string, baseDir: string = dir): Promise<Array<{ fullPath: string; relativePath: string }>> {
+  const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
+  
+  if (!(await exists(dir)) || !(await isDirectory(dir))) {
+    return mdFiles;
+  }
+  
+  const files = await listFiles(dir);
+  
+  for (const file of files) {
+    const fullPath = join(dir, file);
+    
+    if (await isDirectory(fullPath)) {
+      // Recursively search subdirectories
+      const subFiles = await findAllMarkdownFiles(fullPath, baseDir);
+      mdFiles.push(...subFiles);
+    } else if (file.endsWith('.md')) {
+      // Calculate relative path from base directory
+      const relativePath = fullPath.substring(baseDir.length + 1);
+      mdFiles.push({
+        fullPath,
+        relativePath
+      });
+    }
+  }
+  
+  return mdFiles;
+}
 
 /**
  * Save formula command implementation
@@ -60,8 +92,8 @@ async function saveFormulaCommand(
     console.log(`✓ Created formula.yml`);
   }
   
-  // Discover and include MD files based on ai directory rules
-  const mdFiles = await discoverMdFiles(formulaDir);
+  // Discover and include MD files based on new frontmatter rules
+  const mdFiles = await discoverMdFiles(formulaDir, formulaConfig.name);
   console.log(`📄 Found ${mdFiles.length} markdown files`);
   
   // Create formula files array
@@ -76,13 +108,15 @@ async function saveFormulaCommand(
     encoding: 'utf8'
   });
   
-  // Add discovered MD files
+  // Add discovered MD files with updated frontmatter
   for (const mdFile of mdFiles) {
-    const content = await readTextFile(mdFile.fullPath);
+    const originalContent = await readTextFile(mdFile.fullPath);
+    // Update frontmatter to match current formula
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
     formulaFiles.push({
       path: mdFile.relativePath,
-      content,
-      isTemplate: detectTemplateFile(content),
+      content: updatedContent,
+      isTemplate: detectTemplateFile(updatedContent),
       encoding: 'utf8'
     });
   }
@@ -133,27 +167,69 @@ async function saveFormulaCommand(
 }
 
 /**
- * Discover MD files based on ai directory rules
+ * Discover MD files based on new frontmatter rules
  */
-async function discoverMdFiles(formulaDir: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
+async function discoverMdFiles(formulaDir: string, formulaName: string): Promise<Array<{ fullPath: string; relativePath: string }>> {
   const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
-  const parentDir = dirname(formulaDir);
-  const groundzeroPath = join(parentDir, 'ai');
   
-  // Check if adjacent ai directory exists
-  if (await exists(groundzeroPath) && await isDirectory(groundzeroPath)) {
-    logger.debug('Found adjacent ai directory, including its immediate MD files (flattened)');
+  // First check if ai directory exists in the same directory as formula.yml
+  const aiPathSame = join(formulaDir, 'ai');
+  // Then check if ai directory exists adjacent to the formula directory
+  const parentDir = dirname(formulaDir);
+  const aiPathAdjacent = join(parentDir, 'ai');
+  
+  let aiPath: string | null = null;
+  
+  // Check if ai directory exists in the same directory as formula.yml
+  if (await exists(aiPathSame) && await isDirectory(aiPathSame)) {
+    aiPath = aiPathSame;
+  }
+  // Check if ai directory exists adjacent to the formula directory
+  else if (await exists(aiPathAdjacent) && await isDirectory(aiPathAdjacent)) {
+    aiPath = aiPathAdjacent;
+  }
+  
+  // Check if ai directory exists
+  if (aiPath) {
+    logger.debug('Found adjacent ai directory, checking all markdown files for frontmatter');
     
-    // Include all immediate MD files from ai directory (not recursive)
-    // Store them flattened without the ai/ prefix
-    const files = await listFiles(groundzeroPath);
-    for (const file of files) {
-      if (file.endsWith('.md')) {
-        const fullPath = join(groundzeroPath, file);
-        mdFiles.push({
-          fullPath,
-          relativePath: file // Store directly without 'ai/' prefix
-        });
+    // Find all markdown files recursively in the ai directory
+    const allMdFiles = await findAllMarkdownFiles(aiPath, aiPath);
+    
+    for (const mdFile of allMdFiles) {
+      try {
+        const content = await readTextFile(mdFile.fullPath);
+        const frontmatter = parseMarkdownFrontmatter(content);
+        
+        if (frontmatter && frontmatter.formula && frontmatter.formula.name === formulaName) {
+          // File has frontmatter specifying this formula name - include it
+          logger.debug(`Including ${mdFile.relativePath} (matches formula name in frontmatter)`);
+          mdFiles.push({
+            fullPath: mdFile.fullPath,
+            relativePath: mdFile.relativePath // Keep the relative path from ai directory
+          });
+        } else if (!frontmatter || !frontmatter.formula) {
+          // File has no frontmatter or no formula specification - check if it's adjacent to formula.yml
+          const formulaDirName = basename(formulaDir);
+          const mdFileDir = dirname(mdFile.relativePath);
+          
+          if (mdFileDir === formulaDirName || mdFileDir === '.') {
+            // File is in the same directory as the formula.yml or in the root of ai directory
+            logger.debug(`Including ${mdFile.relativePath} (adjacent to formula.yml, no conflicting frontmatter)`);
+            mdFiles.push({
+              fullPath: mdFile.fullPath,
+              relativePath: mdFile.relativePath
+            });
+          } else {
+            logger.debug(`Skipping ${mdFile.relativePath} (not adjacent to formula.yml and no matching frontmatter)`);
+          }
+        } else {
+          // File has frontmatter specifying a different formula name - skip it
+          logger.debug(`Skipping ${mdFile.relativePath} (frontmatter specifies different formula: ${frontmatter.formula.name})`);
+        }
+      } catch (error) {
+        logger.warn(`Failed to read or parse ${mdFile.relativePath}: ${error}`);
+        // Skip files that can't be read
       }
     }
   } else {
