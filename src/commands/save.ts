@@ -113,6 +113,13 @@ async function saveFormulaCommand(
     const originalContent = await readTextFile(mdFile.fullPath);
     // Update frontmatter to match current formula
     const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
+    
+    // If the content was updated (frontmatter was added or modified), write it back to the source file
+    if (updatedContent !== originalContent) {
+      await writeTextFile(mdFile.fullPath, updatedContent);
+      console.log(`✓ Updated frontmatter in ${mdFile.relativePath}`);
+    }
+    
     formulaFiles.push({
       path: mdFile.relativePath,
       content: updatedContent,
