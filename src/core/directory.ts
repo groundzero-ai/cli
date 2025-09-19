@@ -1,7 +1,8 @@
 import * as os from 'os';
 import * as path from 'path';
+import * as semver from 'semver';
 import { G0Directories } from '../types/index.js';
-import { ensureDir } from '../utils/fs.js';
+import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -126,10 +127,47 @@ export function getTempDirectory(operation: string): string {
 }
 
 /**
- * Get the path to store a formula
+ * Get the base path for a formula (contains all versions)
  */
 export function getFormulaPath(formulaName: string): string {
   const dirs = getRegistryDirectories();
   return path.join(dirs.formulas, formulaName);
+}
+
+/**
+ * Get the path for a specific version of a formula
+ */
+export function getFormulaVersionPath(formulaName: string, version: string): string {
+  return path.join(getFormulaPath(formulaName), version);
+}
+
+/**
+ * List all versions of a formula
+ */
+export async function listFormulaVersions(formulaName: string): Promise<string[]> {
+  const formulaPath = getFormulaPath(formulaName);
+  
+  if (!(await exists(formulaPath))) {
+    return [];
+  }
+  
+  const versions = await listDirectories(formulaPath);
+  return versions.sort((a, b) => semver.compare(b, a)); // Latest first
+}
+
+/**
+ * Get the latest version of a formula
+ */
+export async function getLatestFormulaVersion(formulaName: string): Promise<string | null> {
+  const versions = await listFormulaVersions(formulaName);
+  return versions.length > 0 ? versions[0] : null;
+}
+
+/**
+ * Check if a specific version exists
+ */
+export async function hasFormulaVersion(formulaName: string, version: string): Promise<boolean> {
+  const versionPath = getFormulaVersionPath(formulaName, version);
+  return await exists(versionPath);
 }
 

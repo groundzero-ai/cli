@@ -148,11 +148,15 @@ export function isCancelled(result: any): boolean {
 /**
  * Prompt user to enter a new version number
  */
-export async function promptNewVersion(formulaName: string, currentVersion: string): Promise<string> {
+export async function promptNewVersion(formulaName: string, versionContext: string): Promise<string> {
+  // Extract current version from context for validation
+  const currentVersionMatch = versionContext.match(/current: ([^,)]+)/);
+  const currentVersion = currentVersionMatch ? currentVersionMatch[1] : versionContext;
+  
   const response = await prompts({
     type: 'text',
     name: 'version',
-    message: `Enter a new version for '${formulaName}' (current: ${currentVersion}):`,
+    message: `Enter a new version for '${formulaName}' (${versionContext}):`,
     initial: currentVersion,
     validate: (value: string) => {
       if (!value) return 'Version is required';

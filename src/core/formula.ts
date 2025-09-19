@@ -1,4 +1,4 @@
-import { join, relative, basename } from 'path';
+import { join, relative, basename, dirname } from 'path';
 import { Formula, FormulaYml, FormulaFile, TemplateVariable } from '../types/index.js';
 import { 
   exists, 
@@ -7,7 +7,8 @@ import {
   writeTextFile, 
   copyFile, 
   remove,
-  isDirectory 
+  isDirectory,
+  ensureDir
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { 
@@ -16,7 +17,11 @@ import {
   InvalidFormulaError,
   ValidationError 
 } from '../utils/errors.js';
-import { getFormulaPath } from './directory.js';
+import { 
+  getFormulaPath, 
+  getFormulaVersionPath, 
+  getLatestFormulaVersion 
+} from './directory.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 
 /**
@@ -27,14 +32,19 @@ export class FormulaManager {
   
   
   /**
-   * Load a formula from the registry
+   * Load a formula from the registry (latest version by default)
    */
-  async loadFormula(formulaName: string): Promise<Formula> {
-    logger.debug(`Loading formula: ${formulaName}`);
+  async loadFormula(formulaName: string, version?: string): Promise<Formula> {
+    logger.debug(`Loading formula: ${formulaName}`, { version });
     
     this.validateFormulaName(formulaName);
     
-    const formulaPath = getFormulaPath(formulaName);
+    const targetVersion = version || await getLatestFormulaVersion(formulaName);
+    if (!targetVersion) {
+      throw new FormulaNotFoundError(formulaName);
+    }
+    
+    const formulaPath = getFormulaVersionPath(formulaName, targetVersion);
     if (!(await exists(formulaPath))) {
       throw new FormulaNotFoundError(formulaName);
     }
@@ -62,33 +72,60 @@ export class FormulaManager {
   }
   
   /**
-   * Save a formula to the registry
+   * Save a formula to the registry (versioned)
    */
   async saveFormula(formula: Formula): Promise<void> {
     const { metadata, files } = formula;
-    const formulaPath = getFormulaPath(metadata.name);
+    const formulaPath = getFormulaVersionPath(metadata.name, metadata.version);
     
-    logger.debug(`Saving formula: ${metadata.name}`, { formulaPath });
+    logger.debug(`Saving formula: ${metadata.name}@${metadata.version}`, { formulaPath });
     
     try {
+      // Ensure the version directory exists
+      await ensureDir(formulaPath);
+      
       // Save files
       for (const file of files) {
         const fullPath = join(formulaPath, file.path);
+        await ensureDir(dirname(fullPath));
         await writeTextFile(fullPath, file.content, (file.encoding as BufferEncoding) || 'utf8');
       }
       
-      logger.info(`Formula '${metadata.name}' saved successfully`);
+      logger.info(`Formula '${metadata.name}@${metadata.version}' saved successfully`);
     } catch (error) {
-      logger.error(`Failed to save formula: ${metadata.name}`, { error });
+      logger.error(`Failed to save formula: ${metadata.name}@${metadata.version}`, { error });
       throw new InvalidFormulaError(`Failed to save formula: ${error}`);
     }
   }
   
   /**
-   * Delete a formula from the registry
+   * Delete a specific version of a formula
+   */
+  async deleteFormulaVersion(formulaName: string, version: string): Promise<void> {
+    logger.info(`Deleting formula version: ${formulaName}@${version}`);
+    
+    this.validateFormulaName(formulaName);
+    
+    const formulaPath = getFormulaVersionPath(formulaName, version);
+    
+    if (!(await exists(formulaPath))) {
+      throw new FormulaNotFoundError(`${formulaName}@${version}`);
+    }
+    
+    try {
+      await remove(formulaPath);
+      logger.info(`Formula version '${formulaName}@${version}' deleted successfully`);
+    } catch (error) {
+      logger.error(`Failed to delete formula version: ${formulaName}@${version}`, { error });
+      throw new InvalidFormulaError(`Failed to delete formula version: ${error}`);
+    }
+  }
+  
+  /**
+   * Delete all versions of a formula
    */
   async deleteFormula(formulaName: string): Promise<void> {
-    logger.info(`Deleting formula: ${formulaName}`);
+    logger.info(`Deleting all versions of formula: ${formulaName}`);
     
     this.validateFormulaName(formulaName);
     
@@ -100,7 +137,7 @@ export class FormulaManager {
     
     try {
       await remove(formulaPath);
-      logger.info(`Formula '${formulaName}' deleted successfully`);
+      logger.info(`All versions of formula '${formulaName}' deleted successfully`);
     } catch (error) {
       logger.error(`Failed to delete formula: ${formulaName}`, { error });
       throw new InvalidFormulaError(`Failed to delete formula: ${error}`);
@@ -108,13 +145,12 @@ export class FormulaManager {
   }
   
   /**
-   * Check if a formula exists in the registry
+   * Check if a formula exists in the registry (any version)
    */
   async formulaExists(formulaName: string): Promise<boolean> {
     this.validateFormulaName(formulaName);
-    const formulaPath = getFormulaPath(formulaName);
-    const formulaYmlPath = join(formulaPath, 'formula.yml');
-    return await exists(formulaYmlPath);
+    const latestVersion = await getLatestFormulaVersion(formulaName);
+    return latestVersion !== null;
   }
   
   /**

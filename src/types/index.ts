@@ -68,6 +68,12 @@ export interface FormulaYml {
   private?: boolean;
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];
+  // Optional fields for version management
+  created?: string;        // ISO timestamp
+  updated?: string;        // ISO timestamp
+  changelog?: string;      // Version-specific changelog
+  deprecated?: boolean;    // Mark version as deprecated
+  migration?: string;      // Migration notes for major version changes
 }
 
 // Command option types
@@ -112,6 +118,8 @@ export interface SearchOptions {
 
 export interface SaveOptions {
   force?: boolean;
+  version?: string;        // Specify version explicitly
+  setLatest?: boolean;     // Mark this version as latest (for display purposes)
 }
 
 // Registry types

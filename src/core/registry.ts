@@ -10,7 +10,13 @@ import {
   FormulaNotFoundError, 
   RegistryError 
 } from '../utils/errors.js';
-import { getRegistryDirectories } from './directory.js';
+import { 
+  getRegistryDirectories, 
+  getFormulaVersionPath, 
+  getLatestFormulaVersion,
+  listFormulaVersions,
+  hasFormulaVersion
+} from './directory.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 
 /**
@@ -20,7 +26,7 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 export class RegistryManager {
   
   /**
-   * List all local formulas
+   * List all local formulas (shows latest version by default)
    */
   async listFormulas(filter?: string): Promise<RegistryEntry[]> {
     logger.debug('Listing local formulas', { filter });
@@ -38,14 +44,10 @@ export class RegistryManager {
       
       for (const formulaDir of formulaDirs) {
         try {
-          const formulaPath = join(formulasDir, formulaDir);
-          const formulaYmlPath = join(formulaPath, 'formula.yml');
+          const latestVersion = await getLatestFormulaVersion(formulaDir);
+          if (!latestVersion) continue;
           
-          if (!(await exists(formulaYmlPath))) {
-            logger.warn(`No formula.yml found in directory: ${formulaDir}`);
-            continue;
-          }
-          
+          const formulaYmlPath = getFormulaVersionPath(formulaDir, latestVersion);
           const metadata = await parseFormulaYml(formulaYmlPath);
           
           // Apply filter if provided
@@ -61,7 +63,7 @@ export class RegistryManager {
             lastUpdated: new Date().toISOString() // We don't track this anymore
           });
         } catch (error) {
-          logger.warn(`Failed to read formula.yml in directory: ${formulaDir}`, { error });
+          logger.warn(`Failed to read formula: ${formulaDir}`, { error });
         }
       }
       
@@ -77,15 +79,18 @@ export class RegistryManager {
   }
   
   /**
-   * Get formula metadata
+   * Get formula metadata (latest version by default)
    */
-  async getFormulaMetadata(formulaName: string): Promise<FormulaYml> {
-    logger.debug(`Getting metadata for formula: ${formulaName}`);
+  async getFormulaMetadata(formulaName: string, version?: string): Promise<FormulaYml> {
+    logger.debug(`Getting metadata for formula: ${formulaName}`, { version });
     
     try {
-      const { formulas: formulasDir } = getRegistryDirectories();
-      const formulaPath = join(formulasDir, formulaName);
-      const formulaYmlPath = join(formulaPath, 'formula.yml');
+      const targetVersion = version || await getLatestFormulaVersion(formulaName);
+      if (!targetVersion) {
+        throw new FormulaNotFoundError(formulaName);
+      }
+      
+      const formulaYmlPath = getFormulaVersionPath(formulaName, targetVersion);
       
       if (!(await exists(formulaYmlPath))) {
         throw new FormulaNotFoundError(formulaName);
@@ -151,18 +156,32 @@ export class RegistryManager {
   }
   
   /**
-   * Check if a formula exists in the local registry
+   * List all versions of a formula
+   */
+  async listFormulaVersions(formulaName: string): Promise<string[]> {
+    return await listFormulaVersions(formulaName);
+  }
+  
+  /**
+   * Get specific version metadata
+   */
+  async getFormulaVersion(formulaName: string, version: string): Promise<FormulaYml> {
+    return await this.getFormulaMetadata(formulaName, version);
+  }
+  
+  /**
+   * Check if a formula exists (any version)
    */
   async hasFormula(formulaName: string): Promise<boolean> {
-    try {
-      await this.getFormulaMetadata(formulaName);
-      return true;
-    } catch (error) {
-      if (error instanceof FormulaNotFoundError) {
-        return false;
-      }
-      throw error;
-    }
+    const latestVersion = await getLatestFormulaVersion(formulaName);
+    return latestVersion !== null;
+  }
+  
+  /**
+   * Check if a specific version exists
+   */
+  async hasFormulaVersion(formulaName: string, version: string): Promise<boolean> {
+    return await hasFormulaVersion(formulaName, version);
   }
   
   /**
