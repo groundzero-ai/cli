@@ -7,6 +7,15 @@ import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
 import { FormulaNotFoundError, FormulaVersionNotFoundError, UserCancellationError } from '../utils/errors.js';
+import { 
+  parseVersionRange, 
+  resolveVersionRange, 
+  isExactVersion, 
+  isWildcardVersion,
+  createCaretRange,
+  describeVersionRange
+} from '../utils/version-ranges.js';
+import { listFormulaVersions } from './directory.js';
 
 /**
  * Resolved formula interface for dependency resolution
@@ -18,6 +27,7 @@ export interface ResolvedFormula {
   isRoot: boolean;
   conflictResolution?: 'kept' | 'overwritten' | 'skipped';
   requiredVersion?: string; // The version required by the parent formula
+  requiredRange?: string; // The version range required by the parent formula
 }
 
 /**
@@ -70,13 +80,51 @@ export async function resolveDependencies(
     throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your formula dependencies to break the cycle.`);
   }
   
-  // 2. Attempt to repair dependency from local registry
+  // 2. Resolve version range to specific version if needed
+  let resolvedVersion: string | undefined;
+  let versionRange: string | undefined;
+  
+  if (version) {
+    try {
+      // Check if it's a version range or exact version
+      if (isExactVersion(version)) {
+        resolvedVersion = version;
+        versionRange = version;
+      } else {
+        // It's a version range - resolve it to a specific version
+        const availableVersions = await listFormulaVersions(formulaName);
+        if (availableVersions.length === 0) {
+          throw new FormulaNotFoundError(formulaName);
+        }
+        
+        resolvedVersion = resolveVersionRange(version, availableVersions) || undefined;
+        if (!resolvedVersion) {
+          throw new FormulaVersionNotFoundError(
+            `No version of '${formulaName}' satisfies range '${version}'. Available versions: ${availableVersions.join(', ')}`
+          );
+        }
+        versionRange = version;
+        logger.debug(`Resolved version range '${version}' to '${resolvedVersion}' for formula '${formulaName}'`);
+      }
+    } catch (error) {
+      if (error instanceof FormulaNotFoundError || error instanceof FormulaVersionNotFoundError) {
+        throw error;
+      }
+      // If range parsing fails, treat as exact version
+      resolvedVersion = version;
+      versionRange = version;
+    }
+  }
+
+  // 3. Attempt to repair dependency from local registry
   let formula: Formula;
   try {
-    // First attempt: Load formula from local registry
-    const targetVersion = version || undefined; // Only pass version if specified
-    logger.debug(`Attempting to load formula '${formulaName}' from local registry`, { version: targetVersion });
-    formula = await formulaManager.loadFormula(formulaName, targetVersion);
+    // Load formula with resolved version
+    logger.debug(`Attempting to load formula '${formulaName}' from local registry`, { 
+      version: resolvedVersion, 
+      originalRange: versionRange 
+    });
+    formula = await formulaManager.loadFormula(formulaName, resolvedVersion);
     logger.debug(`Successfully loaded formula '${formulaName}' from local registry`, { version: formula.metadata.version });
   } catch (error) {
     if (error instanceof FormulaNotFoundError) {
@@ -231,7 +279,8 @@ export async function resolveDependencies(
     version: currentVersion,
     formula,
     isRoot,
-    requiredVersion: version // Track the version that was required
+    requiredVersion: resolvedVersion, // Track the resolved version
+    requiredRange: versionRange // Track the original range
   });
   
   // 5. Parse dependencies from formula's .formula.yml
@@ -289,7 +338,13 @@ export function displayDependencyTree(resolvedFormulas: ResolvedFormula[]): void
     const status = dep.conflictResolution 
       ? ` (${dep.conflictResolution})`
       : '';
-    console.log(`├── ${dep.name}@${dep.version}${status}`);
+    
+    // Show version range information if available
+    const rangeInfo = dep.requiredRange && dep.requiredRange !== dep.version
+      ? ` [from ${dep.requiredRange}]`
+      : '';
+    
+    console.log(`├── ${dep.name}@${dep.version}${rangeInfo}${status}`);
   }
   
   console.log(`\n🔍 Total: ${resolvedFormulas.length} formulas\n`);

@@ -7,6 +7,7 @@ import { withErrorHandling } from '../utils/errors.js';
 import { exists, readTextFile, walkFiles } from '../utils/fs.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
+import { describeVersionRange, isExactVersion } from '../utils/version-ranges.js';
 
 /**
  * Show formula details command implementation
@@ -71,7 +72,10 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
     if (metadata.formulas && metadata.formulas.length > 0) {
       console.log(`📋 Dependencies (${metadata.formulas.length}):`);
       for (const dep of metadata.formulas) {
-        console.log(`  • ${dep.name}@${dep.version}`);
+        const rangeDescription = !isExactVersion(dep.version) 
+          ? ` (${describeVersionRange(dep.version)})`
+          : '';
+        console.log(`  • ${dep.name}@${dep.version}${rangeDescription}`);
       }
       console.log('');
     }
@@ -79,7 +83,10 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
     if (metadata['dev-formulas'] && metadata['dev-formulas'].length > 0) {
       console.log(`🔧 Dev Dependencies (${metadata['dev-formulas'].length}):`);
       for (const dep of metadata['dev-formulas']) {
-        console.log(`  • ${dep.name}@${dep.version}`);
+        const rangeDescription = !isExactVersion(dep.version) 
+          ? ` (${describeVersionRange(dep.version)})`
+          : '';
+        console.log(`  • ${dep.name}@${dep.version}${rangeDescription}`);
       }
       console.log('');
     }

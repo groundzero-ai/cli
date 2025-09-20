@@ -20,9 +20,15 @@ import {
 import { 
   getFormulaPath, 
   getFormulaVersionPath, 
-  getLatestFormulaVersion 
+  getLatestFormulaVersion,
+  listFormulaVersions
 } from './directory.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
+import { 
+  resolveVersionRange, 
+  isExactVersion, 
+  isWildcardVersion 
+} from '../utils/version-ranges.js';
 
 /**
  * Formula management operations
@@ -39,7 +45,32 @@ export class FormulaManager {
     
     this.validateFormulaName(formulaName);
     
-    const targetVersion = version || await getLatestFormulaVersion(formulaName);
+    let targetVersion: string | null;
+    
+    if (version) {
+      // Check if it's a version range or exact version
+      if (isExactVersion(version)) {
+        targetVersion = version;
+      } else {
+        // It's a version range - resolve it to a specific version
+        const availableVersions = await listFormulaVersions(formulaName);
+        if (availableVersions.length === 0) {
+          throw new FormulaNotFoundError(formulaName);
+        }
+        
+        targetVersion = resolveVersionRange(version, availableVersions);
+        if (!targetVersion) {
+          throw new FormulaNotFoundError(
+            `No version of '${formulaName}' satisfies range '${version}'. Available versions: ${availableVersions.join(', ')}`
+          );
+        }
+        logger.debug(`Resolved version range '${version}' to '${targetVersion}' for formula '${formulaName}'`);
+      }
+    } else {
+      // No version specified - get latest
+      targetVersion = await getLatestFormulaVersion(formulaName);
+    }
+    
     if (!targetVersion) {
       throw new FormulaNotFoundError(formulaName);
     }

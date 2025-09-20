@@ -8,6 +8,11 @@ import { scanGroundzeroFormulas, GroundzeroFormula } from '../core/groundzero.js
 import { exists, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { 
+  satisfiesVersion, 
+  isExactVersion, 
+  describeVersionRange 
+} from '../utils/version-ranges.js';
 
 /**
  * Enhanced formula status interface
@@ -56,12 +61,29 @@ async function analyzeFormulaStatus(
   status.availableVersion = availableFormula.version;
   status.path = availableFormula.path;
 
-  // Version comparison logic using semver
-  if (semver.eq(requiredFormula.version, availableFormula.version)) {
+  // Version comparison logic using semver and version ranges
+  const requiredVersion = requiredFormula.version;
+  const installedVersion = availableFormula.version;
+  
+  // Check if the installed version satisfies the required version/range
+  if (satisfiesVersion(installedVersion, requiredVersion)) {
     status.status = 'installed';
   } else {
-    status.status = 'outdated';
-    status.issues = [`Version mismatch: required ${requiredFormula.version}, available ${availableFormula.version}`];
+    // Version doesn't satisfy the range - determine the issue
+    if (isExactVersion(requiredVersion)) {
+      // Exact version required but doesn't match
+      if (semver.gt(installedVersion, requiredVersion)) {
+        status.status = 'outdated';
+        status.issues = [`Installed version ${installedVersion} is newer than required ${requiredVersion}`];
+      } else {
+        status.status = 'dependency-mismatch';
+        status.issues = [`Installed version ${installedVersion} is older than required ${requiredVersion}`];
+      }
+    } else {
+      // Version range required but doesn't satisfy
+      status.status = 'dependency-mismatch';
+      status.issues = [`Installed version ${installedVersion} does not satisfy range ${requiredVersion} (${describeVersionRange(requiredVersion)})`];
+    }
   }
 
   return status;

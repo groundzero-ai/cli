@@ -12,6 +12,13 @@ import { writeTextFile, exists, ensureDir } from '../utils/fs.js';
 import { CURSOR_TEMPLATES, CLAUDE_TEMPLATES, Platform } from '../utils/embedded-templates.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
+import { 
+  parseVersionRange, 
+  isExactVersion, 
+  isWildcardVersion, 
+  createCaretRange,
+  describeVersionRange
+} from '../utils/version-ranges.js';
 
 // Constants
 const PLATFORM_DIRS = {
@@ -50,7 +57,7 @@ const GLOBAL_PLATFORM_FILES = {
 } as const;
 
 /**
- * Parse formula input to extract name and version
+ * Parse formula input to extract name and version/range
  */
 function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
   const atIndex = formulaInput.lastIndexOf('@');
@@ -63,7 +70,14 @@ function parseFormulaInput(formulaInput: string): { name: string; version?: stri
   const version = formulaInput.substring(atIndex + 1);
   
   if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version`);
+    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version or formula@range`);
+  }
+  
+  // Validate the version/range format
+  try {
+    parseVersionRange(version);
+  } catch (error) {
+    throw new ValidationError(`Invalid version/range format: ${version}. ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
   
   return { name, version };
@@ -278,14 +292,41 @@ async function addFormulaToYml(
   formulaYmlPath: string, 
   formulaName: string, 
   formulaVersion: string, 
-  isDev: boolean = false
+  isDev: boolean = false,
+  originalVersion?: string // The original version/range that was requested
 ): Promise<void> {
   if (!(await exists(formulaYmlPath))) {
     return; // If no formula.yml exists, ignore this step
   }
   
   const config = await parseFormulaYml(formulaYmlPath);
-  const dependency: FormulaDependency = { name: formulaName, version: formulaVersion };
+  
+  // Determine the version to write to formula.yml
+  let versionToWrite: string;
+  let versionRange: string | undefined;
+  
+  if (originalVersion) {
+    // If we have the original version/range, use it
+    versionToWrite = originalVersion;
+    versionRange = originalVersion;
+  } else {
+    // Default behavior: use caret range for unspecified versions, exact for specified
+    // This mimics npm behavior
+    if (isExactVersion(formulaVersion)) {
+      // If it's an exact version, use caret range (^1.2.3)
+      versionToWrite = createCaretRange(formulaVersion);
+      versionRange = versionToWrite;
+    } else {
+      // If it's already a range, use it as-is
+      versionToWrite = formulaVersion;
+      versionRange = formulaVersion;
+    }
+  }
+  
+  const dependency: FormulaDependency = { 
+    name: formulaName, 
+    version: versionToWrite
+  };
   
   // Find current location and determine target location
   const currentLocation = await findFormulaLocation(formulaYmlPath, formulaName);
@@ -1088,7 +1129,7 @@ async function installFormulaCommand(
   ]);
   
   if (formulaYmlExists && mainFormula) {
-    await addFormulaToYml(formulaYmlPath, formulaName, mainFormula.version, options.dev || false);
+    await addFormulaToYml(formulaYmlPath, formulaName, mainFormula.version, options.dev || false, version);
   }
   
   // Provide IDE-specific template files
