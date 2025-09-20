@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
@@ -289,8 +289,18 @@ async function installFormulaToGroundzero(
   targetDir: string,
   options: InstallOptions
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
-  const groundzeroPath = join(targetDir, 'ai');
-  const formulaGroundzeroPath = join(groundzeroPath, formulaName);
+  const cwd = process.cwd();
+  const groundzeroPath = join(cwd, 'ai');
+  
+  // Handle target-dir parameter - it should be relative to cwd/ai directory
+  let formulaGroundzeroPath: string;
+  if (targetDir && targetDir !== '.') {
+    // Remove leading slash if present and join with ai directory
+    const cleanTargetDir = targetDir.startsWith('/') ? targetDir.slice(1) : targetDir;
+    formulaGroundzeroPath = join(groundzeroPath, cleanTargetDir);
+  } else {
+    formulaGroundzeroPath = join(groundzeroPath, formulaName);
+  }
   
   await ensureDir(groundzeroPath);
   
@@ -303,7 +313,7 @@ async function installFormulaToGroundzero(
   let skipped = false;
   
   if (await exists(formulaGroundzeroPath)) {
-    const installedVersion = await getInstalledFormulaVersion(formulaName, targetDir);
+    const installedVersion = await getInstalledFormulaVersion(formulaName, cwd);
     
     if (installedVersion) {
       const comparison = semver.compare(newVersion, installedVersion);
@@ -354,31 +364,97 @@ async function installFormulaToGroundzero(
     }
   }
   
-  // Include MD files AND formula.yml in the installation
-  const filesToInstall = formula.files.filter(file => 
-    file.path.endsWith('.md') || file.path === 'formula.yml'
+  // Separate files by type for different installation targets
+  const aiFiles = formula.files.filter(file => 
+    file.path.startsWith('ai/') && (file.path.endsWith('.md') || file.path === 'ai/formula.yml')
+  );
+  
+  const cursorFiles = formula.files.filter(file => 
+    file.path.startsWith('.cursor/')
+  );
+  
+  const claudeFiles = formula.files.filter(file => 
+    file.path.startsWith('.claude/')
   );
   
   const installedFiles: string[] = [];
+  let totalInstalled = 0;
   
   if (!options.dryRun) {
-    await ensureDir(formulaGroundzeroPath);
-    
-    for (const file of filesToInstall) {
-      // Keep original filename (including formula.yml as non-hidden file)
-      const targetFileName = file.path;
-      const targetPath = join(formulaGroundzeroPath, targetFileName);
+    // Install AI files (remove 'ai/' prefix and install directly to formula directory)
+    for (const file of aiFiles) {
+      // Remove 'ai/' prefix from the path
+      const relativePath = file.path.startsWith('ai/') ? file.path.substring(3) : file.path;
+      const targetPath = join(formulaGroundzeroPath, relativePath);
+      
+      // Check if file already exists and handle overwrite
+      if (await exists(targetPath) && !options.force) {
+        console.log(`⚠️  File already exists: ${targetPath}`);
+        console.log('   Use --force to overwrite existing files.');
+        continue;
+      }
+      
+      await ensureDir(dirname(targetPath));
       await writeTextFile(targetPath, file.content);
-      installedFiles.push(targetFileName);
-      logger.debug(`Installed file to ai/${formulaName}: ${targetFileName}`);
+      installedFiles.push(relativePath);
+      totalInstalled++;
+      logger.debug(`Installed AI file to ai/${formulaName}: ${relativePath}`);
+    }
+    
+    // Install Cursor files to cwd/.cursor
+    for (const file of cursorFiles) {
+      const relativePath = file.path.substring('.cursor/'.length);
+      const targetPath = join(cwd, '.cursor', relativePath);
+      
+      // Don't overwrite existing files in .cursor directory
+      if (await exists(targetPath)) {
+        logger.debug(`Skipping existing Cursor file: ${targetPath}`);
+        continue;
+      }
+      
+      await ensureDir(dirname(targetPath));
+      await writeTextFile(targetPath, file.content);
+      installedFiles.push(`.cursor/${relativePath}`);
+      totalInstalled++;
+      logger.debug(`Installed Cursor file to .cursor: ${relativePath}`);
+    }
+    
+    // Install Claude files to cwd/.claude
+    for (const file of claudeFiles) {
+      const relativePath = file.path.substring('.claude/'.length);
+      const targetPath = join(cwd, '.claude', relativePath);
+      
+      // Don't overwrite existing files in .claude directory
+      if (await exists(targetPath)) {
+        logger.debug(`Skipping existing Claude file: ${targetPath}`);
+        continue;
+      }
+      
+      await ensureDir(dirname(targetPath));
+      await writeTextFile(targetPath, file.content);
+      installedFiles.push(`.claude/${relativePath}`);
+      totalInstalled++;
+      logger.debug(`Installed Claude file to .claude: ${relativePath}`);
     }
   } else {
-    // For dry run, show the original filenames
-    installedFiles.push(...filesToInstall.map(f => f.path));
+    // For dry run, show what would be installed
+    for (const file of aiFiles) {
+      const relativePath = file.path.startsWith('ai/') ? file.path.substring(3) : file.path;
+      installedFiles.push(relativePath);
+    }
+    for (const file of cursorFiles) {
+      const relativePath = file.path.substring('.cursor/'.length);
+      installedFiles.push(`.cursor/${relativePath}`);
+    }
+    for (const file of claudeFiles) {
+      const relativePath = file.path.substring('.claude/'.length);
+      installedFiles.push(`.claude/${relativePath}`);
+    }
+    totalInstalled = installedFiles.length;
   }
   
   return {
-    installedCount: filesToInstall.length,
+    installedCount: totalInstalled,
     files: installedFiles,
     overwritten,
     skipped
@@ -480,13 +556,14 @@ async function installAllFormulasCommand(
   targetDir: string,
   options: InstallOptions
 ): Promise<CommandResult> {
-  logger.info(`Installing all formulas from formula.yml to: ${targetDir}`, { options });
+  const cwd = process.cwd();
+  logger.info(`Installing all formulas from formula.yml to: ${cwd}/ai`, { options });
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
   // 1. Read CWD formula.yml to get list of formulas to install
-  const formulaYmlPath = join(targetDir, 'formula.yml');
+  const formulaYmlPath = join(cwd, 'formula.yml');
   
   if (!(await exists(formulaYmlPath))) {
     return { success: false, error: 'formula.yml file not found' };
@@ -612,13 +689,14 @@ async function installFormulaCommand(
   targetDir: string,
   options: InstallOptions
 ): Promise<CommandResult> {
-  logger.info(`Installing formula '${formulaName}' with dependencies to: ${targetDir}`, { options });
+  const cwd = process.cwd();
+  logger.info(`Installing formula '${formulaName}' with dependencies to: ${cwd}/ai`, { options });
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
   // 1. Resolve complete dependency tree (always recursive now)
-  const resolvedFormulas = await resolveDependencies(formulaName, targetDir, true);
+  const resolvedFormulas = await resolveDependencies(formulaName, cwd, true);
   
   // 2. Display dependency tree
   displayDependencyTree(resolvedFormulas);
@@ -663,7 +741,7 @@ async function installFormulaCommand(
     }
     
     // Show formula.yml update
-    const formulaYmlPath = join(targetDir, 'formula.yml');
+    const formulaYmlPath = join(cwd, 'formula.yml');
     if (await exists(formulaYmlPath)) {
       console.log(`\n📋 Would add to formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
     } else {
@@ -724,26 +802,26 @@ async function installFormulaCommand(
   let mainFileConflicts: string[] = [];
   
   if (mainFormula) {
-    const mainResult = await installMainFormulaFiles(mainFormula, targetDir, options);
+    const mainResult = await installMainFormulaFiles(mainFormula, cwd, options);
     mainFilesInstalled = mainResult.installedCount;
     mainFileConflicts = mainResult.conflicts;
   }
   
   // 6. Update formula.yml with direct dependencies only
-  const formulaYmlPath = join(targetDir, 'formula.yml');
+  const formulaYmlPath = join(cwd, 'formula.yml');
   if (await exists(formulaYmlPath) && mainFormula) {
     await addFormulaToYml(formulaYmlPath, formulaName, mainFormula.version, options.dev || false);
   }
   
   // 7. Detect and manage platform configuration
-  const platformResult = await detectAndManagePlatforms(targetDir, options);
+  const platformResult = await detectAndManagePlatforms(cwd, options);
 
   // 8. Provide IDE-specific template files
-  const ideTemplateResult = await provideIdeTemplateFiles(targetDir, platformResult.platforms, options);
+  const ideTemplateResult = await provideIdeTemplateFiles(cwd, platformResult.platforms, options);
   
   // 9. Success output
   console.log(`\n✓ Formula '${formulaName}' and ${resolvedFormulas.length - 1} dependencies installed`);
-  console.log(`📁 Target directory: ${targetDir}`);
+  console.log(`📁 Target directory: ${cwd}/ai`);
   console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
   console.log(`✅ Installed: ${installedCount}, ⏭️ Skipped: ${skippedCount}`);
   
@@ -798,7 +876,7 @@ async function installFormulaCommand(
     success: true,
     data: {
       formulaName,
-      targetDir,
+      targetDir: `${cwd}/ai`,
       resolvedFormulas,
       totalFormulas: resolvedFormulas.length,
       installed: installedCount,
@@ -816,9 +894,9 @@ async function installFormulaCommand(
 export function setupInstallCommand(program: Command): void {
   program
     .command('install')
-    .description('Install formulas from local registry to current directory')
+    .description('Install formulas from local registry to cwd/ai directory')
     .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified)')
-    .argument('[target-dir]', 'target directory (defaults to current directory)', '.')
+    .argument('[target-dir]', 'target directory relative to cwd/ai (defaults to formula name)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--set <key=value>', 'set template variables', [])
     .option('--force', 'overwrite existing files')

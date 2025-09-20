@@ -160,8 +160,11 @@ export class FormulaManager {
     const files: FormulaFile[] = [];
     
     try {
+      // Get default exclude patterns to filter out system files
+      const excludePatterns = this.getDefaultExcludePatterns();
+      
       // Get all files recursively in the formula directory
-      for await (const fullPath of walkFiles(formulaPath)) {
+      for await (const fullPath of walkFiles(formulaPath, excludePatterns)) {
         const relativePath = relative(formulaPath, fullPath);
         const content = await readTextFile(fullPath);
         const isTemplate = this.detectTemplateFile(content);
