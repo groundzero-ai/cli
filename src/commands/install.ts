@@ -43,6 +43,12 @@ const CONFLICT_RESOLUTION = {
   OVERWRITTEN: 'overwritten'
 } as const;
 
+// Global files that should never be removed during uninstall (shared across all formulas)
+const GLOBAL_PLATFORM_FILES = {
+  CURSOR_GROUNDZERO: `${PLATFORM_DIRS.CURSOR}/rules/${FILE_PATTERNS.GROUNDZERO_MDC}`,
+  CLAUDE_GROUNDZERO: `${PLATFORM_DIRS.CLAUDE}/${FILE_PATTERNS.GROUNDZERO_MD}`
+} as const;
+
 /**
  * Parse formula input to extract name and version
  */
@@ -165,6 +171,7 @@ async function detectAndManagePlatforms(
 
 /**
  * Provide IDE-specific template files based on detected platforms
+ * Note: Global platform files (groundzero.mdc, groundzero.md) are shared across all formulas
  */
 async function provideIdeTemplateFiles(
   targetDir: string,
@@ -198,11 +205,12 @@ async function provideIdeTemplateFiles(
       const fileExists = await exists(groundzeroPath);
       
       if (fileExists && !options.force) {
-        provided.skipped.push(`${PLATFORM_DIRS.CURSOR}/rules/${FILE_PATTERNS.GROUNDZERO_MDC}`);
+        provided.skipped.push(GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO);
+        logger.debug(`Skipped existing global Cursor template: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
       } else {
         await writeTextFile(groundzeroPath, CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC]);
         provided.cursor.push(FILE_PATTERNS.GROUNDZERO_MDC);
-        logger.debug(`Provided cursor template: ${FILE_PATTERNS.GROUNDZERO_MDC}`);
+        logger.debug(`Provided global Cursor template: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
       }
     } else if (platform === PLATFORM_NAMES.CLAUDE) {
       logger.info('Providing Claude Code templates');
@@ -218,11 +226,12 @@ async function provideIdeTemplateFiles(
       const fileExists = await exists(groundzeroPath);
       
       if (fileExists && !options.force) {
-        provided.skipped.push(`${PLATFORM_DIRS.CLAUDE}/${FILE_PATTERNS.GROUNDZERO_MD}`);
+        provided.skipped.push(GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO);
+        logger.debug(`Skipped existing global Claude template: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
       } else {
         await writeTextFile(groundzeroPath, CLAUDE_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD]);
         provided.claude.push(FILE_PATTERNS.GROUNDZERO_MD);
-        logger.debug(`Provided claude template: ${FILE_PATTERNS.GROUNDZERO_MD}`);
+        logger.debug(`Provided global Claude template: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
       }
     }
   });
