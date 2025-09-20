@@ -3,44 +3,54 @@ import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
-import { promptCreateFormula, promptFormulaDetails, promptNewVersion, promptConfirmation } from '../utils/prompts.js';
+import { promptNewVersion, promptConfirmation } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion, getLatestFormulaVersion } from '../core/directory.js';
-import { registryManager } from '../core/registry.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import { 
   exists, 
   readTextFile, 
   writeTextFile, 
-  writeJsonFile, 
   listFiles, 
   listDirectories,
   isDirectory,
   ensureDir
 } from '../utils/fs.js';
 
+// Constants
+const AI_DIR = 'ai';
+const CURSOR_COMMANDS_DIR = '.cursor/commands';
+const CLAUDE_COMMANDS_DIR = '.claude/commands';
+const FORMULA_YML_FILE = 'formula.yml';
+const MARKDOWN_EXTENSION = '.md';
+const COMMAND_DIRECTORIES = [
+  { name: CURSOR_COMMANDS_DIR, basePath: CURSOR_COMMANDS_DIR },
+  { name: CLAUDE_COMMANDS_DIR, basePath: CLAUDE_COMMANDS_DIR }
+] as const;
+
 
 /**
- * Recursively find all markdown files in a directory
+ * Recursively find files by extension in a directory
  */
-async function findAllMarkdownFiles(dir: string, baseDir: string = dir): Promise<Array<{ fullPath: string; relativePath: string }>> {
-  const mdFiles: Array<{ fullPath: string; relativePath: string }> = [];
+async function findFilesByExtension(
+  dir: string, 
+  extension: string, 
+  baseDir: string = dir
+): Promise<Array<{ fullPath: string; relativePath: string }>> {
+  const files: Array<{ fullPath: string; relativePath: string }> = [];
   
   if (!(await exists(dir)) || !(await isDirectory(dir))) {
-    return mdFiles;
+    return files;
   }
   
-  // Check for markdown files in current directory
-  const files = await listFiles(dir);
-  for (const file of files) {
-    if (file.endsWith('.md')) {
+  // Check for files with the specified extension in current directory
+  const dirFiles = await listFiles(dir);
+  for (const file of dirFiles) {
+    if (file.endsWith(extension)) {
       const fullPath = join(dir, file);
       const relativePath = fullPath.substring(baseDir.length + 1);
-      mdFiles.push({
-        fullPath,
-        relativePath
-      });
+      files.push({ fullPath, relativePath });
     }
   }
   
@@ -48,43 +58,25 @@ async function findAllMarkdownFiles(dir: string, baseDir: string = dir): Promise
   const subdirs = await listDirectories(dir);
   for (const subdir of subdirs) {
     const fullPath = join(dir, subdir);
-    const subFiles = await findAllMarkdownFiles(fullPath, baseDir);
-    mdFiles.push(...subFiles);
+    const subFiles = await findFilesByExtension(fullPath, extension, baseDir);
+    files.push(...subFiles);
   }
   
-  return mdFiles;
+  return files;
+}
+
+/**
+ * Recursively find all markdown files in a directory
+ */
+async function findAllMarkdownFiles(dir: string, baseDir: string = dir): Promise<Array<{ fullPath: string; relativePath: string }>> {
+  return findFilesByExtension(dir, MARKDOWN_EXTENSION, baseDir);
 }
 
 /**
  * Recursively find all formula.yml files in a directory
  */
 async function findAllFormulaYmlFiles(dir: string, baseDir: string = dir): Promise<Array<{ fullPath: string; relativePath: string }>> {
-  const formulaFiles: Array<{ fullPath: string; relativePath: string }> = [];
-  
-  if (!(await exists(dir)) || !(await isDirectory(dir))) {
-    return formulaFiles;
-  }
-  
-  // Check for formula.yml file in current directory
-  const formulaYmlPath = join(dir, 'formula.yml');
-  if (await exists(formulaYmlPath)) {
-    const relativePath = formulaYmlPath.substring(baseDir.length + 1);
-    formulaFiles.push({
-      fullPath: formulaYmlPath,
-      relativePath
-    });
-  }
-  
-  // Get all subdirectories and recurse
-  const subdirs = await listDirectories(dir);
-  
-  for (const subdir of subdirs) {
-    const fullPath = join(dir, subdir);
-    const subFiles = await findAllFormulaYmlFiles(fullPath, baseDir);
-    formulaFiles.push(...subFiles);
-  }
-  
-  return formulaFiles;
+  return findFilesByExtension(dir, FORMULA_YML_FILE, baseDir);
 }
 
 /**
@@ -92,7 +84,7 @@ async function findAllFormulaYmlFiles(dir: string, baseDir: string = dir): Promi
  */
 async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
   const cwd = process.cwd();
-  const aiDir = join(cwd, 'ai');
+  const aiDir = join(cwd, AI_DIR);
   
   if (!(await exists(aiDir)) || !(await isDirectory(aiDir))) {
     return [];
@@ -101,22 +93,25 @@ async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPa
   const allFormulaFiles = await findAllFormulaYmlFiles(aiDir);
   const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: FormulaYml }> = [];
   
-  for (const formulaFile of allFormulaFiles) {
+  // Process files in parallel for better performance
+  const parsePromises = allFormulaFiles.map(async (formulaFile) => {
     try {
       const config = await parseFormulaYml(formulaFile.fullPath);
       if (config.name === formulaName) {
-        matchingFormulas.push({
+        return {
           fullPath: formulaFile.fullPath,
           relativePath: formulaFile.relativePath,
           config
-        });
+        };
       }
     } catch (error) {
       logger.warn(`Failed to parse formula.yml at ${formulaFile.fullPath}: ${error}`);
     }
-  }
+    return null;
+  });
   
-  return matchingFormulas;
+  const results = await Promise.all(parsePromises);
+  return results.filter((result): result is NonNullable<typeof result> => result !== null);
 }
 
 /**
@@ -172,8 +167,8 @@ async function saveFormulaCommand(
     encoding: 'utf8'
   });
 
-  // Add discovered MD files with updated frontmatter
-  for (const mdFile of discoveredFiles) {
+  // Process discovered MD files in parallel for better performance
+  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
     const originalContent = await readTextFile(mdFile.fullPath);
     // Update frontmatter to match current formula
     const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
@@ -186,24 +181,27 @@ async function saveFormulaCommand(
 
     // Determine the path for registry storage based on source directory
     let registryPath: string;
-    if (mdFile.sourceDir === 'ai') {
+    if (mdFile.sourceDir === AI_DIR) {
       // Flatten AI files - store only the filename without directory structure
       registryPath = basename(mdFile.relativePath);
-    } else if (mdFile.sourceDir === '.cursor/commands') {
+    } else if (mdFile.sourceDir === CURSOR_COMMANDS_DIR) {
       registryPath = join('.cursor', 'commands', basename(mdFile.relativePath));
-    } else if (mdFile.sourceDir === '.claude/commands') {
+    } else if (mdFile.sourceDir === CLAUDE_COMMANDS_DIR) {
       registryPath = join('.claude', 'commands', basename(mdFile.relativePath));
     } else {
       registryPath = mdFile.relativePath; // Fallback for local files
     }
 
-    formulaFiles.push({
+    return {
       path: registryPath,
       content: updatedContent,
       isTemplate: detectTemplateFile(updatedContent),
-      encoding: 'utf8'
-    });
-  }
+      encoding: 'utf8' as const
+    };
+  });
+
+  const processedMdFiles = await Promise.all(mdFilePromises);
+  formulaFiles.push(...processedMdFiles);
   
   // Save formula to local registry with version handling
   const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, formulaYmlPath, options?.force);
@@ -251,92 +249,165 @@ async function saveFormulaCommand(
 }
 
 /**
- * Discover MD files based on new frontmatter rules from multiple directories
+ * Process markdown files from a directory with frontmatter filtering
  */
-async function discoverMdFiles(formulaDir: string, formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; sourceDir: string }>> {
+async function processMarkdownFiles(
+  dirPath: string,
+  sourceDir: string,
+  formulaName: string,
+  formulaDirRelativeToAi?: string
+): Promise<Array<{ fullPath: string; relativePath: string; sourceDir: string }>> {
+  if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
+    return [];
+  }
+
+  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
   const mdFiles: Array<{ fullPath: string; relativePath: string; sourceDir: string }> = [];
-  const cwd = process.cwd();
-  const aiDir = join(cwd, 'ai');
 
-  // Calculate the relative path of the formula directory from the ai directory
-  const formulaDirRelativeToAi = formulaDir.substring(aiDir.length + 1);
+  // Process files in parallel for better performance
+  const processPromises = allMdFiles.map(async (mdFile) => {
+    try {
+      const content = await readTextFile(mdFile.fullPath);
+      const frontmatter = parseMarkdownFrontmatter(content);
+      const mdFileDir = dirname(mdFile.relativePath);
 
-  // 1. Process AI directory - include files adjacent to formula.yml and files with matching frontmatter
-  if (await exists(aiDir) && await isDirectory(aiDir)) {
-    const allAiMdFiles = await findAllMarkdownFiles(aiDir, aiDir);
-    
-    for (const mdFile of allAiMdFiles) {
-      try {
-        const content = await readTextFile(mdFile.fullPath);
-        const frontmatter = parseMarkdownFrontmatter(content);
-        const mdFileDir = dirname(mdFile.relativePath);
-
-        // Check if file has frontmatter specifying this formula name
-        if (frontmatter && frontmatter.formula && frontmatter.formula.name === formulaName) {
+      // For AI directory: include files adjacent to formula.yml or with matching frontmatter
+      if (sourceDir === AI_DIR) {
+        if (frontmatter?.formula?.name === formulaName) {
           logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
-          mdFiles.push({
-            fullPath: mdFile.fullPath,
-            relativePath: mdFile.relativePath,
-            sourceDir: 'ai'
-          });
-        }
-        // Check if file is adjacent to the formula.yml (same directory) and has no conflicting frontmatter
-        else if (mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
+          return { fullPath: mdFile.fullPath, relativePath: mdFile.relativePath, sourceDir };
+        } else if (mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
           logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
-          mdFiles.push({
-            fullPath: mdFile.fullPath,
-            relativePath: mdFile.relativePath,
-            sourceDir: 'ai'
-          });
-        }
-        // Skip files with conflicting frontmatter or files not adjacent to formula.yml
-        else if (frontmatter && frontmatter.formula && frontmatter.formula.name !== formulaName) {
+          return { fullPath: mdFile.fullPath, relativePath: mdFile.relativePath, sourceDir };
+        } else if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
           logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
         } else {
           logger.debug(`Skipping ${mdFile.relativePath} from ai (not adjacent to formula.yml and no matching frontmatter)`);
         }
-      } catch (error) {
-        logger.warn(`Failed to read or parse ${mdFile.relativePath} from ai: ${error}`);
-      }
-    }
-  }
-
-  // 2. Process command directories - only include files with matching frontmatter
-  const commandDirectories = [
-    { name: '.cursor/commands', basePath: '.cursor/commands' },
-    { name: '.claude/commands', basePath: '.claude/commands' }
-  ];
-
-  for (const cmdDir of commandDirectories) {
-    const cmdDirPath = join(cwd, cmdDir.basePath);
-    
-    if (await exists(cmdDirPath) && await isDirectory(cmdDirPath)) {
-      const allCmdMdFiles = await findAllMarkdownFiles(cmdDirPath, cmdDirPath);
-      
-      for (const mdFile of allCmdMdFiles) {
-        try {
-          const content = await readTextFile(mdFile.fullPath);
-          const frontmatter = parseMarkdownFrontmatter(content);
-
-          // Only include files with frontmatter specifying this formula name
-          if (frontmatter && frontmatter.formula && frontmatter.formula.name === formulaName) {
-            logger.debug(`Including ${mdFile.relativePath} from ${cmdDir.name} (matches formula name in frontmatter)`);
-            mdFiles.push({
-              fullPath: mdFile.fullPath,
-              relativePath: mdFile.relativePath,
-              sourceDir: cmdDir.name
-            });
-          } else {
-            logger.debug(`Skipping ${mdFile.relativePath} from ${cmdDir.name} (no matching frontmatter)`);
-          }
-        } catch (error) {
-          logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${cmdDir.name}: ${error}`);
+      } 
+      // For command directories: only include files with matching frontmatter
+      else {
+        if (frontmatter?.formula?.name === formulaName) {
+          logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
+          return { fullPath: mdFile.fullPath, relativePath: mdFile.relativePath, sourceDir };
+        } else {
+          logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDir} (no matching frontmatter)`);
         }
       }
+    } catch (error) {
+      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDir}: ${error}`);
+    }
+    return null;
+  });
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+}
+
+/**
+ * Discover MD files based on new frontmatter rules from multiple directories
+ */
+async function discoverMdFiles(formulaDir: string, formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; sourceDir: string }>> {
+  const cwd = process.cwd();
+  const aiDir = join(cwd, AI_DIR);
+  const formulaDirRelativeToAi = formulaDir.substring(aiDir.length + 1);
+
+  // Process all directories in parallel for better performance
+  const [aiFiles, cursorFiles, claudeFiles] = await Promise.all([
+    processMarkdownFiles(aiDir, AI_DIR, formulaName, formulaDirRelativeToAi),
+    processMarkdownFiles(join(cwd, CURSOR_COMMANDS_DIR), CURSOR_COMMANDS_DIR, formulaName),
+    processMarkdownFiles(join(cwd, CLAUDE_COMMANDS_DIR), CLAUDE_COMMANDS_DIR, formulaName)
+  ]);
+
+  return [...aiFiles, ...cursorFiles, ...claudeFiles];
+}
+
+/**
+ * Handle version conflicts and updates
+ */
+async function handleVersionConflict(
+  config: FormulaYml,
+  formulaYmlPath: string,
+  files: FormulaFile[],
+  force?: boolean
+): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
+  const latestVersion = await getLatestFormulaVersion(config.name);
+  const versionExists = await hasFormulaVersion(config.name, config.version);
+  
+  // Case 1: Exact version match exists - prompt to set new version
+  if (versionExists) {
+    logger.warn(`Formula version '${config.name}@${config.version}' already exists`);
+    console.warn(`⚠️  Version '${config.version}' already exists in the local registry.`);
+    
+    if (force) {
+      logger.info('Force flag provided, overwriting existing version');
+      return { success: true, updatedConfig: config };
+    }
+    
+    // Show latest version and prompt for new version
+    try {
+      const versionContext = latestVersion 
+        ? `latest: ${latestVersion}, current: ${config.version}`
+        : config.version;
+      const updatedVersion = await promptNewVersion(config.name, versionContext);
+      const updatedConfig = { ...config, version: updatedVersion };
+      
+      // Update formula.yml file with new version
+      await writeFormulaYml(formulaYmlPath, updatedConfig);
+      logger.info(`Updated formula.yml with new version: ${updatedVersion}`);
+      
+      // Update the formula.yml content in the files array to match the new version
+      const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
+      const formulaYmlFile = files.find(f => f.path === FORMULA_YML_FILE);
+      if (formulaYmlFile) {
+        formulaYmlFile.content = updatedFormulaYmlContent;
+      }
+      
+      // Recursively check the new version
+      return handleVersionConflict(updatedConfig, formulaYmlPath, files, force);
+    } catch (error) {
+      if (error instanceof UserCancellationError) {
+        throw error;
+      }
+      return {
+        success: false,
+        error: `Failed to update version: ${error}`
+      };
     }
   }
-
-  return mdFiles;
+  
+  // Case 2: No exact match exists - check version relationship with latest
+  if (latestVersion) {
+    if (semver.gt(config.version, latestVersion)) {
+      // Later version - proceed without warning
+      logger.info(`Creating new formula version '${config.name}@${config.version}' (later than latest ${latestVersion})`);
+    } else if (semver.lt(config.version, latestVersion)) {
+      // Lower version - issue warning and ask for confirmation
+      logger.warn(`Saving lower-than-latest version for '${config.name}': ${config.version} < ${latestVersion}`);
+      console.warn(`⚠️  Version ${config.version} is lower than the latest ${latestVersion}. Saving older versions may have unintended side effects (e.g., tools or workflows expecting newer versions).`);
+      
+      if (!force) {
+        const shouldProceed = await promptConfirmation(
+          `Proceed with saving lower version '${config.version}' (latest is ${latestVersion})?`,
+          false
+        );
+        
+        if (!shouldProceed) {
+          throw new UserCancellationError('Save cancelled by user');
+        }
+      } else {
+        logger.info('Force flag provided, proceeding with lower version');
+      }
+    } else {
+      // Equal version - this shouldn't happen due to exact match check above, but handle it
+      logger.info(`Creating new formula version '${config.name}@${config.version}'`);
+    }
+  } else {
+    // No existing versions - proceed without any checks
+    logger.info(`Creating first version of formula '${config.name}@${config.version}'`);
+  }
+  
+  return { success: true, updatedConfig: config };
 }
 
 /**
@@ -348,124 +419,67 @@ async function saveFormulaToRegistry(
   formulaYmlPath: string,
   force?: boolean
 ): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
-  let finalConfig = { ...config };
-  
-  // Loop to handle version updates until we have a valid version
-  while (true) {
-    const latestVersion = await getLatestFormulaVersion(finalConfig.name);
-    const versionExists = await hasFormulaVersion(finalConfig.name, finalConfig.version);
-    
-    // Case 1: Exact version match exists - prompt to set new version
-    if (versionExists) {
-      logger.warn(`Formula version '${finalConfig.name}@${finalConfig.version}' already exists`);
-      console.warn(`⚠️  Version '${finalConfig.version}' already exists in the local registry.`);
-      
-      if (force) {
-        logger.info('Force flag provided, overwriting existing version');
-        break; // Exit loop and proceed with overwrite
-      }
-      
-      // Show latest version and prompt for new version
-      try {
-        const versionContext = latestVersion 
-          ? `latest: ${latestVersion}, current: ${finalConfig.version}`
-          : finalConfig.version;
-        const updatedVersion = await promptNewVersion(finalConfig.name, versionContext);
-        finalConfig.version = updatedVersion;
-        
-        // Update formula.yml file with new version
-        await writeFormulaYml(formulaYmlPath, finalConfig);
-        logger.info(`Updated formula.yml with new version: ${updatedVersion}`);
-        
-        // Update the formula.yml content in the files array to match the new version
-        const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
-        const formulaYmlFile = files.find(f => f.path === 'formula.yml');
-        if (formulaYmlFile) {
-          formulaYmlFile.content = updatedFormulaYmlContent;
-        }
-        
-        // Continue loop to check the new version
-        continue;
-      } catch (error) {
-        if (error instanceof UserCancellationError) {
-          throw error;
-        }
-        return {
-          success: false,
-          error: `Failed to update version: ${error}`
-        };
-      }
-    }
-    
-    // Case 2: No exact match exists - check version relationship with latest
-    if (latestVersion) {
-      if (semver.gt(finalConfig.version, latestVersion)) {
-        // Later version - proceed without warning
-        logger.info(`Creating new formula version '${finalConfig.name}@${finalConfig.version}' (later than latest ${latestVersion})`);
-        break;
-      } else if (semver.lt(finalConfig.version, latestVersion)) {
-        // Lower version - issue warning and ask for confirmation
-        logger.warn(`Saving lower-than-latest version for '${finalConfig.name}': ${finalConfig.version} < ${latestVersion}`);
-        console.warn(`⚠️  Version ${finalConfig.version} is lower than the latest ${latestVersion}. Saving older versions may have unintended side effects (e.g., tools or workflows expecting newer versions).`);
-        
-        if (!force) {
-          const shouldProceed = await promptConfirmation(
-            `Proceed with saving lower version '${finalConfig.version}' (latest is ${latestVersion})?`,
-            false
-          );
-          
-          if (!shouldProceed) {
-            throw new UserCancellationError('Save cancelled by user');
-          }
-        } else {
-          logger.info('Force flag provided, proceeding with lower version');
-        }
-        break;
-      } else {
-        // Equal version - this shouldn't happen due to exact match check above, but handle it
-        logger.info(`Creating new formula version '${finalConfig.name}@${finalConfig.version}'`);
-        break;
-      }
-    } else {
-      // No existing versions - proceed without any checks
-      logger.info(`Creating first version of formula '${finalConfig.name}@${finalConfig.version}'`);
-      break;
-    }
+  // Handle version conflicts and updates
+  const versionResult = await handleVersionConflict(config, formulaYmlPath, files, force);
+  if (!versionResult.success) {
+    return versionResult;
   }
+  
+  const finalConfig = versionResult.updatedConfig || config;
   
   // Save files to versioned directory
   const targetPath = getFormulaVersionPath(finalConfig.name, finalConfig.version);
   await ensureDir(targetPath);
   
+  // Group files by directory to minimize ensureDir calls
+  const directoryGroups = new Map<string, FormulaFile[]>();
+  
   for (const file of files) {
-    let filePath: string;
-
-    // If it's a markdown file, determine the appropriate subdirectory
-    if (file.path.endsWith('.md')) {
-      if (file.path.startsWith('.cursor/commands/')) {
-        // File from .cursor/commands directory
-        const cursorDir = join(targetPath, '.cursor', 'commands');
-        await ensureDir(cursorDir);
-        filePath = join(cursorDir, basename(file.path));
-      } else if (file.path.startsWith('.claude/commands/')) {
-        // File from .claude/commands directory
-        const claudeDir = join(targetPath, '.claude', 'commands');
-        await ensureDir(claudeDir);
-        filePath = join(claudeDir, basename(file.path));
+    let targetDir: string;
+    
+    if (file.path.endsWith(MARKDOWN_EXTENSION)) {
+      if (file.path.startsWith(CURSOR_COMMANDS_DIR)) {
+        targetDir = join(targetPath, '.cursor', 'commands');
+      } else if (file.path.startsWith(CLAUDE_COMMANDS_DIR)) {
+        targetDir = join(targetPath, '.claude', 'commands');
       } else {
-        // File from ai directory or local - save to ai/ subdirectory
-        const aiDir = join(targetPath, 'ai');
-        await ensureDir(aiDir);
-        // For AI files, the path is already flattened (just the filename), so use it directly
-        filePath = join(aiDir, file.path);
+        targetDir = join(targetPath, AI_DIR);
       }
     } else {
-      // Save non-MD files (like formula.yml) directly to the version directory
-      filePath = join(targetPath, file.path);
+      targetDir = targetPath;
     }
-
-    await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
+    
+    if (!directoryGroups.has(targetDir)) {
+      directoryGroups.set(targetDir, []);
+    }
+    directoryGroups.get(targetDir)!.push(file);
   }
+  
+  // Ensure all directories exist and save files in parallel
+  const savePromises = Array.from(directoryGroups.entries()).map(async ([dir, dirFiles]) => {
+    await ensureDir(dir);
+    
+    const filePromises = dirFiles.map(async (file) => {
+      let filePath: string;
+      
+      if (file.path.endsWith(MARKDOWN_EXTENSION)) {
+        if (file.path.startsWith(CURSOR_COMMANDS_DIR) || file.path.startsWith(CLAUDE_COMMANDS_DIR)) {
+          filePath = join(dir, basename(file.path));
+        } else {
+          // For AI files, the path is already flattened (just the filename), so use it directly
+          filePath = join(dir, file.path);
+        }
+      } else {
+        filePath = join(dir, file.path);
+      }
+      
+      await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
+    });
+    
+    await Promise.all(filePromises);
+  });
+  
+  await Promise.all(savePromises);
   
   logger.info(`Formula '${finalConfig.name}@${finalConfig.version}' saved to local registry`);
   return { 
