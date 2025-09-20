@@ -11,6 +11,12 @@ export class FormulaNotFoundError extends G0Error {
   }
 }
 
+export class FormulaVersionNotFoundError extends G0Error {
+  constructor(message: string) {
+    super(message, ErrorCodes.FORMULA_NOT_FOUND);
+  }
+}
+
 export class FormulaAlreadyExistsError extends G0Error {
   constructor(formulaName: string) {
     super(`Formula '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
@@ -71,7 +77,10 @@ export class UserCancellationError extends Error {
  */
 export function handleError(error: unknown): CommandResult {
   if (error instanceof G0Error) {
-    logger.error(error.message, { code: error.code, details: error.details });
+    // Don't log version-specific errors as they're already formatted nicely
+    if (!(error instanceof FormulaVersionNotFoundError)) {
+      logger.error(error.message, { code: error.code, details: error.details });
+    }
     return {
       success: false,
       error: error.message

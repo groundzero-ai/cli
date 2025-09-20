@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
-import { exists, isDirectory, listDirectories } from '../utils/fs.js';
+import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -152,4 +152,123 @@ export async function getGroundzeroFormulaConfig(groundzeroPath: string, formula
     logger.warn(`Failed to parse formula config for ${formulaName}: ${error}`);
     return null;
   }
+}
+
+/**
+ * Check for existing installed formula by searching markdown files in ai, .claude, and .cursor directories
+ */
+export async function checkExistingFormulaInMarkdownFiles(
+  cwd: string, 
+  formulaName: string
+): Promise<{ found: boolean; version?: string; location?: string }> {
+  const searchDirectories = [
+    join(cwd, 'ai'),
+    join(cwd, '.claude'),
+    join(cwd, '.cursor')
+  ];
+
+  logger.debug(`Checking for existing formula '${formulaName}' in directories: ${searchDirectories.join(', ')}`);
+
+  for (const searchDir of searchDirectories) {
+    logger.debug(`Checking directory: ${searchDir}`);
+    if (!(await exists(searchDir)) || !(await isDirectory(searchDir))) {
+      logger.debug(`Directory does not exist or is not a directory: ${searchDir}`);
+      continue;
+    }
+
+    try {
+      // Walk through all files in the directory and filter for markdown files
+      for await (const filePath of walkFiles(searchDir)) {
+        // Filter for markdown files
+        if (!filePath.endsWith('.md') && !filePath.endsWith('.mdc')) {
+          continue;
+        }
+        
+        logger.debug(`Checking markdown file: ${filePath}`);
+        try {
+          const content = await readTextFile(filePath);
+          
+          // Check for frontmatter with formula name
+          const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+          if (frontmatterMatch) {
+            const frontmatter = frontmatterMatch[1];
+            
+            // Look for formula name in frontmatter - support both formats:
+            // 1. formula: formula-name (direct format)
+            // 2. formula:\n  name: formula-name (nested format)
+            let foundFormulaName: string | null = null;
+            
+            // Parse frontmatter line by line to handle both formats
+            const lines = frontmatter.split('\n');
+            let formulaLineIndex = -1;
+            
+            // Find the formula line
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].trim().startsWith('formula:')) {
+                formulaLineIndex = i;
+                break;
+              }
+            }
+            
+            if (formulaLineIndex >= 0) {
+              const formulaLine = lines[formulaLineIndex];
+              const afterFormula = formulaLine.substring(formulaLine.indexOf(':') + 1).trim();
+              
+              // If there's content on the same line, it's direct format
+              if (afterFormula) {
+                foundFormulaName = afterFormula;
+                logger.debug(`Direct format match: '${foundFormulaName}'`);
+              } else {
+                // Check for nested format on the next line
+                if (formulaLineIndex + 1 < lines.length) {
+                  const nextLine = lines[formulaLineIndex + 1].trim();
+                  const nameMatch = nextLine.match(/^name:\s*(.+)$/);
+                  if (nameMatch) {
+                    foundFormulaName = nameMatch[1].trim();
+                    logger.debug(`Nested format match: '${foundFormulaName}'`);
+                  } else {
+                    logger.debug(`No nested name found after formula line`);
+                  }
+                } else {
+                  logger.debug(`No line after formula line`);
+                }
+              }
+            } else {
+              logger.debug(`No formula line found in frontmatter`);
+            }
+            
+            logger.debug(`Found formula name in frontmatter: '${foundFormulaName}', looking for: '${formulaName}'`);
+            if (foundFormulaName && foundFormulaName === formulaName) {
+              // Extract version if present - support both direct and nested formats
+              let version: string | undefined;
+              const directVersionMatch = frontmatter.match(/^version:\s*(.+)$/m);
+              if (directVersionMatch) {
+                version = directVersionMatch[1].trim();
+              } else {
+                const nestedVersionMatch = frontmatter.match(/^formula:\s*\n[\s\S]*?\n\s*version:\s*(.+)$/m);
+                if (nestedVersionMatch) {
+                  version = nestedVersionMatch[1].trim();
+                }
+              }
+              
+              logger.debug(`Found existing formula '${formulaName}' in ${filePath}`, { version });
+              return {
+                found: true,
+                version,
+                location: filePath
+              };
+            }
+          }
+        } catch (error) {
+          logger.debug(`Failed to read file ${filePath}: ${error}`);
+          // Continue to next file
+        }
+      }
+    } catch (error) {
+      logger.debug(`Failed to walk directory ${searchDir}: ${error}`);
+      // Continue to next directory
+    }
+  }
+
+  return { found: false };
 }

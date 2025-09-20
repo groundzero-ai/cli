@@ -268,3 +268,49 @@ export async function promptAllVersionsDelete(
   );
 }
 
+/**
+ * Prompt user for formula installation conflict resolution
+ */
+export async function promptFormulaInstallConflict(
+  formulaName: string,
+  existingVersion: string,
+  newVersion: string,
+  requiredVersion?: string
+): Promise<'keep' | 'latest' | 'exact'> {
+  // Determine the version to show for "Install exact" option
+  const exactVersion = requiredVersion || newVersion;
+  const exactDescription = requiredVersion 
+    ? `Install version ${exactVersion} as required by dependency tree`
+    : `Install version ${exactVersion}, may be older than current`;
+
+  const response = await prompts({
+    type: 'select',
+    name: 'choice',
+    message: `Formula '${formulaName}' already installed. How would you like to proceed?`,
+    choices: [
+      { 
+        title: `Keep installed - Skip installation`, 
+        value: 'keep',
+        description: 'Keep the currently installed version'
+      },
+      { 
+        title: `Install latest - Overwrite`, 
+        value: 'latest',
+        description: 'Install the latest version, overwriting existing'
+      },
+      { 
+        title: `Install exact (v${exactVersion}) - Overwrite with specific version`, 
+        value: 'exact',
+        description: exactDescription
+      }
+    ],
+    hint: 'Use arrow keys to navigate, Enter to select'
+  });
+
+  if (isCancelled(response) || !response.choice) {
+    throw new UserCancellationError('Formula installation cancelled');
+  }
+
+  return response.choice;
+}
+

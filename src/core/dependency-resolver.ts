@@ -6,7 +6,7 @@ import { FormulaYml, FormulaDependency, Formula } from '../types/index.js';
 import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
-import { FormulaNotFoundError, UserCancellationError } from '../utils/errors.js';
+import { FormulaNotFoundError, FormulaVersionNotFoundError, UserCancellationError } from '../utils/errors.js';
 
 /**
  * Resolved formula interface for dependency resolution
@@ -17,6 +17,7 @@ export interface ResolvedFormula {
   formula: Formula;
   isRoot: boolean;
   conflictResolution?: 'kept' | 'overwritten' | 'skipped';
+  requiredVersion?: string; // The version required by the parent formula
 }
 
 /**
@@ -58,7 +59,8 @@ export async function resolveDependencies(
   isRoot: boolean = true,
   visitedStack: Set<string> = new Set(),
   resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
-  version?: string
+  version?: string,
+  requiredVersions: Map<string, string[]> = new Map()
 ): Promise<ResolvedFormula[]> {
   // 1. Cycle detection
   if (visitedStack.has(formulaName)) {
@@ -85,18 +87,50 @@ export async function resolveDependencies(
         // Check if formula exists in registry metadata (but files might be missing)
         const { registryManager } = await import('./registry.js');
         const hasFormula = await registryManager.hasFormula(formulaName);
+        logger.debug(`Registry check for '${formulaName}': hasFormula=${hasFormula}, requiredVersion=${version}`);
         
         if (hasFormula) {
+          // Check if the specific version exists
+          if (version) {
+            const hasSpecificVersion = await registryManager.hasFormulaVersion(formulaName, version);
+            if (!hasSpecificVersion) {
+              // Formula exists but not in the required version - this is not a repairable error
+              const dependencyChain = Array.from(visitedStack);
+              let errorMessage = `Formula '${formulaName}' exists in registry but version '${version}' is not available\n\n`;
+              
+              if (dependencyChain.length > 0) {
+                errorMessage += `📋 Dependency chain:\n`;
+                for (let i = 0; i < dependencyChain.length; i++) {
+                  const indent = '  '.repeat(i);
+                  errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
+                }
+                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName}@${version} ❌ (version not available)\n\n`;
+              }
+              
+              errorMessage += `💡 To resolve this issue:\n`;
+              errorMessage += `   • Install the available version: g0 install ${formulaName}@latest\n`;
+              errorMessage += `   • Update the dependency to use an available version\n`;
+              errorMessage += `   • Create the required version locally: g0 init && g0 save\n`;
+              
+              throw new FormulaVersionNotFoundError(errorMessage);
+            }
+          }
+          
           logger.info(`Found formula '${formulaName}' in registry metadata, attempting repair`);
           // Try to reload the formula metadata
-          const metadata = await registryManager.getFormulaMetadata(formulaName);
-          // Attempt to load again - this might succeed if it was a temporary issue
-          formula = await formulaManager.loadFormula(formulaName);
+          const metadata = await registryManager.getFormulaMetadata(formulaName, version);
+          // Attempt to load again with the same version - this might succeed if it was a temporary issue
+          formula = await formulaManager.loadFormula(formulaName, version);
           logger.info(`Successfully repaired and loaded formula '${formulaName}'`);
         } else {
           throw error; // Formula truly doesn't exist in registry
         }
       } catch (repairError) {
+        // If this is a version-specific error we created, re-throw it directly
+        if (repairError instanceof FormulaVersionNotFoundError) {
+          throw repairError;
+        }
+        
         // Repair failed - create helpful error message with dependency chain context
         const dependencyChain = Array.from(visitedStack);
         let errorMessage = `❌ Auto-repair failed: Formula '${formulaName}' not available in local registry\n\n`;
@@ -183,12 +217,21 @@ export async function resolveDependencies(
     }
   }
   
-  // 4. Add to resolved map
+  // 4. Track required version if specified
+  if (version) {
+    if (!requiredVersions.has(formulaName)) {
+      requiredVersions.set(formulaName, []);
+    }
+    requiredVersions.get(formulaName)!.push(version);
+  }
+
+  // 5. Add to resolved map
   resolvedFormulas.set(formulaName, {
     name: formulaName,
     version: currentVersion,
     formula,
-    isRoot
+    isRoot,
+    requiredVersion: version // Track the version that was required
   });
   
   // 5. Parse dependencies from formula's .formula.yml
@@ -203,23 +246,29 @@ export async function resolveDependencies(
     const dependencies = config.formulas || [];
     
     for (const dep of dependencies) {
-      // For dependencies, don't pass version - let them resolve to their latest version
-      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
+      // Pass the required version from the dependency specification
+      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions);
     }
     
     // For root formula, also process dev-formulas
     if (isRoot) {
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
-        // For dev dependencies, don't pass version - let them resolve to their latest version
-        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
+        // Pass the required version from the dev dependency specification
+        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions);
       }
     }
     
     visitedStack.delete(formulaName);
   }
   
-  return Array.from(resolvedFormulas.values());
+  // Attach the requiredVersions map to each resolved formula for later use
+  const resolvedArray = Array.from(resolvedFormulas.values());
+  for (const resolved of resolvedArray) {
+    (resolved as any).requiredVersions = requiredVersions;
+  }
+  
+  return resolvedArray;
 }
 
 /**
