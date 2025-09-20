@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
@@ -61,6 +61,29 @@ function parseFormulaInput(formulaInput: string): { name: string; version?: stri
   }
   
   return { name, version };
+}
+
+/**
+ * Create a basic formula.yml file if it doesn't exist
+ */
+async function createBasicFormulaYml(cwd: string): Promise<void> {
+  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  
+  if (await exists(formulaYmlPath)) {
+    return; // formula.yml already exists, no need to create
+  }
+  
+  const projectName = basename(cwd);
+  const basicFormulaYml: FormulaYml = {
+    name: projectName,
+    version: '0.1.0',
+    formulas: [],
+    'dev-formulas': []
+  };
+  
+  await writeFormulaYml(formulaYmlPath, basicFormulaYml);
+  logger.info(`Created basic formula.yml with name: ${projectName}`);
+  console.log(`📋 Created basic formula.yml with name: ${projectName}`);
 }
 
 /**
@@ -558,11 +581,10 @@ async function installAllFormulasCommand(
   
   await ensureRegistryDirectories();
   
-  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  // Auto-create basic formula.yml if it doesn't exist
+  await createBasicFormulaYml(cwd);
   
-  if (!(await exists(formulaYmlPath))) {
-    return { success: false, error: 'formula.yml file not found' };
-  }
+  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
   
   let cwdConfig: FormulaYml;
   try {
@@ -844,6 +866,9 @@ async function installFormulaCommand(
   logger.info(`Installing formula '${formulaName}' with dependencies to: ${cwd}/${PLATFORM_DIRS.AI}`, { options });
   
   await ensureRegistryDirectories();
+  
+  // Auto-create basic formula.yml if it doesn't exist
+  await createBasicFormulaYml(cwd);
   
   // Resolve complete dependency tree
   const resolvedFormulas = await resolveDependencies(formulaName, cwd, true, new Set(), new Map(), version);
