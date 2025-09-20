@@ -35,10 +35,9 @@ async function determineDeletionScope(
   version: string | undefined,
   options: DeleteOptions
 ): Promise<{ type: 'all' | 'specific'; version?: string }> {
-  // If version is specified in input or options, delete specific version
-  if (version || options.version) {
-    const targetVersion = version || options.version!;
-    return { type: 'specific', version: targetVersion };
+  // If version is specified in input, delete specific version
+  if (version) {
+    return { type: 'specific', version };
   }
   
   // If interactive mode, let user select
@@ -155,7 +154,6 @@ export function setupDeleteCommand(program: Command): void {
     .argument('<formula>', 'formula name or formula@version to delete')
     .option('-f, --force', 'skip confirmation prompt')
     .option('-i, --interactive', 'interactively select version to delete')
-    .option('-v, --version <version>', 'specific version to delete')
     .action(withErrorHandling(async (formula: string, options: DeleteOptions) => {
       const result = await deleteFormulaCommand(formula, options);
       if (!result.success) {

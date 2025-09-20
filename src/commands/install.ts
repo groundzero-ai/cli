@@ -14,6 +14,27 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 
 /**
+ * Parse formula input to extract name and version
+ */
+function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
+  const atIndex = formulaInput.lastIndexOf('@');
+  
+  if (atIndex === -1) {
+    // No version specified
+    return { name: formulaInput };
+  }
+  
+  const name = formulaInput.substring(0, atIndex);
+  const version = formulaInput.substring(atIndex + 1);
+  
+  if (!name || !version) {
+    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version`);
+  }
+  
+  return { name, version };
+}
+
+/**
  * Detect existing platforms and manage platform configuration
  */
 async function detectAndManagePlatforms(
@@ -287,7 +308,8 @@ async function addFormulaToYml(
 async function installFormulaToGroundzero(
   formulaName: string,
   targetDir: string,
-  options: InstallOptions
+  options: InstallOptions,
+  version?: string
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
   const cwd = process.cwd();
   const groundzeroPath = join(cwd, 'ai');
@@ -305,7 +327,7 @@ async function installFormulaToGroundzero(
   await ensureDir(groundzeroPath);
   
   // Load the formula from local registry first to get the version
-  const formula = await formulaManager.loadFormula(formulaName);
+  const formula = await formulaManager.loadFormula(formulaName, version);
   const newVersion = formula.metadata.version;
   
   // Check if formula directory already exists and compare versions
@@ -471,21 +493,6 @@ async function installMainFormulaFiles(
 ): Promise<{ installedCount: number; conflicts: string[] }> {
   const { formula } = resolved;
   
-  // Parse template variables from --set options
-  const variables: Record<string, any> = {};
-  for (const setOption of options.set) {
-    const [key, ...valueParts] = setOption.split('=');
-    if (!key || valueParts.length === 0) {
-      throw new ValidationError(`Invalid --set option: ${setOption}. Use format: key=value`);
-    }
-    variables[key.trim()] = valueParts.join('=').trim();
-  }
-  
-  // Merge with options.variables if provided
-  Object.assign(variables, options.variables || {});
-  
-  // Note: Template variable validation is not implemented in the simplified metadata system
-  // Template variables are detected dynamically from file content
   
   // Prepare installation plan - exclude formula.yml and MD files
   const installPlan = formula.files
@@ -493,19 +500,13 @@ async function installMainFormulaFiles(
     .filter(file => !file.path.endsWith('.md'))
     .map(file => {
       const targetPath = join(targetDir, file.path);
-      let content = file.content;
-      
-      // Apply template variables if this is a template file
-      if (file.isTemplate && Object.keys(variables).length > 0) {
-        content = formulaManager.applyTemplateVariables(content, variables);
-      }
+      const content = file.content;
       
       return {
         sourcePath: file.path,
         targetPath,
         content,
-        exists: false,
-        isTemplate: file.isTemplate
+        exists: false
       };
     });
   
@@ -677,8 +678,11 @@ async function installCommand(
     return await installAllFormulasCommand(targetDir, options);
   }
   
-  // Otherwise install the specific formula
-  return await installFormulaCommand(formulaName, targetDir, options);
+  // Parse formula name and version from input
+  const { name, version: inputVersion } = parseFormulaInput(formulaName);
+  
+  // Install the specific formula with version
+  return await installFormulaCommand(name, targetDir, options, inputVersion);
 }
 
 /**
@@ -687,7 +691,8 @@ async function installCommand(
 async function installFormulaCommand(
   formulaName: string,
   targetDir: string,
-  options: InstallOptions
+  options: InstallOptions,
+  version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
   logger.info(`Installing formula '${formulaName}' with dependencies to: ${cwd}/ai`, { options });
@@ -696,7 +701,7 @@ async function installFormulaCommand(
   await ensureRegistryDirectories();
   
   // 1. Resolve complete dependency tree (always recursive now)
-  const resolvedFormulas = await resolveDependencies(formulaName, cwd, true);
+  const resolvedFormulas = await resolveDependencies(formulaName, cwd, true, new Set(), new Map(), version);
   
   // 2. Display dependency tree
   displayDependencyTree(resolvedFormulas);
@@ -894,11 +899,10 @@ async function installFormulaCommand(
 export function setupInstallCommand(program: Command): void {
   program
     .command('install')
-    .description('Install formulas from local registry to cwd/ai directory')
-    .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified)')
+    .description('Install formulas from local registry to cwd/ai directory. Supports versioning with formula@version syntax.')
+    .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified). Supports formula@version syntax.')
     .argument('[target-dir]', 'target directory relative to cwd/ai (defaults to formula name)', '.')
     .option('--dry-run', 'preview changes without applying them')
-    .option('--set <key=value>', 'set template variables', [])
     .option('--force', 'overwrite existing files')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {

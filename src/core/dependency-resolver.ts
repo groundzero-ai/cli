@@ -57,7 +57,8 @@ export async function resolveDependencies(
   targetDir: string,
   isRoot: boolean = true,
   visitedStack: Set<string> = new Set(),
-  resolvedFormulas: Map<string, ResolvedFormula> = new Map()
+  resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
+  version?: string
 ): Promise<ResolvedFormula[]> {
   // 1. Cycle detection
   if (visitedStack.has(formulaName)) {
@@ -71,9 +72,10 @@ export async function resolveDependencies(
   let formula: Formula;
   try {
     // First attempt: Load formula from local registry
-    logger.debug(`Attempting to load formula '${formulaName}' from local registry`);
-    formula = await formulaManager.loadFormula(formulaName);
-    logger.debug(`Successfully loaded formula '${formulaName}' from local registry`);
+    const targetVersion = version || undefined; // Only pass version if specified
+    logger.debug(`Attempting to load formula '${formulaName}' from local registry`, { version: targetVersion });
+    formula = await formulaManager.loadFormula(formulaName, targetVersion);
+    logger.debug(`Successfully loaded formula '${formulaName}' from local registry`, { version: formula.metadata.version });
   } catch (error) {
     if (error instanceof FormulaNotFoundError) {
       // Auto-repair attempt: Check if formula exists in registry but needs to be loaded
@@ -201,6 +203,7 @@ export async function resolveDependencies(
     const dependencies = config.formulas || [];
     
     for (const dep of dependencies) {
+      // For dependencies, don't pass version - let them resolve to their latest version
       await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
     }
     
@@ -208,6 +211,7 @@ export async function resolveDependencies(
     if (isRoot) {
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
+        // For dev dependencies, don't pass version - let them resolve to their latest version
         await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas);
       }
     }
