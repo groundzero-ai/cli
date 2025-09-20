@@ -1,16 +1,13 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { UninstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
+import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
-import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { findFormulaDirectory, scanGroundzeroFormulas, GroundzeroFormula } from '../core/groundzero.js';
-import { buildDependencyTree, getAllDependencies, findDanglingDependencies, DependencyNode } from '../core/dependency-resolver.js';
-import { exists, readTextFile, writeTextFile, remove } from '../utils/fs.js';
+import { findFormulaDirectory } from '../core/groundzero.js';
+import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
+import { exists, remove } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, FormulaNotFoundError } from '../utils/errors.js';
-
-
+import { withErrorHandling, ValidationError } from '../utils/errors.js';
 
 
 /**

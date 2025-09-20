@@ -86,6 +86,8 @@ export interface ListOptions {
 
 export interface DeleteOptions {
   force?: boolean;
+  interactive?: boolean;   // Interactive version selection
+  version?: string;        // Specific version to delete
 }
 
 export interface InstallOptions {

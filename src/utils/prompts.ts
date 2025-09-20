@@ -216,3 +216,55 @@ export async function promptPlatformSelection(): Promise<string[]> {
   return response.platform ? [response.platform] : [];
 }
 
+/**
+ * Prompt for version selection from available versions
+ */
+export async function promptVersionSelection(
+  formulaName: string, 
+  versions: string[]
+): Promise<string> {
+  const response = await prompts({
+    type: 'select',
+    name: 'version',
+    message: `Select version of '${formulaName}' to delete:`,
+    choices: versions.map(version => ({
+      title: version,
+      value: version
+    })),
+    hint: 'Use arrow keys to navigate, Enter to select'
+  });
+
+  if (isCancelled(response) || !response.version) {
+    throw new UserCancellationError('Version selection cancelled');
+  }
+
+  return response.version;
+}
+
+/**
+ * Prompt for confirmation when deleting specific version
+ */
+export async function promptVersionDelete(
+  formulaName: string, 
+  version: string
+): Promise<boolean> {
+  return await promptConfirmation(
+    `Are you sure you want to delete version '${version}' of formula '${formulaName}'? This action cannot be undone.`,
+    false
+  );
+}
+
+/**
+ * Prompt for confirmation when deleting all versions
+ */
+export async function promptAllVersionsDelete(
+  formulaName: string, 
+  versionCount: number
+): Promise<boolean> {
+  const versionText = versionCount === 1 ? 'version' : 'versions';
+  return await promptConfirmation(
+    `Are you sure you want to delete all ${versionCount} ${versionText} of formula '${formulaName}'? This action cannot be undone.`,
+    false
+  );
+}
+
