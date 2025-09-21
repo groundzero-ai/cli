@@ -433,7 +433,8 @@ async function installFormulaToGroundzero(
   formulaName: string,
   targetDir: string,
   options: InstallOptions,
-  version?: string
+  version?: string,
+  forceOverwrite?: boolean
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
   const cwd = process.cwd();
   const groundzeroPath = join(cwd, PLATFORM_DIRS.AI);
@@ -448,13 +449,16 @@ async function installFormulaToGroundzero(
   // Load formula
   const formula = await formulaManager.loadFormula(formulaName, version);
   
+  // Create modified options with force flag if needed
+  const installOptions = forceOverwrite ? { ...options, force: true } : options;
+  
   // Categorize and install files
   const { aiFiles, cursorFiles, claudeFiles } = categorizeFormulaFiles(formula.files);
   
   const [aiResult, cursorResult, claudeResult] = await Promise.all([
-    installFileType(aiFiles, formulaGroundzeroPath, 'ai/', options, options.dryRun),
-    installFileType(cursorFiles, join(cwd, PLATFORM_DIRS.CURSOR), `${PLATFORM_DIRS.CURSOR}/`, options, options.dryRun),
-    installFileType(claudeFiles, join(cwd, PLATFORM_DIRS.CLAUDE), `${PLATFORM_DIRS.CLAUDE}/`, options, options.dryRun)
+    installFileType(aiFiles, formulaGroundzeroPath, 'ai/', installOptions, options.dryRun),
+    installFileType(cursorFiles, join(cwd, PLATFORM_DIRS.CURSOR), `${PLATFORM_DIRS.CURSOR}/`, installOptions, options.dryRun),
+    installFileType(claudeFiles, join(cwd, PLATFORM_DIRS.CLAUDE), `${PLATFORM_DIRS.CLAUDE}/`, installOptions, options.dryRun)
   ]);
   
   const totalInstalled = aiResult.installedCount + cursorResult.installedCount + claudeResult.installedCount;
@@ -707,7 +711,7 @@ async function handleDryRunMode(
       continue;
     }
     
-    const dryRunResult = await installFormulaToGroundzero(resolved.name, targetDir, options);
+    const dryRunResult = await installFormulaToGroundzero(resolved.name, targetDir, options, undefined, true);
     
     if (dryRunResult.skipped) {
       console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
@@ -745,7 +749,8 @@ async function handleDryRunMode(
 async function processResolvedFormulas(
   resolvedFormulas: ResolvedFormula[],
   targetDir: string,
-  options: InstallOptions
+  options: InstallOptions,
+  forceOverwriteFormulas?: Set<string>
 ): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; overwritten: boolean }> }> {
   let installedCount = 0;
   let skippedCount = 0;
@@ -764,7 +769,8 @@ async function processResolvedFormulas(
       continue;
     }
     
-    const groundzeroResult = await installFormulaToGroundzero(resolved.name, targetDir, options);
+    const shouldForceOverwrite = forceOverwriteFormulas?.has(resolved.name) || false;
+    const groundzeroResult = await installFormulaToGroundzero(resolved.name, targetDir, options, undefined, shouldForceOverwrite);
     
     if (groundzeroResult.skipped) {
       skippedCount++;
@@ -929,7 +935,7 @@ async function checkAndHandleFormulaConflict(
   newVersion: string,
   resolvedFormulas: ResolvedFormula[],
   options: InstallOptions
-): Promise<{ shouldProceed: boolean; action: 'keep' | 'latest' | 'exact' | 'none'; version?: string }> {
+): Promise<{ shouldProceed: boolean; action: 'keep' | 'latest' | 'exact' | 'none'; version?: string; forceOverwrite?: boolean }> {
   const cwd = process.cwd();
   
   // Check for existing formula in markdown files
@@ -938,7 +944,7 @@ async function checkAndHandleFormulaConflict(
   if (!existingCheck.found) {
     // No existing formula found, proceed without warning or prompts
     logger.debug(`No existing formula '${formulaName}' found, proceeding with installation`);
-    return { shouldProceed: true, action: 'none' };
+    return { shouldProceed: true, action: 'none', forceOverwrite: false };
   }
   
   // Existing formula found, get version info from dependency tree
@@ -949,7 +955,13 @@ async function checkAndHandleFormulaConflict(
   
   if (options.dryRun) {
     // In dry run mode, show what would happen but don't prompt
-    return { shouldProceed: true, action: 'latest' };
+    return { shouldProceed: true, action: 'latest', forceOverwrite: true };
+  }
+  
+  if (options.force) {
+    // When --force is used, automatically overwrite
+    logger.info(`Force flag set - automatically overwriting formula '${formulaName}' v${existingVersion}`);
+    return { shouldProceed: true, action: 'latest', forceOverwrite: true };
   }
   
   try {
@@ -958,23 +970,23 @@ async function checkAndHandleFormulaConflict(
     switch (userChoice) {
       case 'keep':
         logger.info(`User chose to keep existing formula '${formulaName}' v${existingVersion}`);
-        return { shouldProceed: false, action: 'keep' };
+        return { shouldProceed: false, action: 'keep', forceOverwrite: false };
         
       case 'latest':
         logger.info(`User chose to install latest version of formula '${formulaName}' v${versionInfo.highestVersion}`);
-        return { shouldProceed: true, action: 'latest' };
+        return { shouldProceed: true, action: 'latest', forceOverwrite: true };
         
       case 'exact':
         const exactVersion = versionInfo.requiredVersion || versionInfo.highestVersion;
         logger.info(`User chose to install exact version of formula '${formulaName}' v${exactVersion}`);
-        return { shouldProceed: true, action: 'exact', version: exactVersion };
+        return { shouldProceed: true, action: 'exact', version: exactVersion, forceOverwrite: true };
         
       default:
-        return { shouldProceed: false, action: 'keep' };
+        return { shouldProceed: false, action: 'keep', forceOverwrite: false };
     }
   } catch (error) {
     logger.warn(`User cancelled formula installation: ${error}`);
-    return { shouldProceed: false, action: 'keep' };
+    return { shouldProceed: false, action: 'keep', forceOverwrite: false };
   }
 }
 
@@ -984,10 +996,11 @@ async function checkAndHandleFormulaConflict(
 async function checkAndHandleAllFormulaConflicts(
   resolvedFormulas: ResolvedFormula[],
   options: InstallOptions
-): Promise<{ shouldProceed: boolean; skippedFormulas: string[]; versionOverrides: Map<string, string> }> {
+): Promise<{ shouldProceed: boolean; skippedFormulas: string[]; versionOverrides: Map<string, string>; forceOverwriteFormulas: Set<string> }> {
   const cwd = process.cwd();
   const skippedFormulas: string[] = [];
   const versionOverrides = new Map<string, string>();
+  const forceOverwriteFormulas = new Set<string>();
   
   // Check each formula in the dependency tree for conflicts
   for (const resolved of resolvedFormulas) {
@@ -1004,6 +1017,13 @@ async function checkAndHandleAllFormulaConflicts(
         continue;
       }
       
+      if (options.force) {
+        // When --force is used, automatically overwrite all conflicts
+        logger.info(`Force flag set - automatically overwriting formula '${resolved.name}' v${existingVersion}`);
+        forceOverwriteFormulas.add(resolved.name);
+        continue;
+      }
+      
       try {
         const userChoice = await promptFormulaInstallConflict(resolved.name, existingVersion, versionInfo.highestVersion, versionInfo.requiredVersion);
         
@@ -1015,23 +1035,24 @@ async function checkAndHandleAllFormulaConflicts(
             
           case 'latest':
             logger.info(`User chose to install latest version of formula '${resolved.name}' v${versionInfo.highestVersion}`);
-            // No action needed, will use latest version
+            forceOverwriteFormulas.add(resolved.name);
             break;
             
           case 'exact':
             const exactVersion = versionInfo.requiredVersion || versionInfo.highestVersion;
             logger.info(`User chose to install exact version of formula '${resolved.name}' v${exactVersion}`);
             versionOverrides.set(resolved.name, exactVersion);
+            forceOverwriteFormulas.add(resolved.name);
             break;
         }
       } catch (error) {
         logger.warn(`User cancelled formula installation: ${error}`);
-        return { shouldProceed: false, skippedFormulas: [], versionOverrides: new Map() };
+        return { shouldProceed: false, skippedFormulas: [], versionOverrides: new Map(), forceOverwriteFormulas: new Set() };
       }
     }
   }
   
-  return { shouldProceed: true, skippedFormulas, versionOverrides };
+  return { shouldProceed: true, skippedFormulas, versionOverrides, forceOverwriteFormulas };
 }
 
 /**
@@ -1108,7 +1129,7 @@ async function installFormulaCommand(
   }
   
   // Process resolved formulas
-  const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(finalResolvedFormulas, targetDir, options);
+  const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(finalResolvedFormulas, targetDir, options, conflictResult.forceOverwriteFormulas);
   
   // Install main formula files
   const mainFormula = finalResolvedFormulas.find(f => f.isRoot);
