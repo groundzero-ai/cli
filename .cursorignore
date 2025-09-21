@@ -1,0 +1,5 @@
+# dotenv environment variable files
+*.env
+
+# Credentials
+/credentials
