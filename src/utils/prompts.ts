@@ -314,3 +314,86 @@ export async function promptFormulaInstallConflict(
   return response.choice;
 }
 
+/**
+ * Prompt user for version conflict resolution when saving
+ */
+export async function promptVersionConflictResolution(
+  formulaName: string,
+  existingVersion: string
+): Promise<'bump-patch' | 'bump-minor' | 'overwrite'> {
+  const response = await prompts({
+    type: 'select',
+    name: 'choice',
+    message: `Version '${existingVersion}' of formula '${formulaName}' already exists. How would you like to proceed?`,
+    choices: [
+      { 
+        title: `Bump patch - Increment patch version (${existingVersion} → ${bumpPatchVersion(existingVersion)})`, 
+        value: 'bump-patch',
+        description: 'Increment the patch version for bug fixes'
+      },
+      { 
+        title: `Bump minor - Increment minor version (${existingVersion} → ${bumpMinorVersion(existingVersion)})`, 
+        value: 'bump-minor',
+        description: 'Increment the minor version for new features'
+      },
+      { 
+        title: `Overwrite existing - Replace existing version`, 
+        value: 'overwrite',
+        description: 'Replace the existing version (requires confirmation)'
+      }
+    ],
+    hint: 'Use arrow keys to navigate, Enter to select'
+  });
+
+  if (isCancelled(response) || !response.choice) {
+    throw new UserCancellationError('Version conflict resolution cancelled');
+  }
+
+  return response.choice;
+}
+
+/**
+ * Prompt user to confirm overwrite with double confirmation
+ */
+export async function promptOverwriteConfirmation(
+  formulaName: string,
+  version: string
+): Promise<boolean> {
+  const response = await prompts({
+    type: 'confirm',
+    name: 'confirmed',
+    message: `Are you sure you want to overwrite version '${version}' of formula '${formulaName}'? This action cannot be undone.`,
+    initial: false
+  });
+
+  if (isCancelled(response)) {
+    throw new UserCancellationError('Overwrite confirmation cancelled');
+  }
+
+  return response.confirmed || false;
+}
+
+/**
+ * Bump patch version (e.g., 1.2.3 → 1.2.4)
+ */
+function bumpPatchVersion(version: string): string {
+  const parts = version.split('.');
+  if (parts.length >= 3) {
+    const patch = parseInt(parts[2], 10) + 1;
+    return `${parts[0]}.${parts[1]}.${patch}`;
+  }
+  return version;
+}
+
+/**
+ * Bump minor version (e.g., 1.2.3 → 1.3.0)
+ */
+function bumpMinorVersion(version: string): string {
+  const parts = version.split('.');
+  if (parts.length >= 2) {
+    const minor = parseInt(parts[1], 10) + 1;
+    return `${parts[0]}.${minor}.0`;
+  }
+  return version;
+}
+

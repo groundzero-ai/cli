@@ -3,7 +3,7 @@ import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
-import { promptNewVersion, promptConfirmation } from '../utils/prompts.js';
+import { promptNewVersion, promptConfirmation, promptVersionConflictResolution, promptOverwriteConfirmation } from '../utils/prompts.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion, getLatestFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
@@ -323,6 +323,30 @@ async function discoverMdFiles(formulaDir: string, formulaName: string): Promise
 }
 
 /**
+ * Bump patch version (e.g., 1.2.3 → 1.2.4)
+ */
+function bumpPatchVersion(version: string): string {
+  const parts = version.split('.');
+  if (parts.length >= 3) {
+    const patch = parseInt(parts[2], 10) + 1;
+    return `${parts[0]}.${parts[1]}.${patch}`;
+  }
+  return version;
+}
+
+/**
+ * Bump minor version (e.g., 1.2.3 → 1.3.0)
+ */
+function bumpMinorVersion(version: string): string {
+  const parts = version.split('.');
+  if (parts.length >= 2) {
+    const minor = parseInt(parts[1], 10) + 1;
+    return `${parts[0]}.${minor}.0`;
+  }
+  return version;
+}
+
+/**
  * Handle version conflicts and updates
  */
 async function handleVersionConflict(
@@ -334,7 +358,7 @@ async function handleVersionConflict(
   const latestVersion = await getLatestFormulaVersion(config.name);
   const versionExists = await hasFormulaVersion(config.name, config.version);
   
-  // Case 1: Exact version match exists - prompt to set new version
+  // Case 1: Exact version match exists - prompt for resolution
   if (versionExists) {
     logger.warn(`Formula version '${config.name}@${config.version}' already exists`);
     console.warn(`⚠️  Version '${config.version}' already exists in the local registry.`);
@@ -344,34 +368,63 @@ async function handleVersionConflict(
       return { success: true, updatedConfig: config };
     }
     
-    // Show latest version and prompt for new version
     try {
-      const versionContext = latestVersion 
-        ? `latest: ${latestVersion}, current: ${config.version}`
-        : config.version;
-      const updatedVersion = await promptNewVersion(config.name, versionContext);
-      const updatedConfig = { ...config, version: updatedVersion };
+      // Prompt user for resolution
+      const resolution = await promptVersionConflictResolution(config.name, config.version);
       
-      // Update formula.yml file with new version
-      await writeFormulaYml(formulaYmlPath, updatedConfig);
-      logger.info(`Updated formula.yml with new version: ${updatedVersion}`);
+      let updatedConfig: FormulaYml;
       
-      // Update the formula.yml content in the files array to match the new version
-      const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
-      const formulaYmlFile = files.find(f => f.path === FORMULA_YML_FILE);
-      if (formulaYmlFile) {
-        formulaYmlFile.content = updatedFormulaYmlContent;
+      switch (resolution) {
+        case 'bump-patch': {
+          const newVersion = bumpPatchVersion(config.version);
+          updatedConfig = { ...config, version: newVersion };
+          console.log(`📈 Bumping patch version: ${config.version} → ${newVersion}`);
+          break;
+        }
+        case 'bump-minor': {
+          const newVersion = bumpMinorVersion(config.version);
+          updatedConfig = { ...config, version: newVersion };
+          console.log(`📈 Bumping minor version: ${config.version} → ${newVersion}`);
+          break;
+        }
+        case 'overwrite': {
+          // Double confirmation for overwrite
+          const confirmed = await promptOverwriteConfirmation(config.name, config.version);
+          if (!confirmed) {
+            throw new UserCancellationError('Overwrite cancelled by user');
+          }
+          console.log(`⚠️  Overwriting existing version: ${config.version}`);
+          updatedConfig = config;
+          break;
+        }
+        default:
+          throw new Error(`Unknown resolution: ${resolution}`);
       }
       
-      // Recursively check the new version
-      return handleVersionConflict(updatedConfig, formulaYmlPath, files, force);
+      // Update formula.yml file with new version (if changed)
+      if (updatedConfig.version !== config.version) {
+        await writeFormulaYml(formulaYmlPath, updatedConfig);
+        logger.info(`Updated formula.yml with new version: ${updatedConfig.version}`);
+        
+        // Update the formula.yml content in the files array to match the new version
+        const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
+        const formulaYmlFile = files.find(f => f.path === FORMULA_YML_FILE);
+        if (formulaYmlFile) {
+          formulaYmlFile.content = updatedFormulaYmlContent;
+        }
+        
+        // Recursively check the new version
+        return handleVersionConflict(updatedConfig, formulaYmlPath, files, force);
+      }
+      
+      return { success: true, updatedConfig };
     } catch (error) {
       if (error instanceof UserCancellationError) {
         throw error;
       }
       return {
         success: false,
-        error: `Failed to update version: ${error}`
+        error: `Failed to resolve version conflict: ${error}`
       };
     }
   }
