@@ -1,6 +1,4 @@
-# Purpose
-
-This file provides an overview of the information required to construct and maintain a given codebase or set of code. The purpose of the provided information is to ensure the maintainability, consistency, and scalability of the given software.
+**INSTRUCTIONS: Always search and read through any relevant guidelines under the /ai directory before starting any task**
 
 # The /ai directory
 
@@ -8,31 +6,6 @@ This file provides an overview of the information required to construct and main
 - **Scope**: A codebase may have multiple /ai directories, each scoped to their respective parent directories and children.
   - Ex: /project/foo/bar/ai contains information for the set of code and child directories under /project/foo/bar.
   - Ex: /project/foo/ai contains information for the set of code and child directories under /project/foo, including and applied to /project/foo/bar.
-- **Immutability**: Content within the /ai directory are NOT meant to be edited and are IMMUTABLE. If a user requests editing of any content under a /ai directory, warn the user that any changes will be overwritten by future updates to the Formula.
+- **Purpose**: The purpose of the provided information within the /ai directory is to ensure the maintainability, consistency, and scalability of the given software.
 
-# Steps to update /ai documentation
-
-1. Read relevant markdown files carefully and note existing information.
-2. Determine if new markdown files are required for clean separation of domain/concerns, if so, create.
-3. Make very concise and efficient updates, do NOT be verbose.
-4. Ensure information you add are clear and to the point and NOT verbose.
-5. Do not make any changes or updates that are not specifically mentioned.
-6. Review your implementation and refactor and/or split markdown files whenever necessary.
-7. Ensure each markdown file compact and concise in information, less than 300 lines.
-8. Clean up information if necessary.
-
-## DO:
-- Make minimal, focused changes
-- Use short, direct explanations
-- Keep code examples brief and essential only
-- Remove unnecessary detail
-- Focus on core requirements only
-
-## DO NOT:
-- Add extensive code examples
-- Provide long explanations
-- Include verbose documentation
-- Add unnecessary context
-- Make comprehensive overhauls when simple updates suffice
-
-**Remember: Following explicit verbosity constraints is more important than being thorough.**
+**REMEMBER: Always search and read through any relevant guidelines under the /ai directory before starting any task**
