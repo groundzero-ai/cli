@@ -191,11 +191,11 @@ export class FormulaManager {
     const files: FormulaFile[] = [];
     
     try {
-      // Get default exclude patterns to filter out system files
-      const excludePatterns = this.getDefaultExcludePatterns();
+      // Get default include patterns to filter for specific file types
+      const includePatterns = this.getDefaultIncludePatterns();
       
       // Get all files recursively in the formula directory
-      for await (const fullPath of walkFiles(formulaPath, excludePatterns)) {
+      for await (const fullPath of walkFiles(formulaPath, includePatterns)) {
         const relativePath = relative(formulaPath, fullPath);
         const content = await readTextFile(fullPath);
         const isTemplate = this.detectTemplateFile(content);
@@ -268,25 +268,13 @@ export class FormulaManager {
   }
   
   /**
-   * Get default exclude patterns
+   * Get default include patterns
    */
-  private getDefaultExcludePatterns(): string[] {
+  private getDefaultIncludePatterns(): string[] {
     return [
-      'node_modules',
-      '.git',
-      '.svn',
-      '.hg',
-      '.DS_Store',
-      'Thumbs.db',
-      '*.log',
-      '.env',
-      '.env.*',
-      'dist',
-      'build',
-      'coverage',
-      '.nyc_output',
-      '*.tmp',
-      '*.temp'
+      '*.md',
+      '*.mdc',
+      'formula.yml'
     ];
   }
   

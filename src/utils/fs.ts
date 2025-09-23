@@ -144,7 +144,7 @@ export async function listDirectories(dirPath: string): Promise<string[]> {
 /**
  * Recursively walk through a directory and yield all files
  */
-export async function* walkFiles(dirPath: string, excludePatterns: string[] = []): AsyncGenerator<string> {
+export async function* walkFiles(dirPath: string, includePatterns: string[] = []): AsyncGenerator<string> {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     
@@ -152,21 +152,24 @@ export async function* walkFiles(dirPath: string, excludePatterns: string[] = []
       const fullPath = join(dirPath, entry.name);
       const relativePath = relative(process.cwd(), fullPath);
       
-      // Check if this path should be excluded
-      const shouldExclude = excludePatterns.some(pattern => {
-        // Simple glob pattern matching (could be enhanced with a proper glob library)
-        const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\?/g, '.'));
-        return regex.test(relativePath) || regex.test(entry.name);
-      });
-      
-      if (shouldExclude) {
-        continue;
-      }
-      
       if (entry.isFile()) {
-        yield fullPath;
+        // If include patterns are specified, check if this file matches any of them
+        if (includePatterns.length > 0) {
+          const shouldInclude = includePatterns.some(pattern => {
+            // Simple glob pattern matching (could be enhanced with a proper glob library)
+            const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\?/g, '.'));
+            return regex.test(relativePath) || regex.test(entry.name);
+          });
+          
+          if (shouldInclude) {
+            yield fullPath;
+          }
+        } else {
+          // If no include patterns specified, include all files
+          yield fullPath;
+        }
       } else if (entry.isDirectory()) {
-        yield* walkFiles(fullPath, excludePatterns);
+        yield* walkFiles(fullPath, includePatterns);
       }
     }
   } catch (error) {

@@ -5,19 +5,17 @@ import { InstallOptions, CommandResult, FormulaYml, FormulaDependency } from '..
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { getInstalledFormulaVersion, checkExistingFormulaInMarkdownFiles } from '../core/groundzero.js';
+import { checkExistingFormulaInMarkdownFiles } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, ResolvedFormula } from '../core/dependency-resolver.js';
 import { promptPlatformSelection, promptFormulaInstallConflict } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir } from '../utils/fs.js';
-import { CURSOR_TEMPLATES, CLAUDE_TEMPLATES, Platform } from '../utils/embedded-templates.js';
+import { CURSOR_TEMPLATES, CLAUDE_TEMPLATES } from '../utils/embedded-templates.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import { 
   parseVersionRange, 
   isExactVersion, 
-  isWildcardVersion, 
   createCaretRange,
-  describeVersionRange
 } from '../utils/version-ranges.js';
 
 // Constants
@@ -1196,7 +1194,7 @@ async function installFormulaCommand(
 export function setupInstallCommand(program: Command): void {
   program
     .command('install')
-    .description('Install formulas from local registry to cwd/ai directory. Supports versioning with formula@version syntax.')
+    .description('Install formulas from local registry to codebase at cwd. Supports versioning with formula@version syntax.')
     .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified). Supports formula@version syntax.')
     .argument('[target-dir]', 'target directory relative to cwd/ai (defaults to formula name)', '.')
     .option('--dry-run', 'preview changes without applying them')
