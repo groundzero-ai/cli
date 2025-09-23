@@ -269,6 +269,25 @@ export async function promptAllVersionsDelete(
 }
 
 /**
+ * Prompt for confirmation when deleting prerelease versions of a base version
+ */
+export async function promptPrereleaseVersionsDelete(
+  formulaName: string,
+  baseVersion: string,
+  prereleaseVersions: string[]
+): Promise<boolean> {
+  const versionText = prereleaseVersions.length === 1 ? 'version' : 'versions';
+  const versionsList = prereleaseVersions.join(', ');
+  
+  return await promptConfirmation(
+    `Are you sure you want to delete ${prereleaseVersions.length} prerelease ${versionText} of '${formulaName}@${baseVersion}'?\n` +
+    `Versions to delete: ${versionsList}\n` +
+    `This action cannot be undone.`,
+    false
+  );
+}
+
+/**
  * Prompt user for formula installation conflict resolution
  */
 export async function promptFormulaInstallConflict(
