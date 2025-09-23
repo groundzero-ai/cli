@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { CommandResult } from '../types/index.js';
-import { ensureRegistryDirectories, getFormulaPath } from '../core/directory.js';
+import { ensureRegistryDirectories, getFormulaPath, getLatestFormulaVersion, getFormulaVersionPath } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { exists, readTextFile, walkFiles } from '../utils/fs.js';
@@ -18,14 +18,16 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Check if formula exists
-  const formulaPath = getFormulaPath(formulaName);
-  const formulaYmlPath = join(formulaPath, 'formula.yml');
+  // Check if formula exists and get the latest version
+  const latestVersion = await getLatestFormulaVersion(formulaName);
   
-  if (!(await exists(formulaYmlPath))) {
+  if (!latestVersion) {
     console.log(`❌ Formula '${formulaName}' not found`);
     return { success: false, error: 'Formula not found' };
   }
+  
+  const formulaVersionPath = getFormulaVersionPath(formulaName, latestVersion);
+  const formulaYmlPath = join(formulaVersionPath, 'formula.yml');
   
   try {
     // Load metadata from formula.yml
@@ -38,8 +40,8 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
       isTemplate: boolean;
     }> = [];
     
-    for await (const fullPath of walkFiles(formulaPath)) {
-      const relativePath = fullPath.replace(formulaPath + '/', '');
+    for await (const fullPath of walkFiles(formulaVersionPath)) {
+      const relativePath = fullPath.replace(formulaVersionPath + '/', '');
       const content = await readTextFile(fullPath);
       const isTemplate = detectTemplateFile(content);
       
@@ -95,24 +97,10 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
     console.log(`📁 Files (${files.length}):`);
     console.log('');
     
-    const templateFiles = files.filter(f => f.isTemplate);
-    const regularFiles = files.filter(f => !f.isTemplate);
-    
-    if (templateFiles.length > 0) {
-      console.log('  📋 Template files:');
-      for (const file of templateFiles) {
-        console.log(`    • ${file.path}`);
-      }
-      console.log('');
+    for (const file of files) {
+      console.log(`  • ${file.path}`);
     }
-    
-    if (regularFiles.length > 0) {
-      console.log('  📄 Regular files:');
-      for (const file of regularFiles) {
-        console.log(`    • ${file.path}`);
-      }
-      console.log('');
-    }
+    console.log('');
     
     return {
       success: true,
