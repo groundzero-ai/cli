@@ -1,24 +1,14 @@
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { AuthOptions } from '../types/index.js';
 import { profileManager } from './profiles.js';
 import { logger } from '../utils/logger.js';
 import { ConfigError } from '../utils/errors.js';
+import { getVersion } from '../utils/package.js';
 
 /**
  * Authentication management for G0 CLI
  * Handles credential resolution and validation
  */
 
-// Get current file directory in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Read package.json to get version
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, '../../package.json'), 'utf8')
-);
 
 class AuthManager {
   /**
@@ -129,7 +119,7 @@ class AuthManager {
     return {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'User-Agent': `g0-cli/${packageJson.version}`
+      'User-Agent': `g0-cli/${getVersion()}`
     };
   }
 

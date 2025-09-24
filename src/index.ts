@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { logger } from './utils/logger.js';
 import { ensureG0Directories } from './core/directory.js';
+import { getVersion } from './utils/package.js';
 
 // Import command setup functions
 import { setupInitCommand } from './commands/init.js';
@@ -28,15 +26,6 @@ import { setupConfigureCommand } from './commands/configure.js';
  * Built with TypeScript, Commander.js, and following CLI best practices.
  */
 
-// Get current file directory in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Read package.json to get version
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, '../package.json'), 'utf8')
-);
-
 // Create the main program
 const program = new Command();
 
@@ -44,7 +33,7 @@ const program = new Command();
 program
   .name('g0')
   .description('G0 Formula Manager - Create, manage, and share code templates')
-  .version(packageJson.version);
+  .version(getVersion());
 
 // === FORMULA LIFECYCLE COMMANDS ===
 setupInitCommand(program);
