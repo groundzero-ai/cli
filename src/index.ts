@@ -19,6 +19,7 @@ import { setupStatusCommand } from './commands/status.js';
 import { setupPushCommand } from './commands/push.js';
 import { setupPullCommand } from './commands/pull.js';
 import { setupSearchCommand } from './commands/search.js';
+import { setupConfigureCommand } from './commands/configure.js';
 
 /**
  * G0 Formula Manager CLI - Main entry point
@@ -61,6 +62,9 @@ setupStatusCommand(program);
 setupPushCommand(program);
 setupPullCommand(program);
 setupSearchCommand(program);
+
+// === CONFIGURATION ===
+setupConfigureCommand(program);
 
 // === GLOBAL ERROR HANDLING ===
 

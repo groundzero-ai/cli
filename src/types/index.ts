@@ -11,10 +11,28 @@ export interface G0Directories {
 }
 
 export interface G0Config {
-  registryUrl?: string;
   defaultAuthor?: string;
   defaultLicense?: string;
-  cacheTimeout?: number;
+  profiles?: Record<string, ProfileConfig>;
+}
+
+export interface ProfileConfig {
+  description?: string;
+}
+
+export interface ProfileCredentials {
+  api_key: string;
+}
+
+export interface Profile {
+  name: string;
+  config: ProfileConfig;
+  credentials?: ProfileCredentials;
+}
+
+export interface AuthOptions {
+  profile?: string;
+  apiKey?: string;
 }
 
 // Formula types
@@ -104,12 +122,14 @@ export interface UninstallOptions {
 
 export interface PushOptions {
   version?: string;
-  registry?: string;
+  profile?: string;
+  apiKey?: string;
 }
 
 export interface PullOptions {
   version?: string;
-  registry?: string;
+  profile?: string;
+  apiKey?: string;
 }
 
 export interface SearchOptions {

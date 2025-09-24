@@ -13,10 +13,8 @@ const CONFIG_FILE_NAME = 'config.json';
 
 // Default configuration values
 const DEFAULT_CONFIG: G0Config = {
-  registryUrl: 'https://registry.g0formulas.com',
   defaultAuthor: undefined,
-  defaultLicense: 'MIT',
-  cacheTimeout: 3600000 // 1 hour in milliseconds
+  defaultLicense: 'MIT'
 };
 
 class ConfigManager {
@@ -114,14 +112,9 @@ class ConfigManager {
     try {
       const config = await this.load();
       
-      // Validate registry URL format if provided
-      if (config.registryUrl && !this.isValidUrl(config.registryUrl)) {
-        throw new ConfigError(`Invalid registry URL: ${config.registryUrl}`);
-      }
-
-      // Validate cache timeout
-      if (config.cacheTimeout !== undefined && (config.cacheTimeout < 0 || !Number.isInteger(config.cacheTimeout))) {
-        throw new ConfigError(`Invalid cache timeout: ${config.cacheTimeout}`);
+      // Basic validation - config structure is valid
+      if (typeof config !== 'object' || config === null) {
+        throw new ConfigError('Invalid configuration structure');
       }
 
       return true;
@@ -145,14 +138,6 @@ class ConfigManager {
     return this.g0Dirs;
   }
 
-  private isValidUrl(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  }
 }
 
 // Create and export a singleton instance
