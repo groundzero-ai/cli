@@ -1,11 +1,10 @@
 import { Command } from 'commander';
 import { CommandResult } from '../types/index.js';
 import { profileManager } from '../core/profiles.js';
-import { authManager } from '../core/auth.js';
 import { ensureG0Directories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
-import prompts from 'prompts';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
+import { safePrompts } from '../utils/prompts.js';
 
 /**
  * Configure command implementation for profile management
@@ -28,7 +27,7 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     await ensureG0Directories();
 
     // Prompt for API key
-    const response = await prompts([
+    const response = await safePrompts([
       {
         type: 'password',
         name: 'apiKey',
@@ -44,8 +43,7 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     ]);
 
     if (!response.apiKey) {
-      console.log('❌ Profile setup cancelled');
-      return { success: false, error: 'Profile setup cancelled' };
+      throw new UserCancellationError('Profile setup cancelled');
     }
 
     // Set profile configuration
@@ -80,6 +78,9 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
       }
     };
   } catch (error) {
+    if (error instanceof UserCancellationError) {
+      throw error; // Re-throw to be handled by withErrorHandling
+    }
     logger.error(`Failed to setup profile: ${profileName}`, { error });
     return { success: false, error: `Failed to setup profile: ${error}` };
   }
@@ -142,7 +143,7 @@ async function deleteProfile(profileName: string): Promise<CommandResult> {
     }
 
     // Confirm deletion
-    const response = await prompts({
+    const response = await safePrompts({
       type: 'confirm',
       name: 'confirm',
       message: `Are you sure you want to delete profile '${profileName}'?`,
@@ -150,8 +151,7 @@ async function deleteProfile(profileName: string): Promise<CommandResult> {
     });
 
     if (!response.confirm) {
-      console.log('Profile deletion cancelled');
-      return { success: true, data: { message: 'Deletion cancelled' } };
+      throw new UserCancellationError('Profile deletion cancelled');
     }
 
     await profileManager.deleteProfile(profileName);
@@ -165,56 +165,14 @@ async function deleteProfile(profileName: string): Promise<CommandResult> {
       }
     };
   } catch (error) {
+    if (error instanceof UserCancellationError) {
+      throw error; // Re-throw to be handled by withErrorHandling
+    }
     logger.error(`Failed to delete profile: ${profileName}`, { error });
     return { success: false, error: `Failed to delete profile: ${error}` };
   }
 }
 
-/**
- * Show authentication status
- */
-async function showAuthStatus(): Promise<CommandResult> {
-  try {
-    const authInfo = await authManager.getAuthInfo();
-    const registryUrl = authManager.getRegistryUrl();
-
-    console.log('Authentication Status:');
-    console.log('');
-    console.log(`  Profile: ${authInfo.profile}`);
-    console.log(`  API Key: ${authInfo.hasApiKey ? '✅ Found' : '❌ Missing'}`);
-    console.log(`  Registry URL: ${authInfo.hasRegistryUrl ? '✅ Found' : '❌ Missing'}`);
-    console.log(`  Source: ${authInfo.source}`);
-    
-    if (registryUrl) {
-      console.log(`  Registry: ${registryUrl}`);
-    }
-
-    console.log('');
-
-    if (!authInfo.hasApiKey) {
-      console.log('❌ No API key found. Configure a profile:');
-      console.log('  g0 configure');
-      console.log('  g0 configure --profile <name>');
-    }
-
-    if (!authInfo.hasRegistryUrl) {
-      console.log('❌ G0_REGISTRY_URL environment variable not set');
-      console.log('  export G0_REGISTRY_URL=https://your-registry.com');
-    }
-
-    if (authInfo.hasApiKey && authInfo.hasRegistryUrl) {
-      console.log('✅ Authentication is properly configured');
-    }
-
-    return {
-      success: true,
-      data: authInfo
-    };
-  } catch (error) {
-    logger.error('Failed to show auth status', { error });
-    return { success: false, error: `Failed to show auth status: ${error}` };
-  }
-}
 
 /**
  * Main configure command implementation
@@ -232,9 +190,9 @@ async function configureCommand(options: ConfigureOptions): Promise<CommandResul
     return await deleteProfile(options.profile);
   }
 
-  // Show auth status (default behavior)
+  // Setup default profile (default behavior)
   if (!options.profile) {
-    return await showAuthStatus();
+    return await setupProfile('default');
   }
 
   // Setup profile
@@ -247,7 +205,7 @@ async function configureCommand(options: ConfigureOptions): Promise<CommandResul
 export function setupConfigureCommand(program: Command): void {
   program
     .command('configure')
-    .description('Configure profiles and authentication')
+    .description('Configure default profile and authentication')
     .option('--profile <name>', 'profile name to configure')
     .option('--list', 'list all configured profiles')
     .option('--delete', 'delete the specified profile')

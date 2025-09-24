@@ -8,6 +8,23 @@ import { UserCancellationError } from './errors.js';
  */
 
 /**
+ * Safe wrapper around prompts() that ensures consistent cancellation handling
+ * Use this instead of direct prompts() calls to ensure proper error handling
+ */
+export async function safePrompts(
+  questions: prompts.PromptObject | prompts.PromptObject[],
+  options?: prompts.Options
+): Promise<prompts.Answers<string>> {
+  const response = await prompts(questions, options);
+  
+  if (isCancelled(response)) {
+    throw new UserCancellationError('Operation cancelled by user');
+  }
+  
+  return response;
+}
+
+/**
  * Prompt for simple confirmation
  */
 export async function promptConfirmation(message: string, initial: boolean = false): Promise<boolean> {

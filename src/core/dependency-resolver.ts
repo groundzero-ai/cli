@@ -1,19 +1,14 @@
-import { join } from 'path';
 import * as yaml from 'js-yaml';
 import * as semver from 'semver';
-import prompts from 'prompts';
-import { FormulaYml, FormulaDependency, Formula } from '../types/index.js';
+import { safePrompts } from '../utils/prompts.js';
+import { FormulaYml, Formula } from '../types/index.js';
 import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
-import { FormulaNotFoundError, FormulaVersionNotFoundError, UserCancellationError } from '../utils/errors.js';
+import { FormulaNotFoundError, FormulaVersionNotFoundError } from '../utils/errors.js';
 import { 
-  parseVersionRange, 
   resolveVersionRange, 
   isExactVersion, 
-  isWildcardVersion,
-  createCaretRange,
-  describeVersionRange
 } from '../utils/version-ranges.js';
 import { listFormulaVersions } from './directory.js';
 
@@ -45,17 +40,12 @@ export interface DependencyNode {
  * Prompt user for overwrite confirmation
  */
 export async function promptOverwrite(formulaName: string, existingVersion: string, newVersion: string): Promise<boolean> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'confirm',
     name: 'shouldOverwrite',
     message: `Formula '${formulaName}' conflict: existing v${existingVersion} vs required v${newVersion}. Overwrite with v${newVersion}?`,
     initial: true
   });
-  
-  // Check for cancellation
-  if (response.shouldOverwrite === undefined) {
-    throw new UserCancellationError();
-  }
   
   return response.shouldOverwrite || false;
 }
