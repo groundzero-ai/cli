@@ -10,53 +10,20 @@ import { logger } from '../utils/logger.js';
  */
 
 /**
- * Get G0 directories following platform-specific conventions
- * - Windows: Uses APPDATA/LOCALAPPDATA
- * - macOS: Uses Library directories
- * - Linux/Unix: Uses XDG Base Directory Specification
+ * Get G0 directories using unified dotfile convention
+ * Uses ~/.g0 on all platforms for consistency (like AWS CLI with ~/.aws)
+ * This approach prioritizes simplicity and cross-platform consistency
  */
 export function getG0Directories(): G0Directories {
-  const platform = process.platform;
   const homeDir = os.homedir();
+  const g0Dir = path.join(homeDir, '.g0');
   
-  switch (platform) {
-    case 'win32':
-      // Windows doesn't follow XDG, use Windows conventions
-      return {
-        config: path.join(process.env.APPDATA || homeDir, 'g0'),
-        data: path.join(process.env.LOCALAPPDATA || homeDir, 'g0'),
-        cache: path.join(process.env.LOCALAPPDATA || homeDir, 'g0', 'cache'),
-        runtime: path.join(process.env.TEMP || os.tmpdir(), 'g0')
-      };
-    case 'darwin':
-      // macOS doesn't follow XDG, use macOS conventions
-      return {
-        config: path.join(homeDir, 'Library', 'Preferences', 'g0'),
-        data: path.join(homeDir, 'Library', 'Application Support', 'g0'),
-        cache: path.join(homeDir, 'Library', 'Caches', 'g0'),
-        runtime: path.join(os.tmpdir(), 'g0')
-      };
-    default:
-      // Linux and Unix-like systems - FULL XDG compliance
-      return {
-        config: path.join(
-          process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config'), 
-          'g0'
-        ),
-        data: path.join(
-          process.env.XDG_DATA_HOME || path.join(homeDir, '.local', 'share'), 
-          'g0'
-        ),
-        cache: path.join(
-          process.env.XDG_CACHE_HOME || path.join(homeDir, '.cache'), 
-          'g0'
-        ),
-        runtime: path.join(
-          process.env.XDG_RUNTIME_DIR || path.join(os.tmpdir(), `g0-${process.getuid?.() || process.pid}`),
-          'g0'
-        )
-      };
-  }
+  return {
+    config: g0Dir,
+    data: g0Dir,  // Same directory - follows dotfile convention
+    cache: path.join(g0Dir, 'cache'),
+    runtime: path.join(os.tmpdir(), 'g0')
+  };
 }
 
 /**
