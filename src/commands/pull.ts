@@ -1,13 +1,16 @@
 import { Command } from 'commander';
 import { PullOptions, CommandResult } from '../types/index.js';
+import { PullFormulaResponse } from '../types/api.js';
+import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { createHttpClient } from '../utils/http-client.js';
+import { extractFormulaFromTarball, verifyTarballIntegrity } from '../utils/tarball.js';
 
 /**
  * Pull formula command implementation
- * Note: This is a placeholder implementation for pulling from remote registries
  */
 async function pullFormulaCommand(
   formulaName: string,
@@ -15,71 +18,179 @@ async function pullFormulaCommand(
 ): Promise<CommandResult> {
   logger.info(`Pulling formula '${formulaName}' from remote registry`, { options });
   
-  // Ensure registry directories exist
-  await ensureRegistryDirectories();
-  
-  // Authenticate and get registry URL
   try {
-    const { apiKey, registryUrl } = await authManager.validateAuth({
+    // Ensure registry directories exist
+    await ensureRegistryDirectories();
+    
+    // Authenticate and create HTTP client
+    const httpClient = await createHttpClient({
       profile: options.profile,
       apiKey: options.apiKey
     });
     
+    const registryUrl = authManager.getRegistryUrl();
+    const profile = authManager.getCurrentProfile({ profile: options.profile });
+    const versionToPull = options.version || 'latest';
+    
     console.log(`📥 Pulling formula '${formulaName}' from remote registry...`);
-    if (options.version) {
-      console.log(`📦 Version: ${options.version}`);
-    } else {
-      console.log(`📦 Version: latest`);
-    }
+    console.log(`📦 Version: ${versionToPull}`);
     console.log(`🌐 Registry: ${registryUrl}`);
-    console.log(`🔑 Profile: ${authManager.getCurrentProfile({ profile: options.profile })}`);
+    console.log(`🔑 Profile: ${profile}`);
     console.log('');
     
-    // In a full implementation, this would:
-    // 1. Query the remote registry for the formula using authenticated API
-    // 2. Check for version compatibility and conflicts
-    // 3. Download the formula package
-    // 4. Verify package integrity and signatures
-    // 5. Install the formula to local registry
-    // 6. Update dependency information
+    // Check if formula already exists locally
+    const localExists = await formulaManager.formulaExists(formulaName);
+    if (localExists && !options.version) {
+      // For specific version requests, we'll allow overwrites
+      // For 'latest', we should warn the user
+      console.log(`⚠️  Formula '${formulaName}' already exists locally`);
+      console.log('Pulling will overwrite the local version.');
+      console.log('');
+    }
     
-    console.log('⚠️  Remote registry functionality is not yet implemented.');
-    console.log('');
-    console.log('In a future version, this command will:');
-    console.log('• Connect to remote formula registries using your API key');
-    console.log('• Download formulas shared by other users');
-    console.log('• Verify formula integrity and security');
-    console.log('• Handle version dependencies');
-    console.log('• Install formulas to your local registry');
-    console.log('');
+    // Step 1: Query the registry for the formula
+    console.log('🔍 Querying registry for formula...');
+    const endpoint = `/formulas/pull/${encodeURIComponent(formulaName)}/${encodeURIComponent(versionToPull)}`;
+    const response = await httpClient.get<PullFormulaResponse>(endpoint);
     
-    console.log('Once implemented, you will be able to:');
-    console.log(`  g0 pull ${formulaName}                    # Pull latest version`);
-    console.log(`  g0 pull ${formulaName} --version 1.2.3   # Pull specific version`);
-    console.log(`  g0 pull ${formulaName} --profile <name>  # Pull using specific profile`);
-    console.log('');
+    console.log('✓ Formula found in registry');
+    console.log(`  • Name: ${response.formula.name}`);
+    console.log(`  • Version: ${response.version.version}`);
+    console.log(`  • Description: ${response.formula.description || '(no description)'}`);
+    console.log(`  • Size: ${(response.version.tarballSize / (1024 * 1024)).toFixed(2)}MB`);
+    console.log(`  • Tags: ${response.formula.tags.join(', ') || 'none'}`);
+    console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
+    console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
     
-    console.log('For now, you can only use formulas that you create locally with "g0 init" and "g0 save".');
-    console.log(`API Key: ${apiKey.substring(0, 8)}... (configured)`);
+    // Step 2: Download the tarball
+    console.log('📥 Downloading formula tarball...');
+    const tarballBuffer = Buffer.from(await httpClient.downloadFile(response.downloadUrl));
+    
+    // Step 3: Verify tarball integrity
+    console.log('🔐 Verifying tarball integrity...');
+    const isValid = verifyTarballIntegrity(
+      tarballBuffer,
+      response.version.tarballSize
+    );
+    
+    if (!isValid) {
+      throw new Error('Tarball integrity verification failed');
+    }
+    
+    console.log('✓ Tarball verified successfully');
+    
+    // Step 4: Extract formula from tarball
+    console.log('📂 Extracting formula files...');
+    const extracted = await extractFormulaFromTarball(tarballBuffer);
+    
+    // Step 5: Save to local registry
+    console.log('💾 Installing to local registry...');
+    
+    // Create formula object for local storage
+    const formula = {
+      metadata: {
+        name: response.formula.name,
+        version: response.version.version,
+        description: response.formula.description,
+        created: response.version.createdAt,
+        updated: response.version.updatedAt,
+        files: extracted.files.map(f => f.path)
+      },
+      files: extracted.files
+    };
+    
+    await formulaManager.saveFormula(formula);
+    
+    // Step 6: Success!
+    console.log('✅ Formula pulled and installed successfully!');
+    console.log('');
+    console.log('📊 Installation Summary:');
+    console.log(`  • Name: ${response.formula.name}`);
+    console.log(`  • Version: ${response.version.version}`);
+    console.log(`  • Files: ${extracted.files.length}`);
+    console.log(`  • Size: ${(response.version.tarballSize / (1024 * 1024)).toFixed(2)}MB`);
+    console.log(`  • Checksum: ${extracted.checksum.substring(0, 16)}...`);
+    console.log('');
+    console.log('🎯 Next steps:');
+    console.log(`  g0 show ${response.formula.name}         # View formula details`);
+    console.log(`  g0 install ${response.formula.name}     # Install formula to current project`);
     
     return {
       success: true,
       data: {
-        formulaName,
-        version: options.version || 'latest',
+        formulaName: response.formula.name,
+        version: response.version.version,
+        formulaId: response.formula._id,
+        versionId: response.version._id,
+        files: extracted.files.length,
+        size: response.version.tarballSize,
+        checksum: extracted.checksum,
         registry: registryUrl,
-        profile: authManager.getCurrentProfile({ profile: options.profile }),
-        message: 'Pull not implemented - placeholder command executed'
+        profile,
+        isPrivate: response.formula.isPrivate,
+        downloadUrl: response.downloadUrl,
+        message: 'Formula pulled and installed successfully'
       }
     };
+    
   } catch (error) {
-    console.error(`❌ Authentication failed: ${error}`);
-    console.log('');
-    console.log('💡 To configure authentication:');
-    console.log('  g0 configure');
-    console.log('  g0 configure --profile <name>');
-    console.log('  export G0_REGISTRY_URL=https://your-registry.com');
-    return { success: false, error: `Authentication failed: ${error}` };
+    logger.error('Pull command failed', { error, formulaName });
+    
+    // Handle specific error cases
+    if (error instanceof Error) {
+      const apiError = (error as any).apiError;
+      
+      if (apiError?.statusCode === 404) {
+        console.error(`❌ Formula '${formulaName}' not found in registry`);
+        if (options.version) {
+          console.log(`Version '${options.version}' does not exist.`);
+        } else {
+          console.log('Formula does not exist in the registry.');
+        }
+        console.log('');
+        console.log('💡 Try one of these options:');
+        console.log('  • Check the formula name spelling');
+        console.log('  • Use g0 search to find available formulas');
+        console.log('  • Verify you have access to this formula if it\'s private');
+        return { success: false, error: 'Formula not found' };
+      }
+      
+      if (apiError?.statusCode === 401 || apiError?.statusCode === 403) {
+        console.error(`❌ Access denied: ${error.message}`);
+        console.log('');
+        if (apiError?.statusCode === 403) {
+          console.log('💡 This may be a private formula. Ensure you have VIEWER permissions.');
+        }
+        console.log('💡 To configure authentication:');
+        console.log('  g0 configure');
+        console.log('  g0 configure --profile <name>');
+        console.log('  export G0_REGISTRY_URL=https://your-registry.com');
+        return { success: false, error: 'Access denied' };
+      }
+      
+      if (error.message.includes('Download') || error.message.includes('timeout')) {
+        console.error(`❌ Download failed: ${error.message}`);
+        console.log('');
+        console.log('💡 Try one of these options:');
+        console.log('  • Check your internet connection');
+        console.log('  • Try again (temporary network issue)');
+        console.log('  • Set G0_API_TIMEOUT environment variable for longer timeout');
+        return { success: false, error: 'Download failed' };
+      }
+      
+      if (error.message.includes('integrity') || error.message.includes('checksum')) {
+        console.error(`❌ Formula integrity verification failed: ${error.message}`);
+        console.log('');
+        console.log('💡 The downloaded formula may be corrupted. Try pulling again.');
+        return { success: false, error: 'Integrity verification failed' };
+      }
+      
+      // Generic error handling
+      console.error(`❌ Pull failed: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+    
+    return { success: false, error: 'Unknown error occurred' };
   }
 }
 
@@ -89,7 +200,7 @@ async function pullFormulaCommand(
 export function setupPullCommand(program: Command): void {
   program
     .command('pull')
-    .description('Pull a formula from remote registry (not yet implemented)')
+    .description('Pull a formula from remote registry')
     .argument('<formula-name>', 'name of the formula to pull')
     .option('--version <version>', 'specific version to pull')
     .option('--profile <profile>', 'profile to use for authentication')

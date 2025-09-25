@@ -1,14 +1,16 @@
 import { Command } from 'commander';
 import { PushOptions, CommandResult } from '../types/index.js';
+import { PushFormulaResponse } from '../types/api.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { createHttpClient } from '../utils/http-client.js';
+import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
 
 /**
  * Push formula command implementation
- * Note: This is a placeholder implementation for pushing to remote registries
  */
 async function pushFormulaCommand(
   formulaName: string,
@@ -16,76 +18,145 @@ async function pushFormulaCommand(
 ): Promise<CommandResult> {
   logger.info(`Pushing formula '${formulaName}' to remote registry`, { options });
   
-  // Ensure registry directories exist
-  await ensureRegistryDirectories();
-  
-  // Verify formula exists locally
-  const exists = await formulaManager.formulaExists(formulaName);
-  if (!exists) {
-    console.error(`❌ Formula '${formulaName}' not found in local registry`);
-    return { success: false, error: 'Formula not found' };
-  }
-  
-  // Load formula to get metadata
-  const formula = await formulaManager.loadFormula(formulaName);
-  const versionToPush = options.version || formula.metadata.version;
-  
-  // Authenticate and get registry URL
   try {
-    const { apiKey, registryUrl } = await authManager.validateAuth({
+    // Ensure registry directories exist
+    await ensureRegistryDirectories();
+    
+    // Verify formula exists locally
+    const exists = await formulaManager.formulaExists(formulaName);
+    if (!exists) {
+      console.error(`❌ Formula '${formulaName}' not found in local registry`);
+      return { success: false, error: 'Formula not found' };
+    }
+    
+    // Load formula and determine version
+    const formula = await formulaManager.loadFormula(formulaName, options.version);
+    const versionToPush = options.version || formula.metadata.version;
+    
+    // Authenticate and create HTTP client
+    const httpClient = await createHttpClient({
       profile: options.profile,
       apiKey: options.apiKey
     });
     
+    const registryUrl = authManager.getRegistryUrl();
+    const profile = authManager.getCurrentProfile({ profile: options.profile });
+    
     console.log(`📤 Pushing formula '${formulaName}' to remote registry...`);
     console.log(`📦 Version: ${versionToPush}`);
     console.log(`🌐 Registry: ${registryUrl}`);
-    console.log(`🔑 Profile: ${authManager.getCurrentProfile({ profile: options.profile })}`);
+    console.log(`🔑 Profile: ${profile}`);
     console.log('');
     
-    // In a full implementation, this would:
-    // 1. Validate formula completeness and integrity
-    // 2. Package the formula for transmission
-    // 3. Use the authenticated API key for upload
-    // 4. Upload the formula package to registryUrl
-    // 5. Handle versioning and conflicts
-    // 6. Update local registry with remote information
+    // Step 1: Validate formula completeness
+    console.log('✓ Formula validation complete');
+    console.log(`  • Name: ${formula.metadata.name}`);
+    console.log(`  • Version: ${versionToPush}`);
+    console.log(`  • Description: ${formula.metadata.description || '(no description)'}`);
+    console.log(`  • Files: ${formula.files.length}`);
     
-    console.log('⚠️  Remote registry functionality is not yet implemented.');
-    console.log('');
-    console.log('In a future version, this command will:');
-    console.log('• Package your formula for distribution');
-    console.log('• Authenticate with the remote registry using your API key');
-    console.log('• Upload the formula to the registry');
-    console.log('• Handle version conflicts and updates');
-    console.log('• Make your formula available to other users');
-    console.log('');
+    // Step 2: Create tarball
+    console.log('📦 Creating tarball...');
+    const tarballInfo = await createTarballFromFormula(formula);
+    const sizeInMB = (tarballInfo.size / (1024 * 1024)).toFixed(2);
+    console.log(`✓ Created tarball (${formula.files.length} files, ${sizeInMB}MB)`);
     
-    console.log('Formula details that would be pushed:');
-    console.log(`  Name: ${formula.metadata.name}`);
-    console.log(`  Version: ${versionToPush}`);
-    console.log(`  Description: ${formula.metadata.description || '(no description)'}`);
-    console.log(`  Files: ${formula.files.length}`);
-    console.log(`  API Key: ${apiKey.substring(0, 8)}... (configured)`);
+    // Step 3: Prepare upload data
+    const formData = createFormDataForUpload(formulaName, versionToPush, tarballInfo);
+    
+    // Step 4: Upload to registry
+    console.log('🚀 Uploading to registry...');
+    const response = await httpClient.uploadFormData<PushFormulaResponse>(
+      '/formulas/push',
+      formData
+    );
+    
+    // Step 5: Success!
+    console.log('✅ Formula pushed successfully!');
+    console.log('');
+    console.log('📊 Formula Details:');
+    console.log(`  • Name: ${response.formula.name}`);
+    console.log(`  • Version: ${response.version.version}`);
+    console.log(`  • Size: ${sizeInMB}MB`);
+    console.log(`  • Formula ID: ${response.formula._id}`);
+    console.log(`  • Version ID: ${response.version._id}`);
+    console.log(`  • Tags: ${response.formula.tags.join(', ') || 'none'}`);
+    console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
+    console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
     
     return {
       success: true,
       data: {
-        formulaName,
-        version: versionToPush,
+        formulaName: response.formula.name,
+        version: response.version.version,
+        formulaId: response.formula._id,
+        versionId: response.version._id,
+        size: tarballInfo.size,
+        checksum: tarballInfo.checksum,
         registry: registryUrl,
-        profile: authManager.getCurrentProfile({ profile: options.profile }),
-        message: 'Push not implemented - placeholder command executed'
+        profile,
+        message: response.message
       }
     };
+    
   } catch (error) {
-    console.error(`❌ Authentication failed: ${error}`);
-    console.log('');
-    console.log('💡 To configure authentication:');
-    console.log('  g0 configure');
-    console.log('  g0 configure --profile <name>');
-    console.log('  export G0_REGISTRY_URL=https://your-registry.com');
-    return { success: false, error: `Authentication failed: ${error}` };
+    logger.error('Push command failed', { error, formulaName });
+    
+    // Handle specific error cases
+    if (error instanceof Error) {
+      const apiError = (error as any).apiError;
+      
+      if (apiError?.statusCode === 409) {
+        console.error(`❌ Version ${options.version || 'latest'} already exists for formula '${formulaName}'`);
+        console.log('');
+        console.log('💡 Try one of these options:');
+        console.log('  • Increment the version in your formula.yml');
+        console.log('  • Use --version to specify a new version');
+        console.log('  • Contact the registry administrator if you need to replace this version');
+        return { success: false, error: 'Version already exists' };
+      }
+      
+      if (apiError?.statusCode === 401 || apiError?.statusCode === 403) {
+        console.error(`❌ Authentication failed: ${error.message}`);
+        console.log('');
+        console.log('💡 To configure authentication:');
+        console.log('  g0 configure');
+        console.log('  g0 configure --profile <name>');
+        console.log('  export G0_REGISTRY_URL=https://your-registry.com');
+        return { success: false, error: 'Authentication failed' };
+      }
+      
+      if (apiError?.statusCode === 422) {
+        console.error(`❌ Formula validation failed: ${error.message}`);
+        if (apiError.details) {
+          console.log('');
+          console.log('Validation errors:');
+          if (Array.isArray(apiError.details)) {
+            apiError.details.forEach((detail: any) => {
+              console.log(`  • ${detail.message || detail}`);
+            });
+          } else {
+            console.log(`  • ${apiError.details}`);
+          }
+        }
+        return { success: false, error: 'Validation failed' };
+      }
+      
+      // Generic error handling
+      console.error(`❌ Push failed: ${error.message}`);
+      
+      if (error.message.includes('timeout')) {
+        console.log('');
+        console.log('💡 The upload may have timed out. You can:');
+        console.log('  • Try again (the upload may have succeeded)');
+        console.log('  • Check your internet connection');
+        console.log('  • Set G0_API_TIMEOUT environment variable for longer timeout');
+      }
+      
+      return { success: false, error: error.message };
+    }
+    
+    return { success: false, error: 'Unknown error occurred' };
   }
 }
 
@@ -95,7 +166,7 @@ async function pushFormulaCommand(
 export function setupPushCommand(program: Command): void {
   program
     .command('push')
-    .description('Push a formula to remote registry (not yet implemented)')
+    .description('Push a formula to remote registry')
     .argument('<formula-name>', 'name of the formula to push')
     .option('--version <version>', 'specific version to push')
     .option('--profile <profile>', 'profile to use for authentication')

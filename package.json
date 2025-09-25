@@ -30,11 +30,13 @@
     "@types/js-yaml": "^4.0.9",
     "@types/prompts": "^2.4.9",
     "@types/semver": "^7.7.1",
+    "@types/tar": "^6.1.0",
     "commander": "^14.0.0",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "prompts": "^2.4.2",
-    "semver": "^7.7.2"
+    "semver": "^7.7.2",
+    "tar": "^6.2.0"
   },
   "devDependencies": {
     "@types/commander": "^2.12.0",
