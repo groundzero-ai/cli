@@ -10,19 +10,19 @@ import { logger } from '../utils/logger.js';
  */
 
 /**
- * Get G0 directories using unified dotfile convention
- * Uses ~/.g0 on all platforms for consistency (like AWS CLI with ~/.aws)
+ * Get GroundZero directories using unified dotfile convention
+ * Uses ~/.groundzero on all platforms for consistency (like AWS CLI with ~/.aws)
  * This approach prioritizes simplicity and cross-platform consistency
  */
 export function getG0Directories(): G0Directories {
   const homeDir = os.homedir();
-  const g0Dir = path.join(homeDir, '.g0');
+  const g0Dir = path.join(homeDir, '.groundzero');
   
   return {
     config: g0Dir,
     data: g0Dir,  // Same directory - follows dotfile convention
     cache: path.join(g0Dir, 'cache'),
-    runtime: path.join(os.tmpdir(), 'g0')
+    runtime: path.join(os.tmpdir(), 'groundzero')
   };
 }
 

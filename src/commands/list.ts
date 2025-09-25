@@ -54,7 +54,7 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
       if (options.formulaName) {
         title = `Formula '${options.formulaName}' (all versions):`;
       } else {
-        title = options.all ? 'Local formulas (all versions):' : 'Local formulas (latest versions only):';
+        title = options.all ? 'Local formulas (all versions):' : 'Local formulas (latest versions):';
       }
       
       displayFormulaTable(tableEntries, title, showAllVersions);
