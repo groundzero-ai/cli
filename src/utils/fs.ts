@@ -214,3 +214,26 @@ export async function writeJsonFile(path: string, data: any, indent: number = 2)
     throw new FileSystemError(`Failed to write JSON file: ${path}`, { path, error });
   }
 }
+
+/**
+ * Get the total size of a directory recursively
+ */
+export async function getDirectorySize(dirPath: string): Promise<number> {
+  try {
+    let totalSize = 0;
+    
+    for await (const filePath of walkFiles(dirPath)) {
+      try {
+        const stats = await getStats(filePath);
+        totalSize += stats.size;
+      } catch (error) {
+        // Skip files that can't be accessed
+        logger.debug(`Failed to get size for file: ${filePath}`, { error });
+      }
+    }
+    
+    return totalSize;
+  } catch (error) {
+    throw new FileSystemError(`Failed to calculate directory size: ${dirPath}`, { dirPath, error });
+  }
+}

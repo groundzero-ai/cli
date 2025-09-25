@@ -10,6 +10,7 @@ import { setupInitCommand } from './commands/init.js';
 import { setupSaveCommand } from './commands/save.js';
 import { setupListCommand } from './commands/list.js';
 import { setupDeleteCommand } from './commands/delete.js';
+import { setupPruneCommand } from './commands/prune.js';
 import { setupShowCommand } from './commands/show.js';
 import { setupInstallCommand } from './commands/install.js';
 import { setupUninstallCommand } from './commands/uninstall.js';
@@ -40,6 +41,7 @@ setupInitCommand(program);
 setupSaveCommand(program);
 setupListCommand(program);
 setupDeleteCommand(program);
+setupPruneCommand(program);
 setupShowCommand(program);
 
 // === FORMULA APPLICATION COMMANDS ===

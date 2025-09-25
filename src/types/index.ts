@@ -107,6 +107,31 @@ export interface DeleteOptions {
   interactive?: boolean;   // Interactive version selection
 }
 
+export interface PruneOptions {
+  all?: boolean;           // Delete ALL prerelease versions (no preservation)
+  dryRun?: boolean;        // Show what would be deleted
+  force?: boolean;         // Skip all confirmations
+  interactive?: boolean;   // Interactive selection mode
+}
+
+export interface PrereleaseVersion {
+  formulaName: string;
+  version: string;
+  baseVersion: string;
+  timestamp: number;       // Extracted from base62 encoding
+  path: string;
+}
+
+export interface PruneResult {
+  totalFound: number;
+  totalDeleted: number;
+  totalPreserved: number;
+  deletedVersions: PrereleaseVersion[];
+  preservedVersions: PrereleaseVersion[];
+  freedSpace: number;      // In bytes
+  errors: string[];
+}
+
 export interface InstallOptions {
   dryRun?: boolean;
   force?: boolean;
