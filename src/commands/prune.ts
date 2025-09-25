@@ -68,16 +68,28 @@ async function findPrereleaseVersions(formulaFilter?: string): Promise<Prereleas
 
 /**
  * Get the latest base version for a formula (highest semver)
+ * Considers both stable versions and base versions from prereleases
  */
 async function getLatestBaseVersion(formulaName: string): Promise<string | null> {
   const allVersions = await listFormulaVersions(formulaName);
-  const stableVersions = allVersions.filter(v => !isLocalVersion(v));
+  const baseVersions = new Set<string>();
   
-  if (stableVersions.length === 0) {
+  for (const version of allVersions) {
+    if (isLocalVersion(version)) {
+      // Extract base version from prerelease version
+      const baseVersion = extractBaseVersion(version);
+      baseVersions.add(baseVersion);
+    } else {
+      // Add stable version directly
+      baseVersions.add(version);
+    }
+  }
+  
+  if (baseVersions.size === 0) {
     return null;
   }
   
-  return stableVersions.sort(semver.compare).pop()!;
+  return [...baseVersions].sort(semver.compare).pop()!;
 }
 
 /**
@@ -408,8 +420,7 @@ async function pruneCommand(
     
   } catch (error) {
     if (error instanceof UserCancellationError) {
-      console.log('Operation cancelled by user.');
-      return { success: false, error: 'Operation cancelled by user' };
+      throw error; // Re-throw to be handled by withErrorHandling
     }
     
     logger.error('Failed to prune prerelease versions', { error, formulaName, options });

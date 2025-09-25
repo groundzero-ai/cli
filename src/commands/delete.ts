@@ -201,6 +201,9 @@ async function deleteFormulaCommand(
       }
     };
   } catch (error) {
+    if (error instanceof UserCancellationError) {
+      throw error; // Re-throw to be handled by withErrorHandling
+    }
     logger.error(`Failed to delete formula: ${formulaName}`, { error, deletionScope });
     throw error instanceof Error ? error : new Error(`Failed to delete formula: ${error}`);
   }
