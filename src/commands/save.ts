@@ -32,14 +32,36 @@ const COMMAND_DIRECTORIES = [
 ] as const;
 
 /**
- * Parse formula input to extract name and version/range
- * Reused from install command for consistency
+ * Parse formula input to extract name and version/range, or detect directory input
+ * Supports both formula names (formula@version) and directory paths (/path/to/dir)
  */
-function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
+function parseFormulaInput(formulaInput: string): { 
+  name: string; 
+  version?: string; 
+  isDirectory: boolean;
+  directoryPath?: string;
+} {
+  // Check if input is a directory path (starts with /)
+  if (formulaInput.startsWith('/')) {
+    const directoryPath = formulaInput;
+    const name = basename(directoryPath);
+    
+    if (!name) {
+      throw new ValidationError(`Invalid directory path: ${formulaInput}`);
+    }
+    
+    return { 
+      name, 
+      isDirectory: true, 
+      directoryPath 
+    };
+  }
+  
+  // Original formula name parsing logic
   const atIndex = formulaInput.lastIndexOf('@');
   
   if (atIndex === -1) {
-    return { name: formulaInput };
+    return { name: formulaInput, isDirectory: false };
   }
   
   const name = formulaInput.substring(0, atIndex);
@@ -49,7 +71,68 @@ function parseFormulaInput(formulaInput: string): { name: string; version?: stri
     throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version`);
   }
   
-  return { name, version };
+  return { name, version, isDirectory: false };
+}
+
+/**
+ * Create formula.yml automatically in a directory without user prompts
+ * Reuses init command logic but makes it non-interactive
+ */
+async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+  const formulaYmlPath = join(formulaDir, 'formula.yml');
+  
+  // Ensure the target directory exists
+  await ensureDir(formulaDir);
+  
+  // Create default formula config
+  const formulaConfig: FormulaYml = {
+    name: formulaName,
+    version: '0.1.0'
+  };
+  
+  // Create the formula.yml file
+  await writeFormulaYml(formulaYmlPath, formulaConfig);
+  console.log(`✓ Created formula.yml in ${formulaDir}`);
+  console.log(`📦 Name: ${formulaConfig.name}`);
+  console.log(`📦 Version: ${formulaConfig.version}`);
+  
+  return {
+    fullPath: formulaYmlPath,
+    config: formulaConfig
+  };
+}
+
+/**
+ * Handle directory-based formula input
+ * Reuses init command logic for checking existing formula.yml and creating new ones
+ */
+async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+  const cwd = process.cwd();
+  const formulaDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
+  const formulaYmlPath = join(formulaDir, 'formula.yml');
+  
+  logger.debug(`Handling directory input: ${formulaDir}`);
+  
+  // Check if formula.yml already exists (reusing init command logic)
+  if (await exists(formulaYmlPath)) {
+    logger.debug('Found existing formula.yml, parsing...');
+    try {
+      const formulaConfig = await parseFormulaYml(formulaYmlPath);
+      console.log(`✓ Found existing formula.yml`);
+      console.log(`📦 Name: ${formulaConfig.name}`);
+      console.log(`📦 Version: ${formulaConfig.version}`);
+      
+      return {
+        fullPath: formulaYmlPath,
+        config: formulaConfig
+      };
+    } catch (error) {
+      throw new Error(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
+    }
+  } else {
+    logger.debug('No formula.yml found, creating automatically...');
+    return await createFormulaYmlInDirectory(formulaDir, formulaName);
+  }
 }
 
 /**
@@ -143,32 +226,43 @@ async function saveFormulaCommand(
 ): Promise<CommandResult> {
   const cwd = process.cwd();
   
-  // Parse formula input to extract name and optional version
-  const { name: formulaName, version: explicitVersion } = parseFormulaInput(formulaInput);
+  // Parse formula input to detect directory vs formula name input
+  const { name: formulaName, version: explicitVersion, isDirectory, directoryPath } = parseFormulaInput(formulaInput);
   
-  logger.info(`Saving formula with name: ${formulaName}`, { explicitVersion, options });
+  logger.debug(`Saving formula with name: ${formulaName}`, { explicitVersion, isDirectory, directoryPath, options });
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Search for formula.yml files with the specified name
-  const matchingFormulas = await findFormulaYmlByName(formulaName);
+  let formulaInfo: { fullPath: string; config: FormulaYml };
   
-  if (matchingFormulas.length === 0) {
-    throw new FormulaNotFoundError(formulaName);
+  if (isDirectory && directoryPath) {
+    // Handle directory input - find or create formula.yml in specified directory
+    formulaInfo = await handleDirectoryInput(directoryPath, formulaName);
+  } else {
+    // Handle traditional formula name input - search for existing formula.yml files
+    const matchingFormulas = await findFormulaYmlByName(formulaName);
+    
+    if (matchingFormulas.length === 0) {
+      throw new FormulaNotFoundError(formulaName);
+    }
+    
+    if (matchingFormulas.length > 1) {
+      const locations = matchingFormulas.map(f => f.relativePath).join(', ');
+      throw new Error(`Multiple formula.yml files found with name '${formulaName}': ${locations}. Please ensure formula names are unique.`);
+    }
+    
+    formulaInfo = {
+      fullPath: matchingFormulas[0].fullPath,
+      config: matchingFormulas[0].config
+    };
   }
   
-  if (matchingFormulas.length > 1) {
-    const locations = matchingFormulas.map(f => f.relativePath).join(', ');
-    throw new Error(`Multiple formula.yml files found with name '${formulaName}': ${locations}. Please ensure formula names are unique.`);
-  }
-  
-  const formulaInfo = matchingFormulas[0];
   const formulaDir = dirname(formulaInfo.fullPath);
   const formulaYmlPath = formulaInfo.fullPath;
   let formulaConfig = formulaInfo.config;
   
-  logger.info(`Found formula.yml at: ${formulaYmlPath}`);
+  logger.debug(`Found formula.yml at: ${formulaYmlPath}`);
   
   // Determine target version
   const targetVersion = determineTargetVersion(explicitVersion, options, formulaConfig.version);
@@ -488,8 +582,8 @@ function getTargetFilePath(targetDir: string, filePath: string): string {
 export function setupSaveCommand(program: Command): void {
   program
     .command('save')
-    .argument('<formula-input>', 'formula name or formula@version')
-    .description('Save a formula to local registry. Auto-generates local dev versions by default.')
+    .argument('<formula-input>', 'formula name, formula@version, or directory path (/path/to/dir)')
+    .description('Save a formula to local registry. Supports directory paths (e.g., /ai/nestjs) to auto-create or find formula.yml files. Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version')
     .option('-b, --bump <type>', 'bump version (patch|minor|major)')
     .action(withErrorHandling(async (formulaInput: string, options?: SaveOptions) => {
