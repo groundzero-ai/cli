@@ -16,11 +16,22 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
   await ensureRegistryDirectories();
   
   try {
-    // Use registry manager to list formulas
-    const entries = await registryManager.listFormulas(options.filter, options.all);
+    // If formula name is provided, use exact matching; otherwise use filter
+    const filter = options.formulaName || options.filter;
+    // When formula name is specified, show all versions automatically
+    const showAllVersions = options.formulaName ? true : options.all;
+    const entries = await registryManager.listFormulas(filter, showAllVersions);
     
-    if (entries.length === 0) {
-      if (options.filter) {
+    // If a specific formula name was provided, filter for exact matches only
+    let filteredEntries = entries;
+    if (options.formulaName) {
+      filteredEntries = entries.filter(entry => entry.name === options.formulaName);
+    }
+    
+    if (filteredEntries.length === 0) {
+      if (options.formulaName) {
+        console.log(`Formula not found: ${options.formulaName}`);
+      } else if (options.filter) {
         console.log(`No formulas found matching filter: ${options.filter}`);
       } else {
         console.log('No formulas found. Use "g0 init" to create your first formula.');
@@ -30,22 +41,28 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
     
     // Display results
     if (options.format === 'json') {
-      console.log(JSON.stringify(entries, null, 2));
+      console.log(JSON.stringify(filteredEntries, null, 2));
     } else {
       // Table format using shared formatter
-      const tableEntries: FormulaTableEntry[] = entries.map(entry => ({
+      const tableEntries: FormulaTableEntry[] = filteredEntries.map(entry => ({
         name: entry.name,
         version: entry.version,
         description: entry.description
       }));
       
-      const title = options.all ? 'Local formulas (all versions):' : 'Local formulas:';
-      displayFormulaTable(tableEntries, title, options.all);
+      let title: string;
+      if (options.formulaName) {
+        title = `Formula '${options.formulaName}' (all versions):`;
+      } else {
+        title = options.all ? 'Local formulas (all versions):' : 'Local formulas (latest versions only):';
+      }
+      
+      displayFormulaTable(tableEntries, title, showAllVersions);
     }
     
     return {
       success: true,
-      data: entries
+      data: filteredEntries
     };
   } catch (error) {
     logger.error('Failed to list formulas', { error });
@@ -59,13 +76,14 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
  */
 export function setupListCommand(program: Command): void {
   program
-    .command('list')
+    .command('list [formula-name]')
     .alias('ls')
-    .description('List local formulas')
+    .description('List local formulas or show all versions of specific formula if name provided')
     .option('--format <format>', 'output format (table|json)', 'table')
     .option('--filter <pattern>', 'filter formulas by name pattern')
     .option('--all', 'show all versions (default shows only latest)')
-    .action(withErrorHandling(async (options: ListOptions) => {
+    .action(withErrorHandling(async (formulaName: string | undefined, options: ListOptions) => {
+      options.formulaName = formulaName;
       await listFormulasCommand(options);
     }));
 }

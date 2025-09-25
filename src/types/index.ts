@@ -100,6 +100,7 @@ export interface ListOptions {
   format: 'table' | 'json';
   filter?: string;
   all?: boolean;
+  formulaName?: string;
 }
 
 export interface DeleteOptions {
