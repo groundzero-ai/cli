@@ -6,7 +6,8 @@ import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
-import { generateLocalVersion } from '../utils/version-generator.js';
+import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
+import { promptConfirmation } from '../utils/prompts.js';
 import { 
   exists, 
   readTextFile, 
@@ -222,6 +223,7 @@ async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPa
  */
 async function saveFormulaCommand(
   formulaInput: string,
+  versionType?: string,
   options?: SaveOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
@@ -265,7 +267,7 @@ async function saveFormulaCommand(
   logger.debug(`Found formula.yml at: ${formulaYmlPath}`);
   
   // Determine target version
-  const targetVersion = determineTargetVersion(explicitVersion, options, formulaConfig.version);
+  const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, formulaConfig.version, formulaName);
   
   // Check if version already exists (unless force is used)
   if (!options?.force) {
@@ -452,35 +454,107 @@ function getRegistryPath(sourceDir: string, relativePath: string): string {
 }
 
 /**
- * Determine target version based on input and options
+ * Determine target version based on input, version type, and options
  */
-function determineTargetVersion(
-  explicitVersion?: string, 
-  options?: SaveOptions, 
-  currentVersion?: string
-): string {
+async function determineTargetVersion(
+  explicitVersion?: string,
+  versionType?: string,
+  options?: SaveOptions,
+  currentVersion?: string,
+  formulaName?: string
+): Promise<string> {
   if (explicitVersion) {
     console.log(`🎯 Using explicit version: ${explicitVersion}`);
     return explicitVersion;
   }
   
-  if (options?.bump && currentVersion) {
-    const bumpedVersion = calculateBumpedVersion(currentVersion, options.bump);
-    console.log(`🎯 Bumping version: ${currentVersion} → ${bumpedVersion}`);
-    return bumpedVersion;
+  if (!currentVersion) {
+    throw new Error('No version information available');
   }
   
-  if (currentVersion) {
-    const localVersion = generateLocalVersion(currentVersion);
-    logger.debug(`Generated local version: ${localVersion}`);
+  // Handle bump option with or without stable modifier
+  if (options?.bump) {
+    if (versionType === 'stable') {
+      const bumpedVersion = bumpToStable(currentVersion, options.bump);
+      console.log(`🎯 Bumping to stable version: ${currentVersion} → ${bumpedVersion}`);
+      return bumpedVersion;
+    } else {
+      const bumpedVersion = bumpToPrerelease(currentVersion, options.bump);
+      console.log(`🎯 Bumping to prerelease version: ${currentVersion} → ${bumpedVersion}`);
+      return bumpedVersion;
+    }
+  }
+  
+  // Handle stable conversion
+  if (versionType === 'stable') {
+    if (isPrerelease(currentVersion)) {
+      const stableVersion = convertPrereleaseToStable(currentVersion);
+      console.log(`🎯 Converting to stable version: ${currentVersion} → ${stableVersion}`);
+      return stableVersion;
+    } else {
+      // Already stable - prompt for confirmation
+      console.log(`⚠️  Version ${currentVersion} is already stable.`);
+      if (!options?.force) {
+        const shouldOverwrite = await promptConfirmation(
+          `Overwrite existing stable version ${currentVersion}?`,
+          false
+        );
+        if (!shouldOverwrite) {
+          throw new Error('Operation cancelled by user');
+        }
+      }
+      console.log(`🎯 Overwriting stable version: ${currentVersion}`);
+      return currentVersion;
+    }
+  }
+  
+  // Default behavior - smart increment
+  if (isPrerelease(currentVersion)) {
+    const localVersion = generateLocalVersion(extractBaseVersion(currentVersion));
+    console.log(`🎯 Incrementing prerelease version: ${currentVersion} → ${localVersion}`);
+    return localVersion;
+  } else {
+    const nextPatchVersion = calculateBumpedVersion(currentVersion, 'patch');
+    const localVersion = generateLocalVersion(nextPatchVersion);
+    console.log(`🎯 Auto-incrementing to patch prerelease: ${currentVersion} → ${localVersion}`);
     return localVersion;
   }
-  
-  throw new Error('No version information available');
 }
 
 /**
- * Calculate bumped version based on type
+ * Convert a prerelease version to stable version
+ * Example: "1.2.3-dev.abc" -> "1.2.3"
+ */
+function convertPrereleaseToStable(version: string): string {
+  return extractBaseVersion(version);
+}
+
+/**
+ * Check if a version is a prerelease version
+ */
+function isPrerelease(version: string): boolean {
+  return isLocalVersion(version);
+}
+
+/**
+ * Bump version to prerelease (default behavior for --bump)
+ */
+function bumpToPrerelease(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
+  const baseVersion = extractBaseVersion(version);
+  const bumpedBase = calculateBumpedVersion(baseVersion, bumpType);
+  return generateLocalVersion(bumpedBase);
+}
+
+/**
+ * Bump version to stable (when combined with 'stable' argument)
+ */
+function bumpToStable(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
+  const baseVersion = extractBaseVersion(version);
+  return calculateBumpedVersion(baseVersion, bumpType);
+}
+
+/**
+ * Calculate bumped version based on type (stable output)
  */
 function calculateBumpedVersion(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
   // Extract base version (remove any prerelease identifiers and build metadata)
@@ -583,11 +657,17 @@ export function setupSaveCommand(program: Command): void {
   program
     .command('save')
     .argument('<formula-input>', 'formula name, formula@version, or directory path (/path/to/dir)')
+    .argument('[version-type]', 'version type: stable (optional)')
     .description('Save a formula to local registry. Supports directory paths (e.g., /ai/nestjs) to auto-create or find formula.yml files. Auto-generates local dev versions by default.')
-    .option('-f, --force', 'overwrite existing version')
-    .option('-b, --bump <type>', 'bump version (patch|minor|major)')
-    .action(withErrorHandling(async (formulaInput: string, options?: SaveOptions) => {
-      const result = await saveFormulaCommand(formulaInput, options);
+    .option('-f, --force', 'overwrite existing version or skip confirmations')
+    .option('-b, --bump <type>', 'bump version (patch|minor|major). Creates prerelease by default, stable when combined with "stable" argument')
+    .action(withErrorHandling(async (formulaInput: string, versionType?: string, options?: SaveOptions) => {
+      // Validate version type argument
+      if (versionType && versionType !== 'stable') {
+        throw new ValidationError(`Invalid version type: ${versionType}. Only 'stable' is supported.`);
+      }
+      
+      const result = await saveFormulaCommand(formulaInput, versionType, options);
       if (!result.success) {
         throw new Error(result.error || 'Save operation failed');
       }
