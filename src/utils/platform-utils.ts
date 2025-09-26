@@ -41,11 +41,13 @@ export async function detectPlatformsWithDetails(cwd: string): Promise<{
   const allResults = await detectAllPlatforms(cwd);
   const detected = allResults.filter(result => result.detected).map(result => result.name);
   
-  // Group by category - more efficient approach
+  // Group by category - get category from platform definitions
   const byCategory = allResults.reduce((acc, result) => {
     if (result.detected) {
-      acc[result.category] = acc[result.category] || [];
-      acc[result.category].push(result.name);
+      const definition = PLATFORM_DEFINITIONS[result.name];
+      const category = definition.category;
+      acc[category] = acc[category] || [];
+      acc[category].push(result.name);
     }
     return acc;
   }, {} as Record<string, PlatformName[]>);
@@ -299,6 +301,7 @@ export async function getPlatformStatus(cwd: string): Promise<{
   // Process platforms in parallel for better performance
   const platformPromises = results.map(async (result) => {
     let fileCount = 0;
+    const definition = PLATFORM_DEFINITIONS[result.name];
     
     if (result.detected) {
       try {
@@ -312,10 +315,10 @@ export async function getPlatformStatus(cwd: string): Promise<{
     return {
       name: result.name,
       detected: result.detected,
-      directoryExists: result.directoryExists,
-      filesPresent: result.filesPresent,
+      directoryExists: result.detected, // Since we only check rootDir existence now
+      filesPresent: fileCount > 0,
       fileCount,
-      category: result.category,
+      category: definition.category,
       description: getPlatformDescription(result.name)
     };
   });

@@ -25,48 +25,62 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
   [PLATFORMS.CODEXCLI]: {
     name: PLATFORMS.CODEXCLI,
     category: PLATFORM_CATEGORIES.AGENTS_MEMORIES,
+    rootDir: PLATFORM_DIRS.CODEXCLI,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     rulesDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.MEMORIES}`,
+    commandsDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.COMMANDS}`,
+    agentsDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.AGENTS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'OpenAI Codex CLI - AGENTS.md + .codex/memories/'
+    description: 'OpenAI Codex CLI - AGENTS.md + .codex/memories/ + .codex/commands + .codex/agents'
   },
   [PLATFORMS.OPENCODE]: {
     name: PLATFORMS.OPENCODE,
     category: PLATFORM_CATEGORIES.AGENTS_MEMORIES,
+    rootDir: PLATFORM_DIRS.OPENCODE,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     rulesDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
+    commandsDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.COMMANDS}`,
+    agentsDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.AGENTS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'OpenCode - AGENTS.md + .opencode/memories/'
+    description: 'OpenCode - AGENTS.md + .opencode/memories/ + .opencode/commands + .opencode/agents'
   },
   
   // Similar Root + Memories platforms
   [PLATFORMS.CLAUDECODE]: {
     name: PLATFORMS.CLAUDECODE,
     category: PLATFORM_CATEGORIES.ROOT_MEMORIES,
+    rootDir: PLATFORM_DIRS.CLAUDECODE,
     rootFile: FILE_PATTERNS.CLAUDE_MD,
     rulesDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
+    commandsDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.COMMANDS}`,
+    agentsDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.AGENTS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'Claude Code - CLAUDE.md + .claude/memories/'
+    description: 'Claude Code - CLAUDE.md + .claude/memories/ + .claude/commands + .claude/agents'
   },
   [PLATFORMS.QWENCODE]: {
     name: PLATFORMS.QWENCODE,
     category: PLATFORM_CATEGORIES.ROOT_MEMORIES,
+    rootDir: PLATFORM_DIRS.QWENCODE,
     rootFile: FILE_PATTERNS.QWEN_MD,
     rulesDir: `${PLATFORM_DIRS.QWENCODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
+    agentsDir: `${PLATFORM_DIRS.QWENCODE}/${PLATFORM_SUBDIRS.AGENTS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'Qwen Code - QWEN.md + .qwen/memories/'
+    description: 'Qwen Code - QWEN.md + .qwen/memories/ + .qwen/agents'
   },
   [PLATFORMS.GEMINICLI]: {
     name: PLATFORMS.GEMINICLI,
     category: PLATFORM_CATEGORIES.ROOT_MEMORIES,
+    rootDir: PLATFORM_DIRS.GEMINICLI,
     rootFile: FILE_PATTERNS.GEMINI_MD,
     rulesDir: `${PLATFORM_DIRS.GEMINICLI}/${PLATFORM_SUBDIRS.MEMORIES}`,
+    commandsDir: `${PLATFORM_DIRS.GEMINICLI}/${PLATFORM_SUBDIRS.COMMANDS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'Gemini CLI - GEMINI.md + .gemini/memories/'
+    description: 'Gemini CLI - GEMINI.md + .gemini/memories/ + .gemini/commands (.toml files)'
   },
   [PLATFORMS.WARP]: {
     name: PLATFORMS.WARP,
     category: PLATFORM_CATEGORIES.ROOT_MEMORIES,
+    rootDir: PLATFORM_DIRS.WARP,
     rootFile: FILE_PATTERNS.WARP_MD,
     rulesDir: `${PLATFORM_DIRS.WARP}/${PLATFORM_SUBDIRS.MEMORIES}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
@@ -77,13 +91,16 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
   [PLATFORMS.CURSOR]: {
     name: PLATFORMS.CURSOR,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.CURSOR,
     rulesDir: `${PLATFORM_DIRS.CURSOR}/${PLATFORM_SUBDIRS.RULES}`,
+    commandsDir: `${PLATFORM_DIRS.CURSOR}/${PLATFORM_SUBDIRS.COMMANDS}`,
     filePatterns: [FILE_PATTERNS.MDC_FILES] as const,
-    description: 'Cursor - .cursor/rules/ (*.mdc files)'
+    description: 'Cursor - .cursor/rules/ (*.mdc files) + .cursor/commands'
   },
   [PLATFORMS.CLINE]: {
     name: PLATFORMS.CLINE,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.CLINE,
     rulesDir: PLATFORM_DIRS.CLINE,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Cline - .clinerules/ (*.md files)'
@@ -91,13 +108,16 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
   [PLATFORMS.ROO]: {
     name: PLATFORMS.ROO,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.ROO,
     rulesDir: `${PLATFORM_DIRS.ROO}/${PLATFORM_SUBDIRS.RULES}`,
+    commandsDir: `${PLATFORM_DIRS.ROO}/${PLATFORM_SUBDIRS.COMMANDS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'Roo Code - .roo/rules/ (*.md files)'
+    description: 'Roo Code - .roo/rules/ (*.md files) + .roo/commands'
   },
   [PLATFORMS.WINDSURF]: {
     name: PLATFORMS.WINDSURF,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.WINDSURF,
     rulesDir: `${PLATFORM_DIRS.WINDSURF}/${PLATFORM_SUBDIRS.RULES}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Windsurf - .windsurf/rules/ (*.md files)'
@@ -105,13 +125,16 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
   [PLATFORMS.AUGMENT]: {
     name: PLATFORMS.AUGMENT,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.AUGMENT,
     rulesDir: `${PLATFORM_DIRS.AUGMENT}/${PLATFORM_SUBDIRS.RULES}`,
+    commandsDir: `${PLATFORM_DIRS.AUGMENT}/${PLATFORM_SUBDIRS.COMMANDS}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
-    description: 'AugmentCode - .augment/rules/ (*.md files)'
+    description: 'AugmentCode - .augment/rules/ (*.md files) + .augment/commands'
   },
   [PLATFORMS.KIRO]: {
     name: PLATFORMS.KIRO,
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
+    rootDir: PLATFORM_DIRS.KIRO,
     rulesDir: `${PLATFORM_DIRS.KIRO}/${PLATFORM_SUBDIRS.STEERING}`,
     filePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Kiro IDE - .kiro/steering/ (*.md files)'
@@ -125,8 +148,11 @@ export type PlatformCategory = typeof PLATFORM_CATEGORIES[keyof typeof PLATFORM_
 export interface PlatformDefinition {
   name: PlatformName;
   category: PlatformCategory;
+  rootDir: string;
   rootFile?: string;
   rulesDir: string;
+  commandsDir?: string;
+  agentsDir?: string;
   filePatterns: readonly string[];
   description: string;
 }
@@ -134,15 +160,14 @@ export interface PlatformDefinition {
 export interface PlatformDetectionResult {
   name: PlatformName;
   detected: boolean;
-  directoryExists: boolean;
-  filesPresent: boolean;
-  category: PlatformCategory;
 }
 
 export interface PlatformDirectoryPaths {
   [platformName: string]: {
     rulesDir: string;
     rootFile?: string;
+    commandsDir?: string;
+    agentsDir?: string;
   };
 }
 
@@ -177,6 +202,14 @@ export function getPlatformDirectoryPaths(cwd: string): PlatformDirectoryPaths {
     if ('rootFile' in definition && definition.rootFile) {
       paths[platform].rootFile = join(cwd, definition.rootFile);
     }
+    
+    if ('commandsDir' in definition && definition.commandsDir) {
+      paths[platform].commandsDir = join(cwd, definition.commandsDir);
+    }
+    
+    if ('agentsDir' in definition && definition.agentsDir) {
+      paths[platform].agentsDir = join(cwd, definition.agentsDir);
+    }
   }
   
   return paths;
@@ -186,44 +219,17 @@ export function getPlatformDirectoryPaths(cwd: string): PlatformDirectoryPaths {
  * Detect all platforms present in a directory
  */
 export async function detectAllPlatforms(cwd: string): Promise<PlatformDetectionResult[]> {
-  const results: PlatformDetectionResult[] = [];
-  const paths = getPlatformDirectoryPaths(cwd);
-  
   // Check all platforms in parallel
   const detectionPromises = ALL_PLATFORMS.map(async (platform) => {
     const definition = PLATFORM_DEFINITIONS[platform];
-    const platformPaths = paths[platform];
+    const rootDirPath = join(cwd, definition.rootDir);
     
-    // Check directory existence
-    const directoryExists = await exists(platformPaths.rulesDir);
-    
-    // Check root file existence (for platforms that have one)
-    let rootFileExists = true;
-    if ('rootFile' in definition && definition.rootFile && platformPaths.rootFile) {
-      rootFileExists = await exists(platformPaths.rootFile);
-    }
-    
-    // Check for files in rules directory
-    let filesPresent = false;
-    if (directoryExists) {
-      try {
-        const files = await listFiles(platformPaths.rulesDir);
-        filesPresent = files.some(file => 
-          definition.filePatterns.some(pattern => file.endsWith(pattern))
-        );
-      } catch (error) {
-        logger.debug(`Failed to list files in ${platformPaths.rulesDir}: ${error}`);
-      }
-    }
-    
-    const detected = directoryExists && rootFileExists;
+    // Check if the rootDir exists strictly in the cwd
+    const detected = await exists(rootDirPath);
     
     return {
       name: platform,
-      detected,
-      directoryExists,
-      filesPresent,
-      category: definition.category
+      detected
     };
   });
   

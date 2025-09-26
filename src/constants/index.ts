@@ -66,7 +66,9 @@ export const GROUNDZERO_DIRS = {
 export const PLATFORM_SUBDIRS = {
   RULES: 'rules',
   MEMORIES: 'memories',
-  STEERING: 'steering'
+  STEERING: 'steering',
+  COMMANDS: 'commands',
+  AGENTS: 'agents'
 } as const;
 
 export const FORMULA_DIRS = {

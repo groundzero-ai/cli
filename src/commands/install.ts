@@ -19,12 +19,20 @@ import {
 } from '../utils/version-ranges.js';
 import { 
   PLATFORM_DIRS, 
-  PLATFORM_NAMES, 
+  PLATFORMS,
   FILE_PATTERNS, 
   DEPENDENCY_ARRAYS, 
   CONFLICT_RESOLUTION, 
-  GLOBAL_PLATFORM_FILES 
+  GLOBAL_PLATFORM_FILES,
+  GROUNDZERO_DIRS
 } from '../constants/index.js';
+import { 
+  detectAllPlatforms, 
+  getPlatformDirectoryPaths, 
+  createPlatformDirectories,
+  getPlatformDefinition,
+  type PlatformName 
+} from '../core/platforms.js';
 import { 
   getLocalFormulaYmlPath,
   getLocalGroundZeroDir,
@@ -121,23 +129,18 @@ async function detectAndManagePlatforms(
   targetDir: string,
   options: InstallOptions
 ): Promise<{ platforms: string[]; created: string[] }> {
-  const cursorDir = join(targetDir, PLATFORM_DIRS.CURSOR);
-  const claudeDir = join(targetDir, PLATFORM_DIRS.CLAUDE);
   const formulaYmlPath = getLocalFormulaYmlPath(targetDir);
   
-  // Check all directories and formula.yml in parallel
-  const [cursorExists, claudeExists, formulaYmlExists] = await Promise.all([
-    exists(cursorDir),
-    exists(claudeDir),
-    exists(formulaYmlPath)
-  ]);
-  
-  const detectedPlatforms: string[] = [];
-  if (cursorExists) detectedPlatforms.push(PLATFORM_NAMES.CURSOR);
-  if (claudeExists) detectedPlatforms.push(PLATFORM_NAMES.CLAUDE);
+  // Detect all platforms using the centralized platform detection
+  const platformDetectionResults = await detectAllPlatforms(targetDir);
+  const detectedPlatforms = platformDetectionResults
+    .filter(result => result.detected)
+    .map(result => result.name);
   
   // Parse formula.yml if it exists
   let formulaConfig: FormulaYml | null = null;
+  const formulaYmlExists = await exists(formulaYmlPath);
+  
   if (formulaYmlExists) {
     try {
       formulaConfig = await parseFormulaYml(formulaYmlPath);
@@ -165,21 +168,8 @@ async function detectAndManagePlatforms(
     finalPlatforms = [];
   }
   
-  // Create directories for selected platforms (parallel)
-  const created: string[] = [];
-  const createPromises = finalPlatforms.map(async (platform) => {
-    if (platform === PLATFORM_NAMES.CURSOR && !cursorExists) {
-      await ensureDir(join(cursorDir, 'rules'));
-      created.push(PLATFORM_DIRS.CURSOR);
-      logger.info('Created .cursor directory structure');
-    } else if (platform === PLATFORM_NAMES.CLAUDE && !claudeExists) {
-      await ensureDir(claudeDir);
-      created.push(PLATFORM_DIRS.CLAUDE);
-      logger.info('Created .claude directory');
-    }
-  });
-  
-  await Promise.all(createPromises);
+  // Create directories for selected platforms using centralized platform management
+  const created = await createPlatformDirectories(targetDir, finalPlatforms as PlatformName[]);
   
   // Update formula.yml if needed
   if (formulaConfig && !formulaConfig.platforms && finalPlatforms.length >= 0) {
@@ -200,10 +190,6 @@ async function provideIdeTemplateFiles(
   platforms: string[],
   options: InstallOptions
 ): Promise<{ cursor: string[]; claude: string[]; skipped: string[]; directoriesCreated: string[] }> {
-  const cursorDir = join(targetDir, PLATFORM_DIRS.CURSOR);
-  const claudeDir = join(targetDir, PLATFORM_DIRS.CLAUDE);
-  const cursorRulesDir = join(cursorDir, 'rules');
-  
   const provided = { 
     cursor: [] as string[], 
     claude: [] as string[], 
@@ -213,48 +199,52 @@ async function provideIdeTemplateFiles(
   
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
-    if (platform === PLATFORM_NAMES.CURSOR) {
-      logger.info('Providing Cursor IDE templates');
+    const platformDefinition = getPlatformDefinition(platform as PlatformName);
+    const platformDir = join(targetDir, PLATFORM_DIRS[platform.toUpperCase() as keyof typeof PLATFORM_DIRS]);
+    
+    logger.info(`Providing ${platform} IDE templates`);
+    
+    const platformDirExists = await exists(platformDir);
+    if (!platformDirExists) {
+      provided.directoriesCreated.push(PLATFORM_DIRS[platform.toUpperCase() as keyof typeof PLATFORM_DIRS]);
+    }
+    
+    // Create platform directory structure
+    await ensureDir(platformDir);
+    
+    // Determine the appropriate template file and content
+    let templateFile: string;
+    let templateContent: string;
+    let globalFileKey: string;
+    
+    if (platform === PLATFORMS.CURSOR) {
+      const rulesDir = join(platformDir, 'rules');
+      await ensureDir(rulesDir);
+      templateFile = join(rulesDir, FILE_PATTERNS.GROUNDZERO_MDC);
+      templateContent = CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC];
+      globalFileKey = GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO;
+    } else {
+      // All other platforms use .md files
+      templateFile = join(platformDir, FILE_PATTERNS.GROUNDZERO_MD);
+      templateContent = CLAUDE_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD];
+      globalFileKey = GLOBAL_PLATFORM_FILES[`${platform.toUpperCase()}_GROUNDZERO` as keyof typeof GLOBAL_PLATFORM_FILES];
+    }
+    
+    const fileExists = await exists(templateFile);
+    
+    if (fileExists && !options.force) {
+      provided.skipped.push(globalFileKey);
+      logger.debug(`Skipped existing global ${platform} template: ${globalFileKey}`);
+    } else {
+      await writeTextFile(templateFile, templateContent);
       
-      const cursorDirExists = await exists(cursorDir);
-      if (!cursorDirExists) {
-        provided.directoriesCreated.push(PLATFORM_DIRS.CURSOR);
-      }
-      
-      await ensureDir(cursorRulesDir);
-      
-      const groundzeroPath = join(cursorRulesDir, FILE_PATTERNS.GROUNDZERO_MDC);
-      const fileExists = await exists(groundzeroPath);
-      
-      if (fileExists && !options.force) {
-        provided.skipped.push(GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO);
-        logger.debug(`Skipped existing global Cursor template: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-      } else {
-        await writeTextFile(groundzeroPath, CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC]);
+      if (platform === PLATFORMS.CURSOR) {
         provided.cursor.push(FILE_PATTERNS.GROUNDZERO_MDC);
-        logger.debug(`Provided global Cursor template: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-      }
-    } else if (platform === PLATFORM_NAMES.CLAUDE) {
-      logger.info('Providing Claude Code templates');
-      
-      const claudeDirExists = await exists(claudeDir);
-      if (!claudeDirExists) {
-        provided.directoriesCreated.push(PLATFORM_DIRS.CLAUDE);
-      }
-      
-      await ensureDir(claudeDir);
-      
-      const groundzeroPath = join(claudeDir, FILE_PATTERNS.GROUNDZERO_MD);
-      const fileExists = await exists(groundzeroPath);
-      
-      if (fileExists && !options.force) {
-        provided.skipped.push(GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO);
-        logger.debug(`Skipped existing global Claude template: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
       } else {
-        await writeTextFile(groundzeroPath, CLAUDE_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD]);
         provided.claude.push(FILE_PATTERNS.GROUNDZERO_MD);
-        logger.debug(`Provided global Claude template: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
       }
+      
+      logger.debug(`Provided global ${platform} template: ${globalFileKey}`);
     }
   });
   
@@ -383,15 +373,45 @@ async function addFormulaToYml(
 
 /**
  * Categorize formula files by installation target
+ * Handles all 13 platforms with GROUNDZERO_DIRS (rules, commands, agents) mapping
  */
 function categorizeFormulaFiles(files: Array<{ path: string; content: string }>) {
-  return {
-    aiFiles: files.filter(file => 
-      file.path.startsWith('ai/') && (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path === `ai/${FILE_PATTERNS.FORMULA_YML}`)
-    ),
-    cursorFiles: files.filter(file => file.path.startsWith(`${PLATFORM_DIRS.CURSOR}/`)),
-    claudeFiles: files.filter(file => file.path.startsWith(`${PLATFORM_DIRS.CLAUDE}/`))
+  const categorized: {
+    aiFiles: Array<{ path: string; content: string }>;
+    platformFiles: Array<{ path: string; content: string; platform: string; platformDir: string }>;
+  } = {
+    aiFiles: [],
+    platformFiles: []
   };
+  
+  // AI files (files under /ai in the formula from local registry) - same as before
+  categorized.aiFiles = files.filter(file => 
+    file.path.startsWith('ai/') && (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path === `ai/${FILE_PATTERNS.FORMULA_YML}`)
+  );
+  
+  // Platform files - categorize by platform directory structure
+  for (const file of files) {
+    // Skip AI files (already handled above)
+    if (file.path.startsWith('ai/')) {
+      continue;
+    }
+    
+    // Check each platform directory
+    for (const [platformKey, platformDir] of Object.entries(PLATFORM_DIRS)) {
+      if (platformKey === 'GROUNDZERO' || platformKey === 'AI') continue; // Skip these
+      
+      if (file.path.startsWith(`${platformDir}/`)) {
+        categorized.platformFiles.push({
+          ...file,
+          platform: platformKey.toLowerCase(),
+          platformDir
+        });
+        break;
+      }
+    }
+  }
+  
+  return categorized;
 }
 
 /**
@@ -466,16 +486,63 @@ async function installFormulaToGroundzero(
   const installOptions = forceOverwrite ? { ...options, force: true } : options;
   
   // Categorize and install files
-  const { aiFiles, cursorFiles, claudeFiles } = categorizeFormulaFiles(formula.files);
+  const { aiFiles, platformFiles } = categorizeFormulaFiles(formula.files);
   
-  const [aiResult, cursorResult, claudeResult] = await Promise.all([
-    installFileType(aiFiles, formulaGroundzeroPath, 'ai/', installOptions, options.dryRun),
-    installFileType(cursorFiles, join(cwd, PLATFORM_DIRS.CURSOR), `${PLATFORM_DIRS.CURSOR}/`, installOptions, options.dryRun),
-    installFileType(claudeFiles, join(cwd, PLATFORM_DIRS.CLAUDE), `${PLATFORM_DIRS.CLAUDE}/`, installOptions, options.dryRun)
-  ]);
+  // Install AI files (same as before)
+  const aiResult = await installFileType(aiFiles, formulaGroundzeroPath, 'ai/', installOptions, options.dryRun);
   
-  const totalInstalled = aiResult.installedCount + cursorResult.installedCount + claudeResult.installedCount;
-  const allFiles = [...aiResult.files, ...cursorResult.files, ...claudeResult.files];
+  // Install platform files to their respective directories
+  const platformResults = await Promise.all(
+    platformFiles.map(async (file) => {
+      const platform = file.platform as PlatformName;
+      const platformDir = file.platformDir;
+      const platformDefinition = getPlatformDefinition(platform);
+      
+      // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
+      if (platform === PLATFORMS.GEMINICLI && file.path.includes('/commands/') && file.path.endsWith('.toml')) {
+        logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
+        return { installedCount: 0, files: [] };
+      }
+      
+      // Determine target directory based on GROUNDZERO_DIRS mapping
+      let targetDir = join(cwd, platformDir);
+      
+      // Map GROUNDZERO_DIRS to platform-specific subdirectories
+      if (file.path.includes(`/${GROUNDZERO_DIRS.RULES}/`)) {
+        targetDir = join(targetDir, platformDefinition.rulesDir.split('/').pop() || 'rules');
+      } else if (file.path.includes(`/${GROUNDZERO_DIRS.COMMANDS}/`)) {
+        if (platformDefinition.commandsDir) {
+          targetDir = join(targetDir, platformDefinition.commandsDir.split('/').pop() || 'commands');
+        } else {
+          // Skip if platform doesn't support commands
+          logger.debug(`Skipping commands file for platform ${platform} (not supported): ${file.path}`);
+          return { installedCount: 0, files: [] };
+        }
+      } else if (file.path.includes(`/${GROUNDZERO_DIRS.AGENTS}/`)) {
+        if (platformDefinition.agentsDir) {
+          targetDir = join(targetDir, platformDefinition.agentsDir.split('/').pop() || 'agents');
+        } else {
+          // Skip if platform doesn't support agents
+          logger.debug(`Skipping agents file for platform ${platform} (not supported): ${file.path}`);
+          return { installedCount: 0, files: [] };
+        }
+      }
+      
+      // Use appropriate file pattern for the platform
+      const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+      
+      // Filter files by platform-specific patterns
+      if (!file.path.endsWith(filePattern)) {
+        logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
+        return { installedCount: 0, files: [] };
+      }
+      
+      return await installFileType([file], targetDir, `${platformDir}/`, installOptions, options.dryRun);
+    })
+  );
+  
+  const totalInstalled = aiResult.installedCount + platformResults.reduce((sum, result) => sum + result.installedCount, 0);
+  const allFiles = [...aiResult.files, ...platformResults.flatMap(result => result.files)];
   
   return {
     installedCount: totalInstalled,
