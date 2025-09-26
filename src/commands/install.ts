@@ -27,7 +27,6 @@ import {
 } from '../constants/index.js';
 import { 
   getLocalFormulaYmlPath,
-  getLocalFormulaMetadataPath,
   getLocalGroundZeroDir,
   getLocalFormulasDir,
   getAIDir

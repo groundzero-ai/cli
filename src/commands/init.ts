@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, basename } from 'path';
+import { basename } from 'path';
 import { CommandResult, FormulaYml } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { promptCreateFormula, promptFormulaDetails } from '../utils/prompts.js';
@@ -11,9 +11,8 @@ import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js
 /**
  * Initialize formula.yml command implementation
  */
-async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
-  const cwd = process.cwd();
-  const formulaDir = targetDir ? join(cwd, targetDir) : cwd;
+async function initFormulaCommand(): Promise<CommandResult> {
+  const formulaDir = process.cwd();
   const groundzeroDir = getLocalGroundZeroDir(formulaDir);
   const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
   
@@ -106,10 +105,9 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
 export function setupInitCommand(program: Command): void {
   program
     .command('init')
-    .argument('[directory]', 'target directory to create .groundzero/formula.yml (relative to current directory)')
-    .description('Initialize a new .groundzero/formula.yml file in the current directory or specified directory')
-    .action(withErrorHandling(async (directory?: string) => {
-      const result = await initFormulaCommand(directory);
+    .description('Initialize a new .groundzero/formula.yml file in the current directory')
+    .action(withErrorHandling(async () => {
+      const result = await initFormulaCommand();
       if (!result.success) {
         throw new Error(result.error || 'Init operation failed');
       }

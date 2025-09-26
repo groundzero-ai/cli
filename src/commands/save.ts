@@ -17,7 +17,8 @@ import {
   listFiles, 
   listDirectories,
   isDirectory,
-  ensureDir
+  ensureDir,
+  getStats
 } from '../utils/fs.js';
 
 // Constants
@@ -28,11 +29,22 @@ const CLAUDE_COMMANDS_DIR = '.claude/commands';
 const MARKDOWN_EXTENSION = '.md';
 const UTF8_ENCODING = 'utf8' as const;
 
-// Command directories configuration
-const COMMAND_DIRECTORIES = [
-  { name: CURSOR_COMMANDS_DIR, basePath: CURSOR_COMMANDS_DIR },
-  { name: CLAUDE_COMMANDS_DIR, basePath: CLAUDE_COMMANDS_DIR }
+// Search directories configuration with wildcard support
+const SEARCH_DIRECTORIES = [
+  { name: 'ai', basePath: 'ai', registryPath: 'ai' },
+  { name: 'rules', basePath: '**/rules', registryPath: 'rules' },
+  { name: 'commands', basePath: '**/commands', registryPath: 'commands' },
+  { name: 'agents', basePath: '**/agents', registryPath: 'agents' }
 ] as const;
+
+// New type for discovered files with metadata
+interface DiscoveredFile {
+  fullPath: string;
+  relativePath: string;
+  sourceDir: string;
+  registryPath: string;
+  mtime: number;
+}
 
 /**
  * Parse formula input to extract name and version/range, or detect directory input
@@ -188,6 +200,253 @@ const findAllFormulaYmlFiles = (dir: string, baseDir: string = dir) =>
   findFilesByExtension(dir, FILE_PATTERNS.FORMULA_YML, baseDir);
 
 /**
+ * Get file modification time
+ */
+async function getFileMtime(filePath: string): Promise<number> {
+  try {
+    const stats = await getStats(filePath);
+    return stats.mtime.getTime();
+  } catch (error) {
+    logger.warn(`Failed to get mtime for ${filePath}: ${error}`);
+    return 0;
+  }
+}
+
+/**
+ * Discover directories matching wildcard patterns
+ */
+async function discoverDirectoriesWithWildcards(cwd: string): Promise<Array<{ name: string; fullPath: string; registryPath: string }>> {
+  const discoveredDirs: Array<{ name: string; fullPath: string; registryPath: string }> = [];
+  
+  for (const dirConfig of SEARCH_DIRECTORIES) {
+    if (dirConfig.basePath === 'ai') {
+      // Handle ai directory specially (no wildcard)
+      const aiPath = join(cwd, 'ai');
+      if (await exists(aiPath) && await isDirectory(aiPath)) {
+        discoveredDirs.push({
+          name: dirConfig.name,
+          fullPath: aiPath,
+          registryPath: dirConfig.registryPath
+        });
+      }
+    } else {
+      // Handle wildcard patterns like **/commands, **/rules, **/agents
+      const pattern = dirConfig.basePath;
+      const targetDirName = pattern.replace('**/', '');
+      
+      // Find all directories with the target name
+      const foundDirs = await findDirectoriesByName(cwd, targetDirName);
+      
+      for (const dirPath of foundDirs) {
+        discoveredDirs.push({
+          name: dirConfig.name,
+          fullPath: dirPath,
+          registryPath: dirConfig.registryPath
+        });
+      }
+    }
+  }
+  
+  return discoveredDirs;
+}
+
+/**
+ * Recursively find directories with a specific name
+ */
+async function findDirectoriesByName(baseDir: string, targetName: string): Promise<string[]> {
+  const foundDirs: string[] = [];
+  
+  if (!(await exists(baseDir)) || !(await isDirectory(baseDir))) {
+    return foundDirs;
+  }
+  
+  const entries = await listDirectories(baseDir);
+  
+  for (const entry of entries) {
+    const fullPath = join(baseDir, entry);
+    
+    if (entry === targetName) {
+      foundDirs.push(fullPath);
+    } else {
+      // Recursively search subdirectories
+      const subDirs = await findDirectoriesByName(fullPath, targetName);
+      foundDirs.push(...subDirs);
+    }
+  }
+  
+  return foundDirs;
+}
+
+/**
+ * Unified file discovery function that searches all configured directories
+ */
+async function discoverMdFilesUnified(formulaDir: string, formulaName: string): Promise<DiscoveredFile[]> {
+  const cwd = process.cwd();
+  const discoveredDirs = await discoverDirectoriesWithWildcards(cwd);
+  const allDiscoveredFiles: DiscoveredFile[] = [];
+  
+  // Process all discovered directories in parallel
+  const processPromises = discoveredDirs.map(async (dirInfo) => {
+    const files = await processMarkdownFilesUnified(
+      dirInfo.fullPath, 
+      dirInfo.name, 
+      formulaName, 
+      dirInfo.registryPath,
+      formulaDir
+    );
+    return files;
+  });
+  
+  const results = await Promise.all(processPromises);
+  allDiscoveredFiles.push(...results.flat());
+  
+  return allDiscoveredFiles;
+}
+
+/**
+ * Process markdown files from a directory with unified logic
+ */
+async function processMarkdownFilesUnified(
+  dirPath: string,
+  sourceDirName: string,
+  formulaName: string,
+  registryPath: string,
+  formulaDir: string
+): Promise<DiscoveredFile[]> {
+  if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
+    return [];
+  }
+
+  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
+  const discoveredFiles: DiscoveredFile[] = [];
+
+  // Process files in parallel
+  const processPromises = allMdFiles.map(async (mdFile) => {
+    try {
+      const content = await readTextFile(mdFile.fullPath);
+      const frontmatter = parseMarkdownFrontmatter(content);
+      
+      if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
+        const mtime = await getFileMtime(mdFile.fullPath);
+        const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
+        
+        return {
+          fullPath: mdFile.fullPath,
+          relativePath: mdFile.relativePath,
+          sourceDir: sourceDirName,
+          registryPath: targetRegistryPath,
+          mtime
+        };
+      }
+    } catch (error) {
+      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDirName}: ${error}`);
+    }
+    return null;
+  });
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+}
+
+/**
+ * Determine if a markdown file should be included based on unified frontmatter rules
+ */
+function shouldIncludeMarkdownFileUnified(
+  mdFile: { relativePath: string },
+  frontmatter: any,
+  sourceDirName: string,
+  formulaName: string,
+  formulaDir: string
+): boolean {
+  const mdFileDir = dirname(mdFile.relativePath);
+  
+  // For AI directory: include files adjacent to formula.yml or with matching frontmatter
+  if (sourceDirName === 'ai') {
+    const cwd = process.cwd();
+    const aiDir = join(cwd, 'ai');
+    const formulaDirRelativeToAi = formulaDir.substring(aiDir.length + 1);
+    
+    if (frontmatter?.formula?.name === formulaName) {
+      logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
+      return true;
+    }
+    if (mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
+      logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
+      return true;
+    }
+    if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
+      logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
+    } else {
+      logger.debug(`Skipping ${mdFile.relativePath} from ai (not adjacent to formula.yml and no matching frontmatter)`);
+    }
+    return false;
+  }
+  
+  // For other directories: only include files with matching frontmatter
+  if (frontmatter?.formula?.name === formulaName) {
+    logger.debug(`Including ${mdFile.relativePath} from ${sourceDirName} (matches formula name in frontmatter)`);
+    return true;
+  }
+  
+  logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDirName} (no matching frontmatter)`);
+  return false;
+}
+
+/**
+ * Get registry path for a file based on unified directory structure
+ */
+function getRegistryPathUnified(registryPath: string, relativePath: string, sourceDirName: string): string {
+  if (sourceDirName === 'ai') {
+    // Flatten AI files to root of ai directory
+    return join(registryPath, basename(relativePath));
+  } else {
+    // Preserve subdirectory structure for other directories
+    return join(registryPath, relativePath);
+  }
+}
+
+/**
+ * Resolve file conflicts by keeping the file with the latest mtime
+ */
+function resolveFileConflicts(discoveredFiles: DiscoveredFile[]): DiscoveredFile[] {
+  const fileGroups = new Map<string, DiscoveredFile[]>();
+  
+  // Group files by their target registry path
+  for (const file of discoveredFiles) {
+    if (!fileGroups.has(file.registryPath)) {
+      fileGroups.set(file.registryPath, []);
+    }
+    fileGroups.get(file.registryPath)!.push(file);
+  }
+  
+  const resolvedFiles: DiscoveredFile[] = [];
+  
+  // For each group, keep only the file with the latest mtime
+  for (const [registryPath, files] of fileGroups) {
+    if (files.length === 1) {
+      // No conflict, keep the file
+      resolvedFiles.push(files[0]);
+    } else {
+      // Multiple files with same target path - resolve by mtime
+      const latestFile = files.reduce((latest, current) => 
+        current.mtime > latest.mtime ? current : latest
+      );
+      
+      resolvedFiles.push(latestFile);
+      
+      // Log which files were skipped
+      const skippedFiles = files.filter(f => f !== latestFile);
+      for (const skipped of skippedFiles) {
+        logger.debug(`Skipped ${skipped.fullPath} (older than ${latestFile.fullPath})`);
+        console.log(`⚠️  Skipped ${skipped.relativePath} from ${skipped.sourceDir} (older version)`);
+      }
+    }
+  }
+  
+  return resolvedFiles;
+}
+
+/**
  * Find formula.yml files with the specified formula name
  */
 async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
@@ -284,12 +543,18 @@ async function saveFormulaCommand(
   // Update formula config with new version
   formulaConfig = { ...formulaConfig, version: targetVersion };
   
-  // Discover and include MD files based on new frontmatter rules
-  const discoveredFiles = await discoverMdFiles(formulaDir, formulaConfig.name);
+  // Discover and include MD files using unified logic
+  const discoveredFiles = await discoverMdFilesUnified(formulaDir, formulaConfig.name);
   console.log(`📄 Found ${discoveredFiles.length} markdown files`);
   
+  // Resolve file conflicts (keep latest mtime)
+  const resolvedFiles = resolveFileConflicts(discoveredFiles);
+  if (resolvedFiles.length !== discoveredFiles.length) {
+    console.log(`📄 Resolved conflicts, keeping ${resolvedFiles.length} files`);
+  }
+  
   // Create formula files array
-  const formulaFiles = await createFormulaFiles(formulaYmlPath, formulaConfig, discoveredFiles);
+  const formulaFiles = await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
   
   // Save formula to local registry
   const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, formulaYmlPath, options?.force);
@@ -442,7 +707,53 @@ async function createFormulaFiles(
 }
 
 /**
- * Get registry path for a file based on its source directory
+ * Create formula files array with unified discovery results
+ */
+async function createFormulaFilesUnified(
+  formulaYmlPath: string,
+  formulaConfig: FormulaYml,
+  discoveredFiles: DiscoveredFile[]
+): Promise<FormulaFile[]> {
+  const formulaFiles: FormulaFile[] = [];
+
+  // Add formula.yml as the first file
+  await writeFormulaYml(formulaYmlPath, formulaConfig);
+  const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
+  formulaFiles.push({
+    path: 'formula.yml',
+    content: updatedFormulaYmlContent,
+    isTemplate: false,
+    encoding: UTF8_ENCODING
+  });
+
+  // Process discovered MD files in parallel
+  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
+    const originalContent = await readTextFile(mdFile.fullPath);
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
+
+    // Update source file if content changed
+    if (updatedContent !== originalContent) {
+      await writeTextFile(mdFile.fullPath, updatedContent);
+      console.log(`✓ Updated frontmatter in ${mdFile.relativePath}`);
+    }
+
+    return {
+      path: mdFile.registryPath,
+      content: updatedContent,
+      isTemplate: detectTemplateFile(updatedContent),
+      encoding: UTF8_ENCODING
+    };
+  });
+
+  const processedMdFiles = await Promise.all(mdFilePromises);
+  formulaFiles.push(...processedMdFiles);
+  
+  return formulaFiles;
+}
+
+/**
+ * Get registry path for a file based on its source directory (legacy function)
+ * This is kept for backward compatibility with the old discovery logic
  */
 function getRegistryPath(sourceDir: string, relativePath: string): string {
   switch (sourceDir) {
