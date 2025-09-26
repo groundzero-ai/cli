@@ -6,6 +6,8 @@ import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
+import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { 
@@ -22,7 +24,7 @@ import {
 const AI_DIR = 'ai';
 const CURSOR_COMMANDS_DIR = '.cursor/commands';
 const CLAUDE_COMMANDS_DIR = '.claude/commands';
-const FORMULA_YML_FILE = 'formula.yml';
+// Constants are now imported from shared constants file
 const MARKDOWN_EXTENSION = '.md';
 const UTF8_ENCODING = 'utf8' as const;
 
@@ -80,9 +82,11 @@ function parseFormulaInput(formulaInput: string): {
  * Reuses init command logic but makes it non-interactive
  */
 async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
-  const formulaYmlPath = join(formulaDir, 'formula.yml');
+  const groundzeroDir = getLocalGroundZeroDir(formulaDir);
+  const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
   
   // Ensure the target directory exists
+  await ensureDir(groundzeroDir);
   await ensureDir(formulaDir);
   
   // Create default formula config
@@ -110,7 +114,7 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
   const cwd = process.cwd();
   const formulaDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
-  const formulaYmlPath = join(formulaDir, 'formula.yml');
+  const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
   
   logger.debug(`Handling directory input: ${formulaDir}`);
   
@@ -181,7 +185,7 @@ const findAllMarkdownFiles = (dir: string, baseDir: string = dir) =>
  * Find all formula.yml files in a directory
  */
 const findAllFormulaYmlFiles = (dir: string, baseDir: string = dir) => 
-  findFilesByExtension(dir, FORMULA_YML_FILE, baseDir);
+  findFilesByExtension(dir, FILE_PATTERNS.FORMULA_YML, baseDir);
 
 /**
  * Find formula.yml files with the specified formula name

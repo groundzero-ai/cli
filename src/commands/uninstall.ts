@@ -9,25 +9,12 @@ import { buildDependencyTree, findDanglingDependencies } from '../core/dependenc
 import { exists, remove, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-
-// Consolidated constants
-const CONSTANTS = {
-  PLATFORM_DIRS: {
-    CURSOR: '.cursor',
-    CLAUDE: '.claude',
-    AI: 'ai'
-  },
-  FILE_PATTERNS: {
-    FORMULA_YML: 'formula.yml',
-    HIDDEN_FORMULA_YML: '.formula.yml',
-    GROUNDZERO_MDC: 'groundzero.mdc',
-    GROUNDZERO_MD: 'groundzero.md'
-  },
-  GLOBAL_FILES: {
-    CURSOR_GROUNDZERO: '.cursor/rules/groundzero.mdc',
-    CLAUDE_GROUNDZERO: '.claude/groundzero.md'
-  }
-} as const;
+import { 
+  PLATFORM_DIRS, 
+  FILE_PATTERNS, 
+  GLOBAL_PLATFORM_FILES 
+} from '../constants/index.js';
+import { getLocalFormulaYmlPath, getAIDir } from '../utils/paths.js';
 
 
 /**
@@ -43,8 +30,8 @@ async function cleanupPlatformFiles(
   
   // Process both platforms in parallel
   const platformTasks = [
-    processPlatform(targetDir, CONSTANTS.PLATFORM_DIRS.CURSOR, formulaName, options, cleaned.cursorFiles),
-    processPlatform(targetDir, CONSTANTS.PLATFORM_DIRS.CLAUDE, formulaName, options, cleaned.claudeFiles)
+    processPlatform(targetDir, PLATFORM_DIRS.CURSOR, formulaName, options, cleaned.cursorFiles),
+    processPlatform(targetDir, PLATFORM_DIRS.CLAUDE, formulaName, options, cleaned.claudeFiles)
   ];
   
   await Promise.all(platformTasks);
@@ -76,9 +63,9 @@ async function processPlatform(
     }
   }
   
-  const globalFile = platformDir === CONSTANTS.PLATFORM_DIRS.CURSOR 
-    ? CONSTANTS.GLOBAL_FILES.CURSOR_GROUNDZERO 
-    : CONSTANTS.GLOBAL_FILES.CLAUDE_GROUNDZERO;
+  const globalFile = platformDir === PLATFORM_DIRS.CURSOR 
+    ? GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO 
+    : GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO;
   logger.debug(`Preserved global ${platformDir} file: ${globalFile}`);
 }
 
@@ -103,8 +90,8 @@ async function findFormulaSpecificFiles(platformDir: string, formulaName: string
         } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.mdc'))) {
           // Skip global files that should be preserved
           const isGlobalFile = (
-            relativePath === `rules/${CONSTANTS.FILE_PATTERNS.GROUNDZERO_MDC}` ||
-            relativePath === CONSTANTS.FILE_PATTERNS.GROUNDZERO_MD
+            relativePath === `rules/${FILE_PATTERNS.GROUNDZERO_MDC}` ||
+            relativePath === FILE_PATTERNS.GROUNDZERO_MD
           );
           
           if (!isGlobalFile) {
@@ -140,7 +127,7 @@ async function findFormulaSpecificFiles(platformDir: string, formulaName: string
 async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
   const protectedFormulas = new Set<string>();
   
-  const formulaYmlPath = join(targetDir, CONSTANTS.FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(targetDir);
   if (!(await exists(formulaYmlPath))) return protectedFormulas;
   
   try {
@@ -165,10 +152,10 @@ async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
  * Remove formula from formula.yml or .formula.yml file
  */
 async function removeFormulaFromYml(targetDir: string, formulaName: string): Promise<boolean> {
-  // Check for formula.yml first, then .formula.yml
+  // Check for .groundzero/formula.yml first, then .formula.yml (legacy)
   const configPaths = [
-    join(targetDir, CONSTANTS.FILE_PATTERNS.FORMULA_YML),
-    join(targetDir, CONSTANTS.FILE_PATTERNS.HIDDEN_FORMULA_YML)
+    getLocalFormulaYmlPath(targetDir),
+    join(targetDir, FILE_PATTERNS.HIDDEN_FORMULA_YML)
   ];
   
   let configPath: string | null = null;
@@ -248,15 +235,15 @@ async function displayDryRunInfo(
   
   // Check if formula would be removed from formula.yml
   const configPaths = [
-    join(targetDir, CONSTANTS.FILE_PATTERNS.FORMULA_YML),
-    join(targetDir, CONSTANTS.FILE_PATTERNS.HIDDEN_FORMULA_YML)
+    getLocalFormulaYmlPath(targetDir),
+    join(targetDir, FILE_PATTERNS.HIDDEN_FORMULA_YML)
   ];
   
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
   if (hasConfigFile.some(exists => exists)) {
     console.log(`Would remove ${formulaName} from formula dependencies`);
   } else {
-    console.log('No formula.yml file to update');
+    console.log('No .groundzero/formula.yml file to update');
   }
   
   if (options.keepData) {
@@ -278,8 +265,8 @@ function displayPlatformCleanupInfo(platformCleanup: { cursorFiles: string[]; cl
     }
   } else {
     console.log('Platform files: No formula-specific platform files to clean up');
-    console.log(`├── Preserved global Cursor file: ${CONSTANTS.GLOBAL_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`├── Preserved global Claude file: ${CONSTANTS.GLOBAL_FILES.CLAUDE_GROUNDZERO}`);
+    console.log(`├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
+    console.log(`├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
   }
 }
 
@@ -299,16 +286,16 @@ function displayUninstallSuccess(
   console.log(`📁 Target directory: ${targetDir}`);
   
   if (options.recursive && danglingDependencies.size > 0) {
-    console.log(`🗑️  Removed main formula: ${CONSTANTS.PLATFORM_DIRS.AI}/${formulaName}`);
+    console.log(`🗑️  Removed main formula: ai/${formulaName}`);
     console.log(`🗑️  Removed ${danglingDependencies.size} dangling dependencies:`);
     for (const dep of danglingDependencies) {
       if (removedDirectories.includes(dep)) {
-        console.log(`   ├── ${CONSTANTS.PLATFORM_DIRS.AI}/${dep}`);
+        console.log(`   ├── ai/${dep}`);
       }
     }
     console.log(`📊 Total directories removed: ${removedDirectories.length}`);
   } else {
-    console.log(`🗑️  Removed directory: ${CONSTANTS.PLATFORM_DIRS.AI}/${formulaName}`);
+    console.log(`🗑️  Removed directory: ai/${formulaName}`);
   }
   
   if (removedFromYml) {
@@ -328,8 +315,8 @@ function displayUninstallSuccess(
     }
   } else {
     console.log(`🧹 Platform files: No formula-specific files to clean up`);
-    console.log(`   ├── Preserved global Cursor file: ${CONSTANTS.GLOBAL_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`   ├── Preserved global Claude file: ${CONSTANTS.GLOBAL_FILES.CLAUDE_GROUNDZERO}`);
+    console.log(`   ├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
+    console.log(`   ├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
   }
 }
 
@@ -346,7 +333,7 @@ async function uninstallFormulaCommand(
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  const groundzeroPath = join(targetDir, CONSTANTS.PLATFORM_DIRS.AI);
+  const groundzeroPath = getAIDir(targetDir);
   
   // Check if ai directory exists
   if (!(await exists(groundzeroPath))) {

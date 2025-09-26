@@ -3,6 +3,8 @@ import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
+import { FILE_PATTERNS } from '../constants/index.js';
+import { getLocalFormulaYmlPath } from '../utils/paths.js';
 
 /**
  * Formula metadata from groundzero directory
@@ -17,13 +19,16 @@ export interface GroundzeroFormula {
 }
 
 /**
- * Find formula config file (formula.yml or .formula.yml) in a directory
+ * Find formula config file (.groundzero/formula.yml, formula.yml, or .formula.yml) in a directory
  */
 async function findFormulaConfigFile(directoryPath: string): Promise<string | null> {
-  const formulaYmlPath = join(directoryPath, 'formula.yml');
-  const hiddenFormulaYmlPath = join(directoryPath, '.formula.yml');
+  const groundzeroFormulaYmlPath = getLocalFormulaYmlPath(directoryPath);
+  const formulaYmlPath = join(directoryPath, FILE_PATTERNS.FORMULA_YML);
+  const hiddenFormulaYmlPath = join(directoryPath, FILE_PATTERNS.HIDDEN_FORMULA_YML);
   
-  if (await exists(hiddenFormulaYmlPath)) {
+  if (await exists(groundzeroFormulaYmlPath)) {
+    return groundzeroFormulaYmlPath;
+  } else if (await exists(hiddenFormulaYmlPath)) {
     return hiddenFormulaYmlPath;
   } else if (await exists(formulaYmlPath)) {
     return formulaYmlPath;

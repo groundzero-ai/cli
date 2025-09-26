@@ -6,6 +6,7 @@ import { promptCreateFormula, promptFormulaDetails } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
+import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js';
 
 /**
  * Initialize formula.yml command implementation
@@ -13,9 +14,10 @@ import { exists, ensureDir } from '../utils/fs.js';
 async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
   const cwd = process.cwd();
   const formulaDir = targetDir ? join(cwd, targetDir) : cwd;
-  const formulaYmlPath = join(formulaDir, 'formula.yml');
+  const groundzeroDir = getLocalGroundZeroDir(formulaDir);
+  const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
   
-  logger.info(`Initializing formula.yml in directory: ${formulaDir}`);
+  logger.info(`Initializing formula.yml in directory: ${groundzeroDir}`);
   
   let formulaConfig: FormulaYml;
   
@@ -24,7 +26,7 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
     logger.info('Found existing formula.yml, parsing...');
     try {
       formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(`✓ formula.yml already exists`);
+      console.log(`✓ .groundzero/formula.yml already exists`);
       console.log(`📦 Name: ${formulaConfig.name}`);
       console.log(`📦 Version: ${formulaConfig.version}`);
       if (formulaConfig.description) {
@@ -62,9 +64,12 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
       const defaultName = basename(formulaDir);
       formulaConfig = await promptFormulaDetails(defaultName);
       
+      // Ensure .groundzero directory exists
+      await ensureDir(groundzeroDir);
+      
       // Create the formula.yml file
       await writeFormulaYml(formulaYmlPath, formulaConfig);
-      console.log(`✓ Created formula.yml`);
+      console.log(`✓ Created .groundzero/formula.yml`);
       
       // Success output
       console.log(`📦 Name: ${formulaConfig.name}`);
@@ -101,8 +106,8 @@ async function initFormulaCommand(targetDir?: string): Promise<CommandResult> {
 export function setupInitCommand(program: Command): void {
   program
     .command('init')
-    .argument('[directory]', 'target directory to create formula.yml (relative to current directory)')
-    .description('Initialize a new formula.yml file in the current directory or specified directory')
+    .argument('[directory]', 'target directory to create .groundzero/formula.yml (relative to current directory)')
+    .description('Initialize a new .groundzero/formula.yml file in the current directory or specified directory')
     .action(withErrorHandling(async (directory?: string) => {
       const result = await initFormulaCommand(directory);
       if (!result.success) {

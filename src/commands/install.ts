@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
-import { InstallOptions, CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
+import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -17,42 +17,51 @@ import {
   isExactVersion, 
   createCaretRange,
 } from '../utils/version-ranges.js';
+import { 
+  PLATFORM_DIRS, 
+  PLATFORM_NAMES, 
+  FILE_PATTERNS, 
+  DEPENDENCY_ARRAYS, 
+  CONFLICT_RESOLUTION, 
+  GLOBAL_PLATFORM_FILES 
+} from '../constants/index.js';
+import { 
+  getLocalFormulaYmlPath,
+  getLocalFormulaMetadataPath,
+  getLocalGroundZeroDir,
+  getLocalFormulasDir,
+  getAIDir
+} from '../utils/paths.js';
 
-// Constants
-const PLATFORM_DIRS = {
-  CURSOR: '.cursor',
-  CLAUDE: '.claude',
-  AI: 'ai'
-} as const;
+/**
+ * Ensure local GroundZero directory structure exists
+ */
+async function ensureLocalGroundZeroStructure(cwd: string): Promise<void> {
+  const groundzeroDir = getLocalGroundZeroDir(cwd);
+  const formulasDir = getLocalFormulasDir(cwd);
+  
+  await Promise.all([
+    ensureDir(groundzeroDir),
+    ensureDir(formulasDir)
+  ]);
+}
 
-const PLATFORM_NAMES = {
-  CURSOR: 'cursor',
-  CLAUDE: 'claude'
-} as const;
-
-const FILE_PATTERNS = {
-  MD_FILES: '.md',
-  FORMULA_YML: 'formula.yml',
-  GROUNDZERO_MDC: 'groundzero.mdc',
-  GROUNDZERO_MD: 'groundzero.md'
-} as const;
-
-const DEPENDENCY_ARRAYS = {
-  FORMULAS: 'formulas',
-  DEV_FORMULAS: 'dev-formulas'
-} as const;
-
-const CONFLICT_RESOLUTION = {
-  SKIPPED: 'skipped',
-  KEPT: 'kept',
-  OVERWRITTEN: 'overwritten'
-} as const;
-
-// Global files that should never be removed during uninstall (shared across all formulas)
-const GLOBAL_PLATFORM_FILES = {
-  CURSOR_GROUNDZERO: `${PLATFORM_DIRS.CURSOR}/rules/${FILE_PATTERNS.GROUNDZERO_MDC}`,
-  CLAUDE_GROUNDZERO: `${PLATFORM_DIRS.CLAUDE}/${FILE_PATTERNS.GROUNDZERO_MD}`
-} as const;
+/**
+ * Copy registry formula.yml to local project structure
+ */
+async function copyRegistryFormulaYml(
+  cwd: string,
+  formulaName: string,
+  registryFormula: Formula
+): Promise<void> {
+  const localFormulaDir = join(getLocalFormulasDir(cwd), formulaName);
+  const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
+  
+  await ensureDir(localFormulaDir);
+  await writeFormulaYml(localFormulaYmlPath, registryFormula.metadata);
+  
+  logger.debug(`Copied registry formula.yml for ${formulaName} to local project`);
+}
 
 /**
  * Parse formula input to extract name and version/range
@@ -85,7 +94,9 @@ function parseFormulaInput(formulaInput: string): { name: string; version?: stri
  * Create a basic formula.yml file if it doesn't exist
  */
 async function createBasicFormulaYml(cwd: string): Promise<void> {
-  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  await ensureLocalGroundZeroStructure(cwd);
+  
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
   if (await exists(formulaYmlPath)) {
     return; // formula.yml already exists, no need to create
@@ -101,7 +112,7 @@ async function createBasicFormulaYml(cwd: string): Promise<void> {
   
   await writeFormulaYml(formulaYmlPath, basicFormulaYml);
   logger.info(`Created basic formula.yml with name: ${projectName}`);
-  console.log(`📋 Created basic formula.yml with name: ${projectName}`);
+  console.log(`📋 Created basic formula.yml in .groundzero/ with name: ${projectName}`);
 }
 
 /**
@@ -113,7 +124,7 @@ async function detectAndManagePlatforms(
 ): Promise<{ platforms: string[]; created: string[] }> {
   const cursorDir = join(targetDir, PLATFORM_DIRS.CURSOR);
   const claudeDir = join(targetDir, PLATFORM_DIRS.CLAUDE);
-  const formulaYmlPath = join(targetDir, FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(targetDir);
   
   // Check all directories and formula.yml in parallel
   const [cursorExists, claudeExists, formulaYmlExists] = await Promise.all([
@@ -257,9 +268,10 @@ async function provideIdeTemplateFiles(
  * Find where a formula currently exists in formula.yml
  */
 async function findFormulaLocation(
-  formulaYmlPath: string,
+  cwd: string,
   formulaName: string
 ): Promise<'formulas' | 'dev-formulas' | null> {
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   if (!(await exists(formulaYmlPath))) {
     return null;
   }
@@ -287,12 +299,13 @@ async function findFormulaLocation(
  * Add a formula dependency to formula.yml with smart placement logic
  */
 async function addFormulaToYml(
-  formulaYmlPath: string, 
+  cwd: string, 
   formulaName: string, 
   formulaVersion: string, 
   isDev: boolean = false,
   originalVersion?: string // The original version/range that was requested
 ): Promise<void> {
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   if (!(await exists(formulaYmlPath))) {
     return; // If no formula.yml exists, ignore this step
   }
@@ -327,7 +340,7 @@ async function addFormulaToYml(
   };
   
   // Find current location and determine target location
-  const currentLocation = await findFormulaLocation(formulaYmlPath, formulaName);
+  const currentLocation = await findFormulaLocation(cwd, formulaName);
   
   let targetArray: 'formulas' | 'dev-formulas';
   if (currentLocation === DEPENDENCY_ARRAYS.DEV_FORMULAS && !isDev) {
@@ -435,7 +448,7 @@ async function installFormulaToGroundzero(
   forceOverwrite?: boolean
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
   const cwd = process.cwd();
-  const groundzeroPath = join(cwd, PLATFORM_DIRS.AI);
+  const groundzeroPath = getAIDir(cwd);
   
   // Determine formula groundzero path
   const formulaGroundzeroPath = targetDir && targetDir !== '.' 
@@ -446,6 +459,9 @@ async function installFormulaToGroundzero(
   
   // Load formula
   const formula = await formulaManager.loadFormula(formulaName, version);
+  
+  // Copy registry formula.yml to local project structure
+  await copyRegistryFormulaYml(cwd, formulaName, formula);
   
   // Create modified options with force flag if needed
   const installOptions = forceOverwrite ? { ...options, force: true } : options;
@@ -578,14 +594,14 @@ async function installAllFormulasCommand(
   options: InstallOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  logger.info(`Installing all formulas from formula.yml to: ${cwd}/${PLATFORM_DIRS.AI}`, { options });
+  logger.info(`Installing all formulas from formula.yml to: ${getAIDir(cwd)}`, { options });
   
   await ensureRegistryDirectories();
   
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
   
-  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
   let cwdConfig: FormulaYml;
   try {
@@ -716,7 +732,7 @@ async function handleDryRunMode(
       continue;
     }
     
-    console.log(`📁 Would install to ${PLATFORM_DIRS.AI}/${resolved.name}: ${dryRunResult.installedCount} files`);
+    console.log(`📁 Would install to ai/${resolved.name}: ${dryRunResult.installedCount} files`);
     
     if (dryRunResult.overwritten) {
       console.log(`  ⚠️  Would overwrite existing directory`);
@@ -724,11 +740,11 @@ async function handleDryRunMode(
   }
   
   // Show formula.yml update
-  const formulaYmlPath = join(process.cwd(), FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(process.cwd());
   if (await exists(formulaYmlPath)) {
-    console.log(`\n📋 Would add to formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
+    console.log(`\n📋 Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
   } else {
-    console.log('\nNo formula.yml found - skipping dependency addition');
+    console.log('\nNo .groundzero/formula.yml found - skipping dependency addition');
   }
   
   return {
@@ -784,7 +800,7 @@ async function processResolvedFormulas(
     });
     
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.OVERWRITTEN || groundzeroResult.overwritten) {
-      console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in ${PLATFORM_DIRS.AI}`);
+      console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in ai`);
     }
   }
   
@@ -810,7 +826,7 @@ function displayInstallationResults(
   const cwd = process.cwd();
   
   console.log(`\n✓ Formula '${formulaName}' and ${resolvedFormulas.length - 1} dependencies installed`);
-  console.log(`📁 Target directory: ${cwd}/${PLATFORM_DIRS.AI}`);
+  console.log(`📁 Target directory: ${getAIDir(cwd)}`);
   console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
   console.log(`✅ Installed: ${installedCount}, ⏭️ Skipped: ${skippedCount}`);
   
@@ -818,16 +834,16 @@ function displayInstallationResults(
     console.log(`📄 Main formula files installed: ${mainFilesInstalled}`);
   }
   
-  console.log(`📝 Total files added to ${PLATFORM_DIRS.AI}: ${totalGroundzeroFiles}`);
+  console.log(`📝 Total files added to ai: ${totalGroundzeroFiles}`);
   
   if (mainFileConflicts.length > 0) {
     console.log(`⚠️  Overwrote ${mainFileConflicts.length} existing main files`);
   }
   
-  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   if (mainFormula) {
     const dependencyType = options.dev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
-    console.log(`📋 Added to ${dependencyType}: ${formulaName}@${mainFormula.version}`);
+    console.log(`📋 Added to ${dependencyType} in .groundzero/formula.yml: ${formulaName}@${mainFormula.version}`);
   }
   
   // Platform and IDE template output
@@ -1063,7 +1079,7 @@ async function installFormulaCommand(
   version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  logger.info(`Installing formula '${formulaName}' with dependencies to: ${cwd}/${PLATFORM_DIRS.AI}`, { options });
+  logger.info(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
   
   await ensureRegistryDirectories();
   
@@ -1082,7 +1098,7 @@ async function installFormulaCommand(
       success: true,
       data: {
         formulaName,
-        targetDir: `${cwd}/${PLATFORM_DIRS.AI}`,
+        targetDir: getAIDir(cwd),
         resolvedFormulas: [],
         totalFormulas: 0,
         installed: 0,
@@ -1141,14 +1157,14 @@ async function installFormulaCommand(
   }
   
   // Update formula.yml and manage platforms in parallel
-  const formulaYmlPath = join(cwd, FILE_PATTERNS.FORMULA_YML);
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   const [formulaYmlExists, platformResult] = await Promise.all([
     exists(formulaYmlPath),
     detectAndManagePlatforms(cwd, options)
   ]);
   
   if (formulaYmlExists && mainFormula) {
-    await addFormulaToYml(formulaYmlPath, formulaName, mainFormula.version, options.dev || false, version);
+    await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version);
   }
   
   // Provide IDE-specific template files
@@ -1176,7 +1192,7 @@ async function installFormulaCommand(
     success: true,
     data: {
       formulaName,
-      targetDir: `${cwd}/${PLATFORM_DIRS.AI}`,
+      targetDir: getAIDir(cwd),
       resolvedFormulas: finalResolvedFormulas,
       totalFormulas: finalResolvedFormulas.length,
       installed: installedCount,

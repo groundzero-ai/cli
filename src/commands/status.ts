@@ -8,6 +8,7 @@ import { scanGroundzeroFormulas, GroundzeroFormula } from '../core/groundzero.js
 import { exists, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
+import { getLocalFormulaYmlPath } from '../utils/paths.js';
 import { 
   satisfiesVersion, 
   isExactVersion, 
@@ -136,11 +137,11 @@ async function performStatusAnalysis(targetDir: string): Promise<{
   formulas: FormulaStatusInfo[];
 }> {
   // 1. Read CWD formula.yml
-  const cwdFormulaPath = join(targetDir, 'formula.yml');
+  const cwdFormulaPath = getLocalFormulaYmlPath(targetDir);
   let cwdConfig: FormulaYml;
   
   if (!(await exists(cwdFormulaPath))) {
-    throw new Error(`No formula.yml found in ${targetDir}. This directory doesn't appear to be a formula project.`);
+    throw new Error(`No .groundzero/formula.yml found in ${targetDir}. This directory doesn't appear to be a formula project.`);
   }
   
   try {
