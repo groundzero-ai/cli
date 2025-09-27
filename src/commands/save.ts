@@ -6,7 +6,7 @@ import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
+import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
 import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, DEPENDENCY_ARRAYS, type Platform } from '../constants/index.js';
 
@@ -166,16 +166,17 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 
 /**
  * Handle directory-based formula input
- * Reuses init command logic for checking existing formula.yml and creating new ones
+ * Creates formula.yml in .groundzero/formulas/<formula-name>/formula.yml
  */
 async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
   const cwd = process.cwd();
-  const formulaDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const sourceDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
+  const formulaDir = getLocalFormulaDir(cwd, formulaName);
+  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
   
-  logger.debug(`Handling directory input: ${formulaDir}`);
+  logger.debug(`Handling directory input: source=${sourceDir}, formula=${formulaDir}`);
   
-  // Check if formula.yml already exists (reusing init command logic)
+  // Check if formula.yml already exists in .groundzero/formulas/<formula-name>/
   if (await exists(formulaYmlPath)) {
     logger.debug('Found existing formula.yml, parsing...');
     try {
@@ -258,6 +259,56 @@ async function getFileMtime(filePath: string): Promise<number> {
 }
 
 
+
+/**
+ * Discover markdown files in a specific directory (for directory input)
+ */
+async function discoverMdFilesInDirectory(directoryPath: string, formulaName: string): Promise<DiscoveredFile[]> {
+  const allMdFiles = await findAllMarkdownFiles(directoryPath, directoryPath);
+  const allDiscoveredFiles: DiscoveredFile[] = [];
+
+  // Process files in parallel
+  const processPromises = allMdFiles.map(async (mdFile) => {
+    try {
+      const content = await readTextFile(mdFile.fullPath);
+      const frontmatter = parseMarkdownFrontmatter(content);
+
+      // For directory input, include files that either:
+      // 1. Have no frontmatter (will get frontmatter added)
+      // 2. Have matching frontmatter
+      // 3. Have no conflicting frontmatter
+      const shouldInclude = !frontmatter || 
+                           !frontmatter.formula || 
+                           frontmatter.formula.name === formulaName ||
+                           !frontmatter.formula.name;
+
+      if (shouldInclude) {
+        const mtime = await getFileMtime(mdFile.fullPath);
+        const contentHash = await calculateFileHash(content);
+        const result: DiscoveredFile = {
+          fullPath: mdFile.fullPath,
+          relativePath: mdFile.relativePath,
+          sourceDir: 'ai', // Use 'ai' as the source directory for registry path
+          registryPath: mdFile.relativePath, // Use relative path as registry path
+          mtime,
+          contentHash
+        };
+
+        if (frontmatter?.formula?.platformSpecific === true) {
+          result.forcePlatformSpecific = true;
+        }
+
+        return result;
+      }
+    } catch (error) {
+      logger.warn(`Failed to read or parse ${mdFile.relativePath}: ${error}`);
+    }
+    return null;
+  });
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is DiscoveredFile => result !== null);
+}
 
 /**
  * Unified file discovery function that searches platform-specific directories
@@ -564,8 +615,18 @@ async function saveFormulaCommand(
   // Update formula config with new version
   formulaConfig = { ...formulaConfig, version: targetVersion };
   
+  // For directory input, use the source directory for file discovery
+  const sourceDir = isDirectory && directoryPath ? join(process.cwd(), directoryPath.substring(1)) : formulaDir;
+  
   // Discover and include MD files using unified logic
-  const discoveredFiles = await discoverMdFilesUnified(formulaDir, formulaConfig.name);
+  let discoveredFiles: DiscoveredFile[];
+  if (isDirectory && directoryPath) {
+    // For directory input, search directly in the specified directory
+    discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name);
+  } else {
+    // For formula name input, use the unified discovery logic
+    discoveredFiles = await discoverMdFilesUnified(sourceDir, formulaConfig.name);
+  }
   console.log(`📄 Found ${discoveredFiles.length} markdown files`);
   
   // Resolve file conflicts (keep latest mtime)

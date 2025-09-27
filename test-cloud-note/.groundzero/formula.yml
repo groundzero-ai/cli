@@ -1,0 +1,6 @@
+name: test-cloud-note
+version: 0.1.1-dev.UxzrnUy
+formulas:
+- name: test-cloud-note
+  version: 0.1.1-dev.UxzrnUy
+dev-formulas: []
