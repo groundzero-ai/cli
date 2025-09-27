@@ -152,9 +152,9 @@ async function detectPlatformStatus(cwd: string): Promise<PlatformStatus[]> {
       templateFile: join(cwd, PLATFORM_DIRS.CURSOR, 'rules', FILE_PATTERNS.GROUNDZERO_MDC)
     },
     {
-      name: PLATFORM_NAMES.CLAUDE,
-      dir: join(cwd, PLATFORM_DIRS.CLAUDE),
-      templateFile: join(cwd, PLATFORM_DIRS.CLAUDE, FILE_PATTERNS.GROUNDZERO_MD)
+      name: PLATFORM_NAMES.CLAUDECODE,
+      dir: join(cwd, PLATFORM_DIRS.CLAUDECODE),
+      templateFile: join(cwd, PLATFORM_DIRS.CLAUDECODE, FILE_PATTERNS.GROUNDZERO_MD)
     }
   ];
   

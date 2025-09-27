@@ -54,7 +54,7 @@ export function getAIDir(cwd: string): string {
 export function getPlatformDirs(cwd: string) {
   return {
     cursor: join(cwd, PLATFORM_DIRS.CURSOR),
-    claude: join(cwd, PLATFORM_DIRS.CLAUDE),
+    claude: join(cwd, PLATFORM_DIRS.CLAUDECODE),
     ai: join(cwd, PLATFORM_DIRS.AI),
     groundzero: join(cwd, PLATFORM_DIRS.GROUNDZERO)
   };

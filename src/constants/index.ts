@@ -115,3 +115,6 @@ export type PlatformSubdir = typeof PLATFORM_SUBDIRS[keyof typeof PLATFORM_SUBDI
 export type FormulaDir = typeof FORMULA_DIRS[keyof typeof FORMULA_DIRS];
 export type DependencyArray = typeof DEPENDENCY_ARRAYS[keyof typeof DEPENDENCY_ARRAYS];
 export type ConflictResolution = typeof CONFLICT_RESOLUTION[keyof typeof CONFLICT_RESOLUTION];
+
+// Alias for backward compatibility
+export const PLATFORM_NAMES = PLATFORMS;

@@ -31,7 +31,7 @@ async function cleanupPlatformFiles(
   // Process both platforms in parallel
   const platformTasks = [
     processPlatform(targetDir, PLATFORM_DIRS.CURSOR, formulaName, options, cleaned.cursorFiles),
-    processPlatform(targetDir, PLATFORM_DIRS.CLAUDE, formulaName, options, cleaned.claudeFiles)
+    processPlatform(targetDir, PLATFORM_DIRS.CLAUDECODE, formulaName, options, cleaned.claudeFiles)
   ];
   
   await Promise.all(platformTasks);
@@ -63,9 +63,9 @@ async function processPlatform(
     }
   }
   
-  const globalFile = platformDir === PLATFORM_DIRS.CURSOR 
-    ? GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO 
-    : GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO;
+  const globalFile = platformDir === PLATFORM_DIRS.CURSOR
+    ? GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO
+    : GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO;
   logger.debug(`Preserved global ${platformDir} file: ${globalFile}`);
 }
 
@@ -266,7 +266,7 @@ function displayPlatformCleanupInfo(platformCleanup: { cursorFiles: string[]; cl
   } else {
     console.log('Platform files: No formula-specific platform files to clean up');
     console.log(`├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
+    console.log(`├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO}`);
   }
 }
 
@@ -316,7 +316,7 @@ function displayUninstallSuccess(
   } else {
     console.log(`🧹 Platform files: No formula-specific files to clean up`);
     console.log(`   ├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`   ├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDE_GROUNDZERO}`);
+    console.log(`   ├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO}`);
   }
 }
 

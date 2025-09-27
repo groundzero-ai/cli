@@ -4,6 +4,7 @@
  */
 
 import { join, basename, dirname } from 'path';
+import path from 'path';
 import { 
   exists, 
   ensureDir, 
@@ -443,7 +444,7 @@ export function getPlatformNameFromSource(sourceDir: string): string {
  * Uses platform definitions for accurate directory mapping
  */
 export function getTargetDirectory(targetPath: string, registryPath: string): string {
-  const { join } = require('path');
+  const { join } = path;
   const MARKDOWN_EXTENSION = '.md';
 
   if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {
@@ -457,6 +458,10 @@ export function getTargetDirectory(targetPath: string, registryPath: string): st
   // Check if the first part is a known platform directory
   const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
   if (platformDirectories.includes(firstPart)) {
+    // Special case: AI directory should not be prefixed again since it's already the base
+    if (firstPart === PLATFORM_DIRS.AI) {
+      return targetPath;
+    }
     return join(targetPath, firstPart);
   }
 
@@ -489,7 +494,7 @@ export function getTargetDirectory(targetPath: string, registryPath: string): st
  * Handles platform-specific file naming conventions using platform definitions
  */
 export function getTargetFilePath(targetDir: string, registryPath: string): string {
-  const { join, basename } = require('path');
+  const { join, basename } = path;
   const MARKDOWN_EXTENSION = '.md';
 
   if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {

@@ -51,7 +51,7 @@ async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchCon
     rootDir: PLATFORM_DIRS.AI,
     rulesDir: join(cwd, PLATFORM_DIRS.AI),
     filePatterns: [FILE_PATTERNS.MD_FILES],
-    registryPath: PLATFORM_DIRS.AI
+    registryPath: '' // Empty for AI directory to avoid double ai/ prefix
   });
 
   // Add detected platform configurations
@@ -291,7 +291,7 @@ async function processPlatformFiles(
       config.rulesDir,
       config.name,
       formulaName,
-      config.registryPath,
+      config.registryPath || config.name, // Use config.name if registryPath is empty (for AI)
       formulaDir
     );
     allFiles.push(...rulesFiles);
@@ -455,13 +455,8 @@ function shouldIncludeMarkdownFile(
  * Get registry path for a file based on unified directory structure
  */
 function getRegistryPathUnified(registryPath: string, relativePath: string, sourceDirName: string): string {
-  if (sourceDirName === 'ai') {
-    // Flatten AI files to root of ai directory
-    return join(registryPath, basename(relativePath));
-  } else {
-    // Preserve subdirectory structure for other directories
-    return join(registryPath, relativePath);
-  }
+  // Preserve subdirectory structure for ALL directories
+  return join(registryPath, relativePath);
 }
 
 
