@@ -1,7 +1,6 @@
 name: formula-main
-version: 0.1.0
-keywords:
-- ''
+version: 0.1.0-dev.Uy02qBK
+keywords: []
 private: true
 formulas:
 - name: formula-a

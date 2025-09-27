@@ -1,0 +1,12 @@
+name: g0-gpm-cli
+version: 0.1.0
+formulas:
+- name: formula-a
+  version: ^0.1.2
+- name: formula-b
+  version: ^0.1.0
+- name: scalable-nestjs-mongodb
+  version: ^0.1.0
+- name: formula-main
+  version: ^0.1.0
+dev-formulas: []

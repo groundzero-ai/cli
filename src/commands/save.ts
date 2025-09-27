@@ -517,37 +517,136 @@ function getRegistryPathUnified(registryPath: string, relativePath: string, sour
 
 /**
  * Find formula.yml files with the specified formula name
+ * Searches in both .groundzero/formulas directory
+ * Also scans for files with matching frontmatter
  */
 async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
   const cwd = process.cwd();
-  const aiDir = join(cwd, PLATFORM_DIRS.AI);
-  
-  if (!(await exists(aiDir)) || !(await isDirectory(aiDir))) {
-    return [];
-  }
-  
-  const allFormulaFiles = await findAllFormulaYmlFiles(aiDir);
   const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: FormulaYml }> = [];
   
-  // Process files in parallel for better performance
-  const parsePromises = allFormulaFiles.map(async (formulaFile) => {
-    try {
-      const config = await parseFormulaYml(formulaFile.fullPath);
-      if (config.name === formulaName) {
-        return {
-          fullPath: formulaFile.fullPath,
-          relativePath: formulaFile.relativePath,
-          config
-        };
+  // Search in .groundzero/formulas directory
+  const formulasDir = getLocalFormulasDir(cwd);
+  if (await exists(formulasDir) && await isDirectory(formulasDir)) {
+    const formulaDirs = await listDirectories(formulasDir);
+    
+    for (const formulaDir of formulaDirs) {
+      const formulaYmlPath = join(formulasDir, formulaDir, FILE_PATTERNS.FORMULA_YML);
+      if (await exists(formulaYmlPath)) {
+        try {
+          const config = await parseFormulaYml(formulaYmlPath);
+          if (config.name === formulaName) {
+            matchingFormulas.push({
+              fullPath: formulaYmlPath,
+              relativePath: join('.groundzero', 'formulas', formulaDir, FILE_PATTERNS.FORMULA_YML),
+              config
+            });
+          }
+        } catch (error) {
+          logger.warn(`Failed to parse formula.yml at ${formulaYmlPath}: ${error}`);
+        }
       }
-    } catch (error) {
-      logger.warn(`Failed to parse formula.yml at ${formulaFile.fullPath}: ${error}`);
     }
-    return null;
-  });
+  }
   
-  const results = await Promise.all(parsePromises);
-  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+  
+  // Scan for files with matching frontmatter
+  const frontmatterMatches = await findFormulasByFrontmatter(formulaName);
+  matchingFormulas.push(...frontmatterMatches);
+  
+  // Deduplicate results based on fullPath to avoid duplicates
+  const uniqueFormulas = new Map<string, { fullPath: string; relativePath: string; config: FormulaYml }>();
+  
+  for (const formula of matchingFormulas) {
+    if (!uniqueFormulas.has(formula.fullPath)) {
+      uniqueFormulas.set(formula.fullPath, formula);
+    }
+  }
+  
+  return Array.from(uniqueFormulas.values());
+}
+
+/**
+ * Find formulas by scanning markdown files for matching frontmatter
+ * Only checks /ai directory and platform-specific rules/commands/agents directories
+ */
+async function findFormulasByFrontmatter(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
+  const cwd = process.cwd();
+  const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: FormulaYml }> = [];
+  
+  // Helper function to process markdown files in a directory
+  const processMarkdownFiles = async (
+    dirPath: string, 
+    registryPath: string, 
+    sourceName: string
+  ): Promise<void> => {
+    if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
+      return;
+    }
+    
+    const allMdFiles = await findAllMarkdownFiles(dirPath);
+    
+    for (const mdFile of allMdFiles) {
+      try {
+        const content = await readTextFile(mdFile.fullPath);
+        const frontmatter = parseMarkdownFrontmatter(content);
+        
+        if (frontmatter?.formula?.name === formulaName) {
+          // Create a virtual formula.yml config based on frontmatter
+          const config: FormulaYml = {
+            name: formulaName,
+            version: '0.1.0' // Default version for frontmatter-based formulas
+          };
+          
+          matchingFormulas.push({
+            fullPath: mdFile.fullPath, // Use the markdown file as the "formula" location
+            relativePath: registryPath ? join(registryPath, mdFile.relativePath) : mdFile.relativePath,
+            config
+          });
+        }
+      } catch (error) {
+        logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceName}: ${error}`);
+      }
+    }
+  };
+  
+  // Search in AI directory for markdown files with matching frontmatter
+  const aiDir = join(cwd, PLATFORM_DIRS.AI);
+  await processMarkdownFiles(aiDir, '', 'ai');
+  
+  // Search in platform-specific directories (rules, commands, agents)
+  const platformConfigs = await buildPlatformSearchConfig(cwd);
+  
+  for (const config of platformConfigs) {
+    // Skip AI directory since it's handled above
+    if (config.name === 'ai') {
+      continue;
+    }
+    
+    // Check rules directory
+    if (config.rulesDir) {
+      await processMarkdownFiles(config.rulesDir, config.registryPath, config.name);
+    }
+    
+    // Check commands directory
+    if (config.commandsDir) {
+      await processMarkdownFiles(
+        config.commandsDir, 
+        join(config.registryPath, PLATFORM_SUBDIRS.COMMANDS), 
+        config.name
+      );
+    }
+    
+    // Check agents directory
+    if (config.agentsDir) {
+      await processMarkdownFiles(
+        config.agentsDir, 
+        join(config.registryPath, PLATFORM_SUBDIRS.AGENTS), 
+        config.name
+      );
+    }
+  }
+  
+  return matchingFormulas;
 }
 
 /**
@@ -580,19 +679,36 @@ async function saveFormulaCommand(
     // Handle traditional formula name input - search for existing formula.yml files
     const matchingFormulas = await findFormulaYmlByName(formulaName);
     
+    
     if (matchingFormulas.length === 0) {
       throw new FormulaNotFoundError(formulaName);
     }
     
     if (matchingFormulas.length > 1) {
-      const locations = matchingFormulas.map(f => f.relativePath).join(', ');
-      throw new Error(`Multiple formula.yml files found with name '${formulaName}': ${locations}. Please ensure formula names are unique.`);
+      // Prioritize formula.yml files over frontmatter-based files
+      const formulaYmlFiles = matchingFormulas.filter(f => f.fullPath.endsWith('formula.yml'));
+      const frontmatterFiles = matchingFormulas.filter(f => f.fullPath.endsWith('.md'));
+      
+      if (formulaYmlFiles.length > 1) {
+        const locations = formulaYmlFiles.map(f => f.relativePath).join(', ');
+        throw new Error(`Multiple formula.yml files found with name '${formulaName}': ${locations}. Please ensure formula names are unique.`);
+      } else if (formulaYmlFiles.length === 1) {
+        // Use the formula.yml file if available
+        formulaInfo = {
+          fullPath: formulaYmlFiles[0].fullPath,
+          config: formulaYmlFiles[0].config
+        };
+      } else {
+        // Multiple frontmatter files - this is an error
+        const locations = frontmatterFiles.map(f => f.relativePath).join(', ');
+        throw new Error(`Multiple markdown files found with formula name '${formulaName}' in frontmatter: ${locations}. Please ensure formula names are unique.`);
+      }
+    } else {
+      formulaInfo = {
+        fullPath: matchingFormulas[0].fullPath,
+        config: matchingFormulas[0].config
+      };
     }
-    
-    formulaInfo = {
-      fullPath: matchingFormulas[0].fullPath,
-      config: matchingFormulas[0].config
-    };
   }
   
   const formulaDir = dirname(formulaInfo.fullPath);
