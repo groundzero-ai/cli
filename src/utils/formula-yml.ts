@@ -14,6 +14,25 @@ export interface MarkdownFrontmatter {
 }
 
 /**
+ * Add or update platformSpecific flag in frontmatter
+ */
+export function addPlatformSpecificFlag(content: string): string {
+  const frontmatter = parseMarkdownFrontmatter(content);
+
+  // Update frontmatter with platformSpecific flag
+  const updatedFrontmatter = {
+    ...frontmatter,
+    formula: {
+      ...frontmatter?.formula,
+      platformSpecific: true
+    }
+  };
+
+  // Reconstruct content with updated frontmatter
+  return updateMarkdownWithFormulaFrontmatter(content, updatedFrontmatter.formula?.name || '');
+}
+
+/**
  * Parse formula.yml file with validation
  */
 export async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYml> {

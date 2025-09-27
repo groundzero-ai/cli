@@ -433,3 +433,89 @@ function bumpMinorVersion(version: string): string {
   return version;
 }
 
+/**
+ * File selection option interface
+ */
+interface FileSelectionOption {
+  platform: string;
+  sourcePath: string;
+  preview: string;
+  registryPath: string;
+}
+
+/**
+ * Prompt user to select one file from multiple options
+ */
+export async function promptFileSelection(
+  options: FileSelectionOption[],
+  message: string = 'Select a file:'
+): Promise<number> {
+  if (options.length === 0) {
+    throw new Error('No files to select from');
+  }
+
+  if (options.length === 1) {
+    return 0; // Only one option, auto-select
+  }
+
+  const choices = options.map((option, index) => ({
+    title: `${option.platform}: ${option.registryPath}`,
+    value: index,
+    description: option.preview.substring(0, 60) + (option.preview.length > 60 ? '...' : '')
+  }));
+
+  const response = await prompts({
+    type: 'select',
+    name: 'selectedIndex',
+    message,
+    choices,
+    hint: 'Use arrow keys to navigate, Enter to select'
+  });
+
+  if (isCancelled(response) || response.selectedIndex === undefined) {
+    throw new UserCancellationError('File selection cancelled');
+  }
+
+  return response.selectedIndex;
+}
+
+/**
+ * Prompt user to mark multiple files as platform-specific
+ */
+export async function promptPlatformSpecificSelection(
+  options: FileSelectionOption[],
+  message: string = 'Select files to mark as platform-specific (they will keep their platform prefixes):'
+): Promise<number[]> {
+  const response = await prompts({
+    type: 'multiselect',
+    name: 'platformSpecificIndices',
+    message,
+    choices: options.map((option, index) => ({
+      title: `${option.platform}: ${option.registryPath}`,
+      value: index,
+      description: option.preview.substring(0, 50) + (option.preview.length > 50 ? '...' : '')
+    })),
+    hint: 'Use space to select, Enter to confirm'
+  });
+
+  if (isCancelled(response)) {
+    throw new UserCancellationError('Platform-specific selection cancelled');
+  }
+
+  return response.platformSpecificIndices || [];
+}
+
+/**
+ * Get preview of file content (first few lines)
+ */
+export async function getContentPreview(filePath: string, maxLines: number = 3): Promise<string> {
+  try {
+    const { readTextFile } = await import('./fs.js');
+    const content = await readTextFile(filePath);
+    const lines = content.split('\n').slice(0, maxLines);
+    return lines.join('\n').substring(0, 100) + (lines.length >= maxLines ? '...' : '');
+  } catch {
+    return '[Unable to read preview]';
+  }
+}
+

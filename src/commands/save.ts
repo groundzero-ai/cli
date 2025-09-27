@@ -582,7 +582,7 @@ async function saveFormulaCommand(
   console.log(`📄 Found ${discoveredFiles.length} markdown files`);
   
   // Resolve file conflicts (keep latest mtime)
-  const resolvedFiles = resolveFileConflicts(discoveredFiles);
+  const resolvedFiles = await resolveFileConflicts(discoveredFiles, targetVersion);
   if (resolvedFiles.length !== discoveredFiles.length) {
     console.log(`📄 Resolved conflicts, keeping ${resolvedFiles.length} files`);
   }
