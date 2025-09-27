@@ -334,43 +334,43 @@ async function processMarkdownFilesUnified(
   registryPath: string,
   formulaDir: string
 ): Promise<DiscoveredFile[]> {
-  if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
-    return [];
-  }
+  return processDirectoryFiles(dirPath, sourceDirName, formulaName, registryPath, formulaDir);
+}
 
-  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
-  const discoveredFiles: DiscoveredFile[] = [];
+/**
+ * Process a single markdown file to extract discovered file information
+ */
+async function processMarkdownFile(
+  mdFile: { fullPath: string; relativePath: string },
+  sourceDirName: string,
+  formulaName: string,
+  registryPath: string,
+  formulaDir: string
+): Promise<DiscoveredFile | null> {
+  try {
+    const content = await readTextFile(mdFile.fullPath);
+    const frontmatter = parseMarkdownFrontmatter(content);
 
-  // Process files in parallel
-  const processPromises = allMdFiles.map(async (mdFile) => {
-    try {
-      const content = await readTextFile(mdFile.fullPath);
-      const frontmatter = parseMarkdownFrontmatter(content);
-      
-      if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
-        const mtime = await getFileMtime(mdFile.fullPath);
-        const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
-        const contentHash = await calculateFileHash(content);
-        const forcePlatformSpecific = frontmatter?.formula?.platformSpecific === true;
+    if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
+      const mtime = await getFileMtime(mdFile.fullPath);
+      const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
+      const contentHash = await calculateFileHash(content);
+      const forcePlatformSpecific = frontmatter?.formula?.platformSpecific === true;
 
-        return {
-          fullPath: mdFile.fullPath,
-          relativePath: mdFile.relativePath,
-          sourceDir: sourceDirName,
-          registryPath: targetRegistryPath,
-          mtime,
-          contentHash,
-          forcePlatformSpecific
-        };
-      }
-    } catch (error) {
-      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDirName}: ${error}`);
+      return {
+        fullPath: mdFile.fullPath,
+        relativePath: mdFile.relativePath,
+        sourceDir: sourceDirName,
+        registryPath: targetRegistryPath,
+        mtime,
+        contentHash,
+        forcePlatformSpecific
+      };
     }
-    return null;
-  });
-  
-  const results = await Promise.all(processPromises);
-  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+  } catch (error) {
+    logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDirName}: ${error}`);
+  }
+  return null;
 }
 
 /**
@@ -388,38 +388,14 @@ async function processDirectoryFiles(
   }
 
   const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
-  const discoveredFiles: DiscoveredFile[] = [];
 
   // Process files in parallel
-  const processPromises = allMdFiles.map(async (mdFile) => {
-    try {
-      const content = await readTextFile(mdFile.fullPath);
-      const frontmatter = parseMarkdownFrontmatter(content);
-      
-      if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
-        const mtime = await getFileMtime(mdFile.fullPath);
-        const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
-        const contentHash = await calculateFileHash(content);
-        const forcePlatformSpecific = frontmatter?.formula?.platformSpecific === true;
-
-        return {
-          fullPath: mdFile.fullPath,
-          relativePath: mdFile.relativePath,
-          sourceDir: sourceDirName,
-          registryPath: targetRegistryPath,
-          mtime,
-          contentHash,
-          forcePlatformSpecific
-        };
-      }
-    } catch (error) {
-      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDirName}: ${error}`);
-    }
-    return null;
-  });
+  const processPromises = allMdFiles.map(mdFile =>
+    processMarkdownFile(mdFile, sourceDirName, formulaName, registryPath, formulaDir)
+  );
 
   const results = await Promise.all(processPromises);
-  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+  return results.filter((result): result is DiscoveredFile => result !== null);
 }
 
 /**
@@ -430,16 +406,25 @@ function shouldIncludeMarkdownFileUnified(
   frontmatter: any,
   sourceDirName: string,
   formulaName: string,
-  formulaDir: string
+  formulaDir?: string
+): boolean {
+  return shouldIncludeMarkdownFile(mdFile, frontmatter, sourceDirName, formulaName, formulaDir);
+}
+
+/**
+ * Determine if a markdown file should be included based on frontmatter rules
+ */
+function shouldIncludeMarkdownFile(
+  mdFile: { relativePath: string },
+  frontmatter: any,
+  sourceDir: string,
+  formulaName: string,
+  formulaDirRelativeToAi?: string
 ): boolean {
   const mdFileDir = dirname(mdFile.relativePath);
-  
+
   // For AI directory: include files adjacent to formula.yml or with matching frontmatter
-  if (sourceDirName === 'ai') {
-    const cwd = process.cwd();
-    const aiDir = join(cwd, 'ai');
-    const formulaDirRelativeToAi = formulaDir.substring(aiDir.length + 1);
-    
+  if (sourceDir === PLATFORM_DIRS.AI) {
     if (frontmatter?.formula?.name === formulaName) {
       logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
       return true;
@@ -455,14 +440,14 @@ function shouldIncludeMarkdownFileUnified(
     }
     return false;
   }
-  
-  // For other directories: only include files with matching frontmatter
+
+  // For command directories: only include files with matching frontmatter
   if (frontmatter?.formula?.name === formulaName) {
-    logger.debug(`Including ${mdFile.relativePath} from ${sourceDirName} (matches formula name in frontmatter)`);
+    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
     return true;
   }
-  
-  logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDirName} (no matching frontmatter)`);
+
+  logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDir} (no matching frontmatter)`);
   return false;
 }
 
@@ -601,79 +586,6 @@ async function saveFormulaCommand(
   return { success: true, data: formulaConfig };
 }
 
-/**
- * Process markdown files from a directory with frontmatter filtering
- */
-async function processMarkdownFiles(
-  dirPath: string,
-  sourceDir: string,
-  formulaName: string,
-  formulaDirRelativeToAi?: string
-): Promise<Array<{ fullPath: string; relativePath: string; sourceDir: string }>> {
-  if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
-    return [];
-  }
-
-  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
-
-  // Process files in parallel
-  const processPromises = allMdFiles.map(async (mdFile) => {
-    try {
-      const content = await readTextFile(mdFile.fullPath);
-      const frontmatter = parseMarkdownFrontmatter(content);
-      
-      if (shouldIncludeMarkdownFile(mdFile, frontmatter, sourceDir, formulaName, formulaDirRelativeToAi)) {
-        return { fullPath: mdFile.fullPath, relativePath: mdFile.relativePath, sourceDir };
-      }
-    } catch (error) {
-      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDir}: ${error}`);
-    }
-    return null;
-  });
-
-  const results = await Promise.all(processPromises);
-  return results.filter((result): result is NonNullable<typeof result> => result !== null);
-}
-
-/**
- * Determine if a markdown file should be included based on frontmatter rules
- */
-function shouldIncludeMarkdownFile(
-  mdFile: { relativePath: string },
-  frontmatter: any,
-  sourceDir: string,
-  formulaName: string,
-  formulaDirRelativeToAi?: string
-): boolean {
-  const mdFileDir = dirname(mdFile.relativePath);
-  
-  // For AI directory: include files adjacent to formula.yml or with matching frontmatter
-  if (sourceDir === PLATFORM_DIRS.AI) {
-    if (frontmatter?.formula?.name === formulaName) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
-      return true;
-    }
-    if (mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
-      return true;
-    }
-    if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
-    } else {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (not adjacent to formula.yml and no matching frontmatter)`);
-    }
-    return false;
-  }
-  
-  // For command directories: only include files with matching frontmatter
-  if (frontmatter?.formula?.name === formulaName) {
-    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
-    return true;
-  }
-  
-  logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDir} (no matching frontmatter)`);
-  return false;
-}
 
 /**
  * Discover MD files based on new frontmatter rules from multiple directories
@@ -692,6 +604,7 @@ async function createFormulaFilesUnified(
 
   // Add formula.yml as the first file
   await writeFormulaYml(formulaYmlPath, formulaConfig);
+  // Reuse the formula config content instead of reading the file again
   const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
   formulaFiles.push({
     path: 'formula.yml',

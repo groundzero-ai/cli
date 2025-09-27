@@ -248,6 +248,19 @@ async function handlePlatformSpecificMarking(
 }
 
 /**
+ * Synchronize files with universal content
+ */
+async function syncFilesWithUniversalContent(universalFile: DiscoveredFile, files: DiscoveredFile[]): Promise<void> {
+  const universalContent = await readTextFile(universalFile.fullPath);
+  for (const file of files) {
+    if (file !== universalFile && !file.forcePlatformSpecific) {
+      await writeTextFile(file.fullPath, universalContent);
+      console.log(`✓ Updated ${file.registryPath} to match universal file`);
+    }
+  }
+}
+
+/**
  * Handle universal file selection and content synchronization
  */
 async function handleUniversalFileSelection(
@@ -271,14 +284,7 @@ async function handleUniversalFileSelection(
       finalRegistryPath: universalFile.registryPath
     });
 
-    // Overwrite all other files with universal content
-    const universalContent = await readTextFile(universalFile.fullPath);
-    for (const file of files) {
-      if (file !== universalFile && !file.forcePlatformSpecific) {
-        await writeTextFile(file.fullPath, universalContent);
-        console.log(`✓ Updated ${file.registryPath} to match universal file`);
-      }
-    }
+    await syncFilesWithUniversalContent(universalFile, files);
   } else {
     // Multiple files to choose from
     const remainingOptions = await prepareFileOptions(files);
@@ -294,17 +300,43 @@ async function handleUniversalFileSelection(
       finalRegistryPath: selectedFile.registryPath
     });
 
-    // Overwrite all other non-platform-specific files with universal content
-    const universalContent = await readTextFile(selectedFile.fullPath);
-    for (const file of files) {
-      if (file !== selectedFile && !file.forcePlatformSpecific) {
-        await writeTextFile(file.fullPath, universalContent);
-        console.log(`✓ Updated ${file.registryPath} to match universal file`);
-      }
-    }
+    await syncFilesWithUniversalContent(selectedFile, files);
   }
 
   return result;
+}
+
+/**
+ * Find the latest file in a group based on modification time
+ */
+function findLatestFile(files: DiscoveredFile[]): DiscoveredFile {
+  return files.reduce((latest, current) =>
+    current.mtime > latest.mtime ? current : latest
+  );
+}
+
+/**
+ * Create platform-specific registry path for a file
+ */
+function createPlatformSpecificPath(file: DiscoveredFile, platformName: string): string {
+  const originalBase = basename(file.registryPath, '.md');
+  return join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
+}
+
+/**
+ * Add files as platform-specific to the result
+ */
+function addFilesAsPlatformSpecific(files: DiscoveredFile[], result: ContentAnalysisResult): void {
+  for (const file of files) {
+    const platformName = getPlatformNameFromSource(file.sourceDir);
+    const platformSpecificPath = createPlatformSpecificPath(file, platformName);
+
+    result.platformSpecificFiles.push({
+      file,
+      platformName,
+      finalRegistryPath: platformSpecificPath
+    });
+  }
 }
 
 /**
@@ -328,9 +360,7 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
   // If all files have the same hash (identical content)
   if (contentGroups.size === 1) {
     const hashGroup = Array.from(contentGroups.values())[0];
-    const latestFile = hashGroup.reduce((latest, current) =>
-      current.mtime > latest.mtime ? current : latest
-    );
+    const latestFile = findLatestFile(hashGroup);
     result.universalFiles.push({
       file: latestFile,
       finalRegistryPath: latestFile.registryPath
@@ -351,10 +381,7 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
     }
 
     // Find maximum count
-    let maxCount = 0;
-    for (const count of Array.from(hashCounts.values())) {
-      maxCount = Math.max(maxCount, count);
-    }
+    const maxCount = Math.max(...Array.from(hashCounts.values()));
 
     // Find all hash groups with maximum count
     const maxCountHashes = Array.from(hashCounts.entries())
@@ -365,9 +392,7 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
       // Universal content (appears in >= 2 platforms)
       for (const hash of maxCountHashes) {
         const hashGroup = contentGroups.get(hash)!;
-        const latestFile = hashGroup.reduce((latest, current) =>
-          current.mtime > latest.mtime ? current : latest
-        );
+        const latestFile = findLatestFile(hashGroup);
         result.universalFiles.push({
           file: latestFile,
           finalRegistryPath: latestFile.registryPath
@@ -377,32 +402,12 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
       // Platform-specific content (other hashes)
       for (const [hash, hashGroup] of Array.from(contentGroups.entries())) {
         if (!maxCountHashes.includes(hash)) {
-          for (const file of hashGroup) {
-            const platformName = getPlatformNameFromSource(file.sourceDir);
-            const originalBase = basename(file.registryPath, '.md');
-            const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
-
-            result.platformSpecificFiles.push({
-              file,
-              platformName,
-              finalRegistryPath: platformSpecificPath
-            });
-          }
+          addFilesAsPlatformSpecific(hashGroup, result);
         }
       }
     } else {
       // All files are platform-specific (max count < 2)
-      for (const file of files) {
-        const platformName = getPlatformNameFromSource(file.sourceDir);
-        const originalBase = basename(file.registryPath, '.md');
-        const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
-
-        result.platformSpecificFiles.push({
-          file,
-          platformName,
-          finalRegistryPath: platformSpecificPath
-        });
-      }
+      addFilesAsPlatformSpecific(files, result);
     }
   } else {
     // Different mtimes - find files with maximum mtime
@@ -417,17 +422,7 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
       });
     } else {
       // Multiple files with same latest mtime - all become platform-specific
-      for (const file of maxMtimeFiles) {
-        const platformName = getPlatformNameFromSource(file.sourceDir);
-        const originalBase = basename(file.registryPath, '.md');
-        const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
-
-        result.platformSpecificFiles.push({
-          file,
-          platformName,
-          finalRegistryPath: platformSpecificPath
-        });
-      }
+      addFilesAsPlatformSpecific(maxMtimeFiles, result);
     }
   }
 
