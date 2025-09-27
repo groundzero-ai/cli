@@ -7,9 +7,16 @@ import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } f
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js';
-import { FILE_PATTERNS } from '../constants/index.js';
+import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, type Platform } from '../constants/index.js';
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
+import {
+  detectAllPlatforms,
+  getDetectedPlatforms,
+  getPlatformDefinition,
+  getPlatformDirectoryPaths,
+  type PlatformName
+} from '../core/platforms.js';
 import { 
   exists, 
   readTextFile, 
@@ -29,13 +36,43 @@ const CLAUDE_COMMANDS_DIR = '.claude/commands';
 const MARKDOWN_EXTENSION = '.md';
 const UTF8_ENCODING = 'utf8' as const;
 
-// Search directories configuration with wildcard support
-const SEARCH_DIRECTORIES = [
-  { name: 'ai', basePath: 'ai', registryPath: 'ai' },
-  { name: 'rules', basePath: '**/rules', registryPath: 'rules' },
-  { name: 'commands', basePath: '**/commands', registryPath: 'commands' },
-  { name: 'agents', basePath: '**/agents', registryPath: 'agents' }
-] as const;
+/**
+ * Build platform-based search configuration for file discovery
+ */
+async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchConfig[]> {
+  const detectedPlatforms = await getDetectedPlatforms(cwd);
+  const config: PlatformSearchConfig[] = [];
+
+  // Add AI directory as required feature
+  config.push({
+    name: 'ai',
+    platform: 'ai' as PlatformName, // Special case for AI directory
+    rootDir: PLATFORM_DIRS.AI,
+    rulesDir: join(cwd, PLATFORM_DIRS.AI),
+    filePatterns: [FILE_PATTERNS.MD_FILES],
+    registryPath: PLATFORM_DIRS.AI
+  });
+
+  // Add detected platform configurations
+  for (const platform of detectedPlatforms) {
+    const definition = getPlatformDefinition(platform);
+    const paths = getPlatformDirectoryPaths(cwd);
+    const platformPaths = paths[platform];
+
+    config.push({
+      name: platform,
+      platform,
+      rootDir: definition.rootDir,
+      rulesDir: platformPaths.rulesDir,
+      commandsDir: platformPaths.commandsDir,
+      agentsDir: platformPaths.agentsDir,
+      filePatterns: [...definition.filePatterns],
+      registryPath: platform
+    });
+  }
+
+  return config;
+}
 
 // New type for discovered files with metadata
 interface DiscoveredFile {
@@ -44,6 +81,18 @@ interface DiscoveredFile {
   sourceDir: string;
   registryPath: string;
   mtime: number;
+}
+
+// Platform search configuration interface
+interface PlatformSearchConfig {
+  name: string;
+  platform: PlatformName;
+  rootDir: string;
+  rulesDir: string;
+  commandsDir?: string;
+  agentsDir?: string;
+  filePatterns: string[];
+  registryPath: string;
 }
 
 /**
@@ -212,95 +261,74 @@ async function getFileMtime(filePath: string): Promise<number> {
   }
 }
 
-/**
- * Discover directories matching wildcard patterns
- */
-async function discoverDirectoriesWithWildcards(cwd: string): Promise<Array<{ name: string; fullPath: string; registryPath: string }>> {
-  const discoveredDirs: Array<{ name: string; fullPath: string; registryPath: string }> = [];
-  
-  for (const dirConfig of SEARCH_DIRECTORIES) {
-    if (dirConfig.basePath === 'ai') {
-      // Handle ai directory specially (no wildcard)
-      const aiPath = join(cwd, 'ai');
-      if (await exists(aiPath) && await isDirectory(aiPath)) {
-        discoveredDirs.push({
-          name: dirConfig.name,
-          fullPath: aiPath,
-          registryPath: dirConfig.registryPath
-        });
-      }
-    } else {
-      // Handle wildcard patterns like **/commands, **/rules, **/agents
-      const pattern = dirConfig.basePath;
-      const targetDirName = pattern.replace('**/', '');
-      
-      // Find all directories with the target name
-      const foundDirs = await findDirectoriesByName(cwd, targetDirName);
-      
-      for (const dirPath of foundDirs) {
-        discoveredDirs.push({
-          name: dirConfig.name,
-          fullPath: dirPath,
-          registryPath: dirConfig.registryPath
-        });
-      }
-    }
-  }
-  
-  return discoveredDirs;
-}
 
 /**
- * Recursively find directories with a specific name
- */
-async function findDirectoriesByName(baseDir: string, targetName: string): Promise<string[]> {
-  const foundDirs: string[] = [];
-  
-  if (!(await exists(baseDir)) || !(await isDirectory(baseDir))) {
-    return foundDirs;
-  }
-  
-  const entries = await listDirectories(baseDir);
-  
-  for (const entry of entries) {
-    const fullPath = join(baseDir, entry);
-    
-    if (entry === targetName) {
-      foundDirs.push(fullPath);
-    } else {
-      // Recursively search subdirectories
-      const subDirs = await findDirectoriesByName(fullPath, targetName);
-      foundDirs.push(...subDirs);
-    }
-  }
-  
-  return foundDirs;
-}
-
-/**
- * Unified file discovery function that searches all configured directories
+ * Unified file discovery function that searches platform-specific directories
  */
 async function discoverMdFilesUnified(formulaDir: string, formulaName: string): Promise<DiscoveredFile[]> {
   const cwd = process.cwd();
-  const discoveredDirs = await discoverDirectoriesWithWildcards(cwd);
+  const platformConfigs = await buildPlatformSearchConfig(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
-  
-  // Process all discovered directories in parallel
-  const processPromises = discoveredDirs.map(async (dirInfo) => {
-    const files = await processMarkdownFilesUnified(
-      dirInfo.fullPath, 
-      dirInfo.name, 
-      formulaName, 
-      dirInfo.registryPath,
-      formulaDir
-    );
+
+  // Process all platform configurations in parallel
+  const processPromises = platformConfigs.map(async (config) => {
+    const files = await processPlatformFiles(config, formulaDir, formulaName);
     return files;
   });
-  
+
   const results = await Promise.all(processPromises);
   allDiscoveredFiles.push(...results.flat());
-  
+
   return allDiscoveredFiles;
+}
+
+/**
+ * Process files for a specific platform configuration
+ */
+async function processPlatformFiles(
+  config: PlatformSearchConfig,
+  formulaDir: string,
+  formulaName: string
+): Promise<DiscoveredFile[]> {
+  const allFiles: DiscoveredFile[] = [];
+
+  // Process rules directory
+  if (config.rulesDir) {
+    const rulesFiles = await processDirectoryFiles(
+      config.rulesDir,
+      config.name,
+      formulaName,
+      config.registryPath,
+      formulaDir
+    );
+    allFiles.push(...rulesFiles);
+  }
+
+  // Process commands directory if available
+  if (config.commandsDir) {
+    const commandFiles = await processDirectoryFiles(
+      config.commandsDir,
+      config.name,
+      formulaName,
+      join(config.registryPath, PLATFORM_SUBDIRS.COMMANDS),
+      formulaDir
+    );
+    allFiles.push(...commandFiles);
+  }
+
+  // Process agents directory if available
+  if (config.agentsDir) {
+    const agentFiles = await processDirectoryFiles(
+      config.agentsDir,
+      config.name,
+      formulaName,
+      join(config.registryPath, PLATFORM_SUBDIRS.AGENTS),
+      formulaDir
+    );
+    allFiles.push(...agentFiles);
+  }
+
+  return allFiles;
 }
 
 /**
@@ -330,6 +358,51 @@ async function processMarkdownFilesUnified(
         const mtime = await getFileMtime(mdFile.fullPath);
         const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
         
+        return {
+          fullPath: mdFile.fullPath,
+          relativePath: mdFile.relativePath,
+          sourceDir: sourceDirName,
+          registryPath: targetRegistryPath,
+          mtime
+        };
+      }
+    } catch (error) {
+      logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceDirName}: ${error}`);
+    }
+    return null;
+  });
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is NonNullable<typeof result> => result !== null);
+}
+
+/**
+ * Process files in a directory using platform-specific logic
+ */
+async function processDirectoryFiles(
+  dirPath: string,
+  sourceDirName: string,
+  formulaName: string,
+  registryPath: string,
+  formulaDir: string
+): Promise<DiscoveredFile[]> {
+  if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
+    return [];
+  }
+
+  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
+  const discoveredFiles: DiscoveredFile[] = [];
+
+  // Process files in parallel
+  const processPromises = allMdFiles.map(async (mdFile) => {
+    try {
+      const content = await readTextFile(mdFile.fullPath);
+      const frontmatter = parseMarkdownFrontmatter(content);
+
+      if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
+        const mtime = await getFileMtime(mdFile.fullPath);
+        const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
+
         return {
           fullPath: mdFile.fullPath,
           relativePath: mdFile.relativePath,
@@ -422,7 +495,7 @@ function resolveFileConflicts(discoveredFiles: DiscoveredFile[]): DiscoveredFile
   const resolvedFiles: DiscoveredFile[] = [];
   
   // For each group, keep only the file with the latest mtime
-  for (const [registryPath, files] of fileGroups) {
+  for (const [registryPath, files] of Array.from(fileGroups.entries())) {
     if (files.length === 1) {
       // No conflict, keep the file
       resolvedFiles.push(files[0]);
