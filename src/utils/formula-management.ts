@@ -25,14 +25,15 @@ export async function ensureLocalGroundZeroStructure(cwd: string): Promise<void>
 /**
  * Create a basic formula.yml file if it doesn't exist
  * Shared utility for both install and save commands
+ * @returns the formula.yml if it was created, null if it already existed
  */
-export async function createBasicFormulaYml(cwd: string): Promise<void> {
+export async function createBasicFormulaYml(cwd: string): Promise<FormulaYml | null> {
   await ensureLocalGroundZeroStructure(cwd);
   
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
   if (await exists(formulaYmlPath)) {
-    return; // formula.yml already exists, no need to create
+    return null; // formula.yml already exists, no need to create
   }
   
   const projectName = basename(cwd);
@@ -46,6 +47,7 @@ export async function createBasicFormulaYml(cwd: string): Promise<void> {
   await writeFormulaYml(formulaYmlPath, basicFormulaYml);
   logger.info(`Created basic formula.yml with name: ${projectName}`);
   console.log(`📋 Created basic formula.yml in .groundzero/ with name: ${projectName}`);
+  return basicFormulaYml;
 }
 
 /**

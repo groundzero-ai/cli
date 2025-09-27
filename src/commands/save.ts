@@ -668,7 +668,7 @@ async function saveFormulaCommand(
   await ensureRegistryDirectories();
   
   // Ensure main formula.yml exists for the codebase
-  await createBasicFormulaYml(cwd);
+  const newFormulaYml = await createBasicFormulaYml(cwd);
   
   let formulaInfo: { fullPath: string; config: FormulaYml };
   
@@ -678,7 +678,6 @@ async function saveFormulaCommand(
   } else {
     // Handle traditional formula name input - search for existing formula.yml files
     const matchingFormulas = await findFormulaYmlByName(formulaName);
-    
     
     if (matchingFormulas.length === 0) {
       throw new FormulaNotFoundError(formulaName);
@@ -718,7 +717,7 @@ async function saveFormulaCommand(
   logger.debug(`Found formula.yml at: ${formulaYmlPath}`);
   
   // Determine target version
-  const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, formulaConfig.version, formulaName);
+  const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, newFormulaYml ? undefined : formulaConfig.version, formulaName);
   
   // Check if version already exists (unless force is used)
   if (!options?.force) {
@@ -837,7 +836,10 @@ async function determineTargetVersion(
   }
   
   if (!currentVersion) {
-    throw new Error('No version information available');
+    // If no current version, set to 0.1.0 prerelease version
+    const prereleaseVersion = generateLocalVersion('0.1.0');
+    console.log(`🎯 No version found, setting to prerelease: ${prereleaseVersion}`);
+    return prereleaseVersion;
   }
   
   // Handle bump option with or without stable modifier
@@ -882,13 +884,6 @@ async function determineTargetVersion(
     console.log(`🎯 Incrementing prerelease version: ${currentVersion} → ${localVersion}`);
     return localVersion;
   } else {
-    // Special case: For new formulas starting with 0.1.0, don't bump to 0.1.1
-    if (currentVersion === '0.1.0') {
-      const localVersion = generateLocalVersion(currentVersion);
-      console.log(`🎯 Converting new formula to prerelease: ${currentVersion} → ${localVersion}`);
-      return localVersion;
-    }
-    
     // For other stable versions, bump patch and then generate prerelease
     const nextPatchVersion = calculateBumpedVersion(currentVersion, 'patch');
     const localVersion = generateLocalVersion(nextPatchVersion);
