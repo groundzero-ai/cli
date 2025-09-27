@@ -1,13 +1,14 @@
 import { Command } from 'commander';
 import { join, dirname, basename } from 'path';
-import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
+import { SaveOptions, CommandResult, FormulaYml, FormulaFile, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, type Platform } from '../constants/index.js';
+import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
+import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
+import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, DEPENDENCY_ARRAYS, type Platform } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
@@ -130,17 +131,20 @@ function parseFormulaInput(formulaInput: string): {
   return { name, version, isDirectory: false };
 }
 
+
 /**
  * Create formula.yml automatically in a directory without user prompts
  * Reuses init command logic but makes it non-interactive
  */
 async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
-  const groundzeroDir = getLocalGroundZeroDir(formulaDir);
-  const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
+  const cwd = process.cwd();
   
-  // Ensure the target directory exists
-  await ensureDir(groundzeroDir);
+  // Ensure the target directory exists (including formulas subdirectory)
+  await ensureLocalGroundZeroStructure(cwd);
   await ensureDir(formulaDir);
+  
+  // Create formula.yml in the formula directory (not the main .groundzero directory)
+  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
   
   // Create default formula config
   const formulaConfig: FormulaYml = {
@@ -167,7 +171,7 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
   const cwd = process.cwd();
   const formulaDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
-  const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
   logger.debug(`Handling directory input: ${formulaDir}`);
   
@@ -513,6 +517,9 @@ async function saveFormulaCommand(
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
+  // Ensure main formula.yml exists for the codebase
+  await createBasicFormulaYml(cwd);
+  
   let formulaInfo: { fullPath: string; config: FormulaYml };
   
   if (isDirectory && directoryPath) {
@@ -576,6 +583,9 @@ async function saveFormulaCommand(
   if (!saveResult.success) {
     return { success: false, error: saveResult.error || 'Failed to save formula' };
   }
+  
+  // Add saved formula to main formula.yml dependencies
+  await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version);
   
   console.log(`✅ Saved ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
   return { success: true, data: formulaConfig };

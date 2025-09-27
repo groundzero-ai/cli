@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, dirname, basename } from 'path';
+import { join, dirname } from 'path';
 import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
@@ -7,54 +7,54 @@ import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { checkExistingFormulaInMarkdownFiles } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, ResolvedFormula } from '../core/dependency-resolver.js';
-import { promptPlatformSelection, promptFormulaInstallConflict } from '../utils/prompts.js';
+import { promptFormulaInstallConflict } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir } from '../utils/fs.js';
-import { CURSOR_TEMPLATES, CLAUDE_TEMPLATES } from '../utils/embedded-templates.js';
+import { CURSOR_TEMPLATES, GENERAL_TEMPLATES } from '../utils/embedded-templates.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { 
-  parseVersionRange, 
-  isExactVersion, 
-  createCaretRange,
+import {
+  parseVersionRange,
 } from '../utils/version-ranges.js';
-import { 
-  PLATFORM_DIRS, 
+import {
+  PLATFORM_DIRS,
   PLATFORMS,
-  FILE_PATTERNS, 
-  DEPENDENCY_ARRAYS, 
-  CONFLICT_RESOLUTION, 
-  GLOBAL_PLATFORM_FILES,
+  FILE_PATTERNS,
+  DEPENDENCY_ARRAYS,
+  CONFLICT_RESOLUTION,
   GROUNDZERO_DIRS
 } from '../constants/index.js';
-import { 
-  detectAllPlatforms, 
-  getPlatformDirectoryPaths, 
+import {
+  getPlatformDirectoryPaths,
   createPlatformDirectories,
   getPlatformDefinition,
-  type PlatformName 
+  type PlatformName
 } from '../core/platforms.js';
-import { 
+import {
   getLocalFormulaYmlPath,
   getLocalGroundZeroDir,
   getLocalFormulasDir,
   getAIDir
 } from '../utils/paths.js';
+import { createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
+import {
+  parseFormulaInput,
+  detectPlatforms,
+  promptForPlatformSelection,
+  displayInstallationSummary,
+  displayInstallationResults
+} from '../utils/formula-installation.js';
+import {
+  withFileOperationErrorHandling,
+  withOperationErrorHandling,
+  handleUserCancellation
+} from '../utils/error-handling.js';
 
-/**
- * Ensure local GroundZero directory structure exists
- */
-async function ensureLocalGroundZeroStructure(cwd: string): Promise<void> {
-  const groundzeroDir = getLocalGroundZeroDir(cwd);
-  const formulasDir = getLocalFormulasDir(cwd);
-  
-  await Promise.all([
-    ensureDir(groundzeroDir),
-    ensureDir(formulasDir)
-  ]);
-}
 
 /**
  * Copy registry formula.yml to local project structure
+ * @param cwd - Current working directory
+ * @param formulaName - Name of the formula to copy
+ * @param registryFormula - Formula object from registry containing metadata
  */
 async function copyRegistryFormulaYml(
   cwd: string,
@@ -70,129 +70,37 @@ async function copyRegistryFormulaYml(
   logger.debug(`Copied registry formula.yml for ${formulaName} to local project`);
 }
 
-/**
- * Parse formula input to extract name and version/range
- */
-function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
-  const atIndex = formulaInput.lastIndexOf('@');
-  
-  if (atIndex === -1) {
-    return { name: formulaInput };
-  }
-  
-  const name = formulaInput.substring(0, atIndex);
-  const version = formulaInput.substring(atIndex + 1);
-  
-  if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version or formula@range`);
-  }
-  
-  // Validate the version/range format
-  try {
-    parseVersionRange(version);
-  } catch (error) {
-    throw new ValidationError(`Invalid version/range format: ${version}. ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-  
-  return { name, version };
-}
+
+
 
 /**
- * Create a basic formula.yml file if it doesn't exist
+ * Create platform directories for detected or selected platforms
+ * @param targetDir - Target directory to create platform directories in
+ * @param platforms - Array of platform names to create directories for
+ * @returns Array of created directory paths
  */
-async function createBasicFormulaYml(cwd: string): Promise<void> {
-  await ensureLocalGroundZeroStructure(cwd);
-  
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  
-  if (await exists(formulaYmlPath)) {
-    return; // formula.yml already exists, no need to create
-  }
-  
-  const projectName = basename(cwd);
-  const basicFormulaYml: FormulaYml = {
-    name: projectName,
-    version: '0.1.0',
-    formulas: [],
-    'dev-formulas': []
-  };
-  
-  await writeFormulaYml(formulaYmlPath, basicFormulaYml);
-  logger.info(`Created basic formula.yml with name: ${projectName}`);
-  console.log(`📋 Created basic formula.yml in .groundzero/ with name: ${projectName}`);
-}
-
-/**
- * Detect existing platforms and manage platform configuration
- */
-async function detectAndManagePlatforms(
+async function createPlatformDirectoriesForInstall(
   targetDir: string,
-  options: InstallOptions
-): Promise<{ platforms: string[]; created: string[] }> {
-  const formulaYmlPath = getLocalFormulaYmlPath(targetDir);
-  
-  // Detect all platforms using the centralized platform detection
-  const platformDetectionResults = await detectAllPlatforms(targetDir);
-  const detectedPlatforms = platformDetectionResults
-    .filter(result => result.detected)
-    .map(result => result.name);
-  
-  // Parse formula.yml if it exists
-  let formulaConfig: FormulaYml | null = null;
-  const formulaYmlExists = await exists(formulaYmlPath);
-  
-  if (formulaYmlExists) {
-    try {
-      formulaConfig = await parseFormulaYml(formulaYmlPath);
-    } catch (error) {
-      logger.warn(`Failed to parse formula.yml: ${error}`);
-    }
-  }
-  
-  // Determine final platforms
-  let finalPlatforms: string[];
-  const shouldPrompt = !formulaConfig?.platforms && detectedPlatforms.length === 0;
-  
-  if (formulaConfig?.platforms) {
-    finalPlatforms = formulaConfig.platforms;
-    logger.debug(`Using existing platforms from formula.yml: ${finalPlatforms.join(', ')}`);
-  } else if (detectedPlatforms.length > 0) {
-    finalPlatforms = detectedPlatforms;
-    logger.info(`Auto-detected platforms: ${finalPlatforms.join(', ')}`);
-  } else if (shouldPrompt) {
-    console.log('\n🤖 Platform Detection');
-    console.log('No AI development platform detected in this project.');
-    
-    finalPlatforms = await promptPlatformSelection();
-  } else {
-    finalPlatforms = [];
-  }
-  
-  // Create directories for selected platforms using centralized platform management
-  const created = await createPlatformDirectories(targetDir, finalPlatforms as PlatformName[]);
-  
-  // Update formula.yml if needed
-  if (formulaConfig && !formulaConfig.platforms && finalPlatforms.length >= 0) {
-    formulaConfig.platforms = finalPlatforms;
-    await writeFormulaYml(formulaYmlPath, formulaConfig);
-    logger.debug(`Updated formula.yml platforms: ${finalPlatforms.join(', ')}`);
-  }
-  
-  return { platforms: finalPlatforms, created };
+  platforms: string[]
+): Promise<string[]> {
+  return await createPlatformDirectories(targetDir, platforms as PlatformName[]);
 }
 
 /**
- * Provide IDE-specific template files based on detected platforms
- * Note: Global platform files (groundzero.mdc, groundzero.md) are shared across all formulas
+ * Add groundzero.md file to each platform's rulesDir
+ * Uses platform definitions to determine correct file locations
+ * @param targetDir - Target directory where platform directories exist
+ * @param platforms - Array of platform names to add template files for
+ * @param options - Installation options including force flag
+ * @returns Object containing arrays of added files, skipped files, and created directories
  */
 async function provideIdeTemplateFiles(
   targetDir: string,
   platforms: string[],
   options: InstallOptions
-): Promise<{ cursor: string[]; claude: string[]; skipped: string[]; directoriesCreated: string[] }> {
+): Promise<{ filesAdded: string[]; skipped: string[]; directoriesCreated: string[] }> {
   const provided = { 
-    cursor: [] as string[], 
-    claude: [] as string[], 
+    filesAdded: [] as string[], 
     skipped: [] as string[], 
     directoriesCreated: [] as string[] 
   };
@@ -200,51 +108,36 @@ async function provideIdeTemplateFiles(
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
     const platformDefinition = getPlatformDefinition(platform as PlatformName);
-    const platformDir = join(targetDir, PLATFORM_DIRS[platform.toUpperCase() as keyof typeof PLATFORM_DIRS]);
+    const rulesDir = join(targetDir, platformDefinition.rulesDir);
     
-    logger.info(`Providing ${platform} IDE templates`);
+    logger.info(`Adding groundzero file to ${platform} rules directory`);
     
-    const platformDirExists = await exists(platformDir);
-    if (!platformDirExists) {
-      provided.directoriesCreated.push(PLATFORM_DIRS[platform.toUpperCase() as keyof typeof PLATFORM_DIRS]);
+    const rulesDirExists = await exists(rulesDir);
+    if (!rulesDirExists) {
+      provided.directoriesCreated.push(platformDefinition.rulesDir);
     }
+
+    // Create rules directory (ensureDir handles existing directories gracefully)
+    await ensureDir(rulesDir);
     
-    // Create platform directory structure
-    await ensureDir(platformDir);
+    // Add groundzero file to the platform's rulesDir
+    // Cursor uses .mdc files, all other platforms use .md files
+    const isCursor = platform === PLATFORMS.CURSOR;
+    const fileName = isCursor ? FILE_PATTERNS.GROUNDZERO_MDC : FILE_PATTERNS.GROUNDZERO_MD;
+    const groundzeroFile = join(rulesDir, fileName);
+    const templateContent = isCursor 
+      ? CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC]
+      : GENERAL_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD];
     
-    // Determine the appropriate template file and content
-    let templateFile: string;
-    let templateContent: string;
-    let globalFileKey: string;
-    
-    if (platform === PLATFORMS.CURSOR) {
-      const rulesDir = join(platformDir, 'rules');
-      await ensureDir(rulesDir);
-      templateFile = join(rulesDir, FILE_PATTERNS.GROUNDZERO_MDC);
-      templateContent = CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC];
-      globalFileKey = GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO;
-    } else {
-      // All other platforms use .md files
-      templateFile = join(platformDir, FILE_PATTERNS.GROUNDZERO_MD);
-      templateContent = CLAUDE_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD];
-      globalFileKey = GLOBAL_PLATFORM_FILES[`${platform.toUpperCase()}_GROUNDZERO` as keyof typeof GLOBAL_PLATFORM_FILES];
-    }
-    
-    const fileExists = await exists(templateFile);
+    const fileExists = await exists(groundzeroFile);
     
     if (fileExists && !options.force) {
-      provided.skipped.push(globalFileKey);
-      logger.debug(`Skipped existing global ${platform} template: ${globalFileKey}`);
+      provided.skipped.push(`${platformDefinition.rulesDir}/${fileName}`);
+      logger.debug(`Skipped existing ${fileName} in ${platform} rules directory`);
     } else {
-      await writeTextFile(templateFile, templateContent);
-      
-      if (platform === PLATFORMS.CURSOR) {
-        provided.cursor.push(FILE_PATTERNS.GROUNDZERO_MDC);
-      } else {
-        provided.claude.push(FILE_PATTERNS.GROUNDZERO_MD);
-      }
-      
-      logger.debug(`Provided global ${platform} template: ${globalFileKey}`);
+      await writeTextFile(groundzeroFile, templateContent);
+      provided.filesAdded.push(`${platformDefinition.rulesDir}/${fileName}`);
+      logger.debug(`Added ${fileName} to ${platform} rules directory: ${groundzeroFile}`);
     }
   });
   
@@ -253,122 +146,6 @@ async function provideIdeTemplateFiles(
   return provided;
 }
 
-/**
- * Find where a formula currently exists in formula.yml
- */
-async function findFormulaLocation(
-  cwd: string,
-  formulaName: string
-): Promise<'formulas' | 'dev-formulas' | null> {
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  if (!(await exists(formulaYmlPath))) {
-    return null;
-  }
-  
-  try {
-    const config = await parseFormulaYml(formulaYmlPath);
-    
-    // Check both arrays efficiently
-    if (config.formulas?.some(dep => dep.name === formulaName)) {
-      return DEPENDENCY_ARRAYS.FORMULAS;
-    }
-    
-    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => dep.name === formulaName)) {
-      return DEPENDENCY_ARRAYS.DEV_FORMULAS;
-    }
-    
-    return null;
-  } catch (error) {
-    logger.warn(`Failed to parse formula.yml: ${error}`);
-    return null;
-  }
-}
-
-/**
- * Add a formula dependency to formula.yml with smart placement logic
- */
-async function addFormulaToYml(
-  cwd: string, 
-  formulaName: string, 
-  formulaVersion: string, 
-  isDev: boolean = false,
-  originalVersion?: string // The original version/range that was requested
-): Promise<void> {
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  if (!(await exists(formulaYmlPath))) {
-    return; // If no formula.yml exists, ignore this step
-  }
-  
-  const config = await parseFormulaYml(formulaYmlPath);
-  
-  // Determine the version to write to formula.yml
-  let versionToWrite: string;
-  let versionRange: string | undefined;
-  
-  if (originalVersion) {
-    // If we have the original version/range, use it
-    versionToWrite = originalVersion;
-    versionRange = originalVersion;
-  } else {
-    // Default behavior: use caret range for unspecified versions, exact for specified
-    // This mimics npm behavior
-    if (isExactVersion(formulaVersion)) {
-      // If it's an exact version, use caret range (^1.2.3)
-      versionToWrite = createCaretRange(formulaVersion);
-      versionRange = versionToWrite;
-    } else {
-      // If it's already a range, use it as-is
-      versionToWrite = formulaVersion;
-      versionRange = formulaVersion;
-    }
-  }
-  
-  const dependency: FormulaDependency = { 
-    name: formulaName, 
-    version: versionToWrite
-  };
-  
-  // Find current location and determine target location
-  const currentLocation = await findFormulaLocation(cwd, formulaName);
-  
-  let targetArray: 'formulas' | 'dev-formulas';
-  if (currentLocation === DEPENDENCY_ARRAYS.DEV_FORMULAS && !isDev) {
-    targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
-    logger.info(`Keeping formula in dev-formulas: ${formulaName}@${formulaVersion}`);
-  } else if (currentLocation === DEPENDENCY_ARRAYS.FORMULAS && isDev) {
-    targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
-    logger.info(`Moving formula from formulas to dev-formulas: ${formulaName}@${formulaVersion}`);
-  } else {
-    targetArray = isDev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
-  }
-  
-  // Initialize arrays if they don't exist
-  if (!config.formulas) config.formulas = [];
-  if (!config[DEPENDENCY_ARRAYS.DEV_FORMULAS]) config[DEPENDENCY_ARRAYS.DEV_FORMULAS] = [];
-  
-  // Remove from current location if moving between arrays
-  if (currentLocation && currentLocation !== targetArray) {
-    const currentArray = config[currentLocation]!;
-    const currentIndex = currentArray.findIndex(dep => dep.name === formulaName);
-    if (currentIndex >= 0) {
-      currentArray.splice(currentIndex, 1);
-    }
-  }
-  
-  // Update or add dependency
-  const targetArrayRef = config[targetArray]!;
-  const existingIndex = targetArrayRef.findIndex(dep => dep.name === formulaName);
-  
-  if (existingIndex >= 0) {
-    targetArrayRef[existingIndex] = dependency;
-    logger.info(`Updated existing formula dependency: ${formulaName}@${formulaVersion}`);
-  } else {
-    targetArrayRef.push(dependency);
-    logger.info(`Added new formula dependency: ${formulaName}@${formulaVersion}`);
-  }
-  
-  await writeFormulaYml(formulaYmlPath, config);
-}
 
 
 /**
@@ -416,6 +193,12 @@ function categorizeFormulaFiles(files: Array<{ path: string; content: string }>)
 
 /**
  * Install files of a specific type to target directory
+ * @param files - Array of file objects with path and content
+ * @param targetBasePath - Base path where files should be installed
+ * @param pathPrefix - Prefix to strip from file paths when determining relative paths
+ * @param options - Installation options including force flag
+ * @param dryRun - If true, only simulate the installation
+ * @returns Object containing count of installed files and array of installed file paths
  */
 async function installFileType(
   files: Array<{ path: string; content: string }>,
@@ -426,14 +209,27 @@ async function installFileType(
 ): Promise<{ installedCount: number; files: string[] }> {
   const installedFiles: string[] = [];
   let installedCount = 0;
-  
+
+  if (!dryRun && files.length > 0) {
+    // Pre-create all necessary directories to avoid redundant ensureDir calls
+    const directories = new Set<string>();
+    for (const file of files) {
+      const relativePath = file.path.startsWith(pathPrefix) ? file.path.substring(pathPrefix.length) : file.path;
+      const targetPath = join(targetBasePath, relativePath);
+      directories.add(dirname(targetPath));
+    }
+
+    // Create all directories in parallel
+    await Promise.all(Array.from(directories).map(dir => ensureDir(dir)));
+  }
+
   for (const file of files) {
     const relativePath = file.path.startsWith(pathPrefix) ? file.path.substring(pathPrefix.length) : file.path;
     const targetPath = join(targetBasePath, relativePath);
-    
+
     if (!dryRun) {
       const fileExists = await exists(targetPath);
-      
+
       if (fileExists && !options.force) {
         if (pathPrefix === 'ai/') {
           console.log(`⚠️  File already exists: ${targetPath}`);
@@ -443,21 +239,26 @@ async function installFileType(
         }
         continue;
       }
-      
-      await ensureDir(dirname(targetPath));
+
       await writeTextFile(targetPath, file.content);
       logger.debug(`Installed ${pathPrefix.slice(0, -1)} file: ${relativePath}`);
     }
-    
+
     installedFiles.push(pathPrefix === 'ai/' ? relativePath : `${pathPrefix.slice(0, -1)}/${relativePath}`);
     installedCount++;
   }
-  
+
   return { installedCount, files: installedFiles };
 }
 
 /**
  * Install formula files to ai/formulaName directory
+ * @param formulaName - Name of the formula to install
+ * @param targetDir - Target directory for installation
+ * @param options - Installation options including force and dry-run flags
+ * @param version - Specific version to install (optional)
+ * @param forceOverwrite - Force overwrite existing files
+ * @returns Object containing installation results including file counts and status flags
  */
 async function installFormulaToGroundzero(
   formulaName: string,
@@ -554,6 +355,10 @@ async function installFormulaToGroundzero(
 
 /**
  * Install main formula files to target directory (non-MD, non-formula.yml files)
+ * @param resolved - Resolved formula object containing files to install
+ * @param targetDir - Target directory for file installation
+ * @param options - Installation options including force flag
+ * @returns Object containing count of installed files and array of conflict paths
  */
 async function installMainFormulaFiles(
   resolved: ResolvedFormula,
@@ -591,19 +396,30 @@ async function installMainFormulaFiles(
     throw new ValidationError('Files would be overwritten - use --force to continue');
   }
   
-  // Install files in parallel
-  const installPromises = existenceChecks.map(async ({ file, targetPath }) => {
-    try {
-      await ensureDir(dirname(targetPath));
-      await writeTextFile(targetPath, file.content);
-      logger.debug(`Installed file: ${targetPath}`);
-      return true;
-    } catch (error) {
-      logger.error(`Failed to install file: ${targetPath}`, { error });
-      throw new ValidationError(`Failed to install file ${targetPath}: ${error}`);
+  // Pre-create all necessary directories to avoid redundant ensureDir calls
+  if (existenceChecks.length > 0) {
+    const directories = new Set<string>();
+    for (const { targetPath } of existenceChecks) {
+      directories.add(dirname(targetPath));
     }
-  });
-  
+
+    // Create all directories in parallel
+    await Promise.all(Array.from(directories).map(dir => ensureDir(dir)));
+  }
+
+  // Install files in parallel
+  const installPromises = existenceChecks.map(async ({ file, targetPath }) =>
+    withFileOperationErrorHandling(
+      async () => {
+        await writeTextFile(targetPath, file.content);
+        logger.debug(`Installed file: ${targetPath}`);
+        return true;
+      },
+      targetPath,
+      'install file'
+    )
+  );
+
   await Promise.all(installPromises);
   
   return {
@@ -631,29 +447,12 @@ function extractFormulasFromConfig(config: FormulaYml): Array<{ name: string; is
   return formulas;
 }
 
-/**
- * Display installation summary
- */
-function displayInstallationSummary(
-  totalInstalled: number,
-  totalSkipped: number,
-  totalFormulas: number,
-  results: Array<{ name: string; success: boolean; error?: string }>
-): void {
-  console.log(`\n📊 Installation Summary:`);
-  console.log(`✅ Successfully installed: ${totalInstalled}/${totalFormulas} formulas`);
-  
-  if (totalSkipped > 0) {
-    console.log(`❌ Failed to install: ${totalSkipped} formulas`);
-    console.log('\nFailed formulas:');
-    results.filter(r => !r.success).forEach(result => {
-      console.log(`  • ${result.name}: ${result.error}`);
-    });
-  }
-}
 
 /**
  * Install all formulas from CWD formula.yml file
+ * @param targetDir - Target directory for installation
+ * @param options - Installation options including dev flag
+ * @returns Command result with installation summary
  */
 async function installAllFormulasCommand(
   targetDir: string,
@@ -669,12 +468,11 @@ async function installAllFormulasCommand(
   
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
-  let cwdConfig: FormulaYml;
-  try {
-    cwdConfig = await parseFormulaYml(formulaYmlPath);
-  } catch (error) {
-    throw new Error(`Failed to parse formula.yml: ${error}`);
-  }
+  const cwdConfig: FormulaYml = await withOperationErrorHandling(
+    () => parseFormulaYml(formulaYmlPath),
+    'parse formula.yml',
+    formulaYmlPath
+  );
   
   const formulasToInstall = extractFormulasFromConfig(cwdConfig);
   
@@ -741,6 +539,10 @@ async function installAllFormulasCommand(
 
 /**
  * Main install command router - handles both individual and bulk install
+ * @param formulaName - Name of formula to install (optional, installs all if not provided)
+ * @param targetDir - Target directory for installation
+ * @param options - Installation options
+ * @returns Command result with installation status and data
  */
 async function installCommand(
   formulaName: string | undefined,
@@ -751,10 +553,10 @@ async function installCommand(
   if (!formulaName) {
     return await installAllFormulasCommand(targetDir, options);
   }
-  
+
   // Parse formula name and version from input
   const { name, version: inputVersion } = parseFormulaInput(formulaName);
-  
+
   // Install the specific formula with version
   return await installFormulaCommand(name, targetDir, options, inputVersion);
 }
@@ -766,7 +568,8 @@ async function handleDryRunMode(
   resolvedFormulas: ResolvedFormula[],
   formulaName: string,
   targetDir: string,
-  options: InstallOptions
+  options: InstallOptions,
+  formulaYmlExists: boolean
 ): Promise<CommandResult> {
   console.log(`🔍 Dry run - showing what would be installed:\n`);
   
@@ -806,8 +609,7 @@ async function handleDryRunMode(
   }
   
   // Show formula.yml update
-  const formulaYmlPath = getLocalFormulaYmlPath(process.cwd());
-  if (await exists(formulaYmlPath)) {
+  if (formulaYmlExists) {
     console.log(`\n📋 Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
   } else {
     console.log('\nNo .groundzero/formula.yml found - skipping dependency addition');
@@ -873,70 +675,6 @@ async function processResolvedFormulas(
   return { installedCount, skippedCount, groundzeroResults };
 }
 
-/**
- * Display installation results
- */
-function displayInstallationResults(
-  formulaName: string,
-  resolvedFormulas: ResolvedFormula[],
-  installedCount: number,
-  skippedCount: number,
-  mainFilesInstalled: number,
-  totalGroundzeroFiles: number,
-  mainFileConflicts: string[],
-  platformResult: { platforms: string[]; created: string[] },
-  ideTemplateResult: { cursor: string[]; claude: string[]; skipped: string[]; directoriesCreated: string[] },
-  options: InstallOptions,
-  mainFormula?: ResolvedFormula
-): void {
-  const cwd = process.cwd();
-  
-  console.log(`\n✓ Formula '${formulaName}' and ${resolvedFormulas.length - 1} dependencies installed`);
-  console.log(`📁 Target directory: ${getAIDir(cwd)}`);
-  console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
-  console.log(`✅ Installed: ${installedCount}, ⏭️ Skipped: ${skippedCount}`);
-  
-  if (mainFilesInstalled > 0) {
-    console.log(`📄 Main formula files installed: ${mainFilesInstalled}`);
-  }
-  
-  console.log(`📝 Total files added to ai: ${totalGroundzeroFiles}`);
-  
-  if (mainFileConflicts.length > 0) {
-    console.log(`⚠️  Overwrote ${mainFileConflicts.length} existing main files`);
-  }
-  
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  if (mainFormula) {
-    const dependencyType = options.dev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
-    console.log(`📋 Added to ${dependencyType} in .groundzero/formula.yml: ${formulaName}@${mainFormula.version}`);
-  }
-  
-  // Platform and IDE template output
-  if (platformResult.created.length > 0) {
-    console.log(`📁 Created platform directories: ${platformResult.created.join(', ')}`);
-  }
-
-  if (ideTemplateResult.directoriesCreated.length > 0) {
-    console.log(`📁 Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
-  }
-
-  if (platformResult.platforms.length > 0) {
-    console.log(`🎯 Detected platforms: ${platformResult.platforms.join(', ')}`);
-  }
-
-  if (ideTemplateResult.cursor.length > 0) {
-    console.log(`🎯 Provided Cursor templates: ${ideTemplateResult.cursor.join(', ')}`);
-  }
-
-  if (ideTemplateResult.claude.length > 0) {
-    console.log(`🤖 Provided Claude templates: ${ideTemplateResult.claude.join(', ')}`);
-  }
-
-  if (ideTemplateResult.skipped.length > 0) {
-    console.log(`⏭️  Skipped existing IDE files: ${ideTemplateResult.skipped.join(', ')}`);
-  }
-}
 
 /**
  * Re-resolve dependencies with version overrides to ensure correct child dependencies
@@ -1126,8 +864,7 @@ async function checkAndHandleAllFormulaConflicts(
             break;
         }
       } catch (error) {
-        logger.warn(`User cancelled formula installation: ${error}`);
-        return { shouldProceed: false, skippedFormulas: [], versionOverrides: new Map(), forceOverwriteFormulas: new Set() };
+        return handleUserCancellation(error);
       }
     }
   }
@@ -1137,6 +874,11 @@ async function checkAndHandleAllFormulaConflicts(
 
 /**
  * Install formula command implementation with recursive dependency resolution
+ * @param formulaName - Name of the formula to install
+ * @param targetDir - Target directory for installation
+ * @param options - Installation options including force, dry-run, and dev flags
+ * @param version - Specific version to install (optional)
+ * @returns Command result with detailed installation information
  */
 async function installFormulaCommand(
   formulaName: string,
@@ -1203,38 +945,44 @@ async function installFormulaCommand(
     
   displayDependencyTree(finalResolvedFormulas);
   
+  // Check if formula.yml exists (cache the result for later use)
+  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const formulaYmlExists = await exists(formulaYmlPath);
+
   // Handle dry-run mode
   if (options.dryRun) {
-    return await handleDryRunMode(finalResolvedFormulas, formulaName, targetDir, options);
+    return await handleDryRunMode(finalResolvedFormulas, formulaName, targetDir, options, formulaYmlExists);
   }
-  
+
   // Process resolved formulas
   const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(finalResolvedFormulas, targetDir, options, conflictResult.forceOverwriteFormulas);
-  
+
   // Install main formula files
   const mainFormula = finalResolvedFormulas.find(f => f.isRoot);
   let mainFilesInstalled = 0;
   let mainFileConflicts: string[] = [];
-  
+
   if (mainFormula) {
     const mainResult = await installMainFormulaFiles(mainFormula, cwd, options);
     mainFilesInstalled = mainResult.installedCount;
     mainFileConflicts = mainResult.conflicts;
   }
-  
-  // Update formula.yml and manage platforms in parallel
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  const [formulaYmlExists, platformResult] = await Promise.all([
-    exists(formulaYmlPath),
-    detectAndManagePlatforms(cwd, options)
-  ]);
-  
+
+  // Detect platforms and create directories
+  const detectedPlatforms = await detectPlatforms(cwd);
+  const finalPlatforms = detectedPlatforms.length > 0
+    ? detectedPlatforms
+    : await promptForPlatformSelection();
+
+  const createdDirs = await createPlatformDirectoriesForInstall(cwd, finalPlatforms);
+
+  // Add formula to formula.yml if it exists and we have a main formula
   if (formulaYmlExists && mainFormula) {
     await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version);
   }
   
   // Provide IDE-specific template files
-  const ideTemplateResult = await provideIdeTemplateFiles(cwd, platformResult.platforms, options);
+  const ideTemplateResult = await provideIdeTemplateFiles(cwd, finalPlatforms, options);
   
   // Calculate total groundzero files
   const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled, 0);
@@ -1248,7 +996,7 @@ async function installFormulaCommand(
     mainFilesInstalled,
     totalGroundzeroFiles,
     mainFileConflicts,
-    platformResult,
+    { platforms: finalPlatforms, created: createdDirs },
     ideTemplateResult,
     options,
     mainFormula
@@ -1272,6 +1020,7 @@ async function installFormulaCommand(
 
 /**
  * Setup the install command
+ * @param program - Commander program instance to register the command with
  */
 export function setupInstallCommand(program: Command): void {
   program
@@ -1285,7 +1034,7 @@ export function setupInstallCommand(program: Command): void {
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
       const result = await installCommand(formulaName, targetDir, options);
       if (!result.success) {
-        throw new Error(result.error || 'Install operation failed');
+        throw new Error(result.error || 'Installation operation failed');
       }
     }));
 }

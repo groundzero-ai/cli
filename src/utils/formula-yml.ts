@@ -63,7 +63,7 @@ export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml
   });
   
   // Convert arrays from block style to flow style
-  const flowStyleArrays = ['keywords', 'platforms'];
+  const flowStyleArrays = ['keywords'];
   
   for (const arrayField of flowStyleArrays) {
     const arrayValue = config[arrayField as keyof FormulaYml];
