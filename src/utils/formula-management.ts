@@ -5,6 +5,8 @@ import { exists, ensureDir } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } from './paths.js';
 import { DEPENDENCY_ARRAYS } from '../constants/index.js';
+import { createCaretRange } from './version-ranges.js';
+import { extractBaseVersion } from './version-generator.js';
 
 /**
  * Ensure local GroundZero directory structure exists
@@ -69,11 +71,12 @@ export async function addFormulaToYml(
   let versionToWrite: string;
   
   if (originalVersion) {
-    // If we have the original version/range, use it
+    // If we have the original version/range, use it as-is
     versionToWrite = originalVersion;
   } else {
-    // Use the formula version as-is for save command
-    versionToWrite = formulaVersion;
+    // For save command, strip prerelease versioning and create caret range
+    const baseVersion = extractBaseVersion(formulaVersion);
+    versionToWrite = createCaretRange(baseVersion);
   }
   
   const dependency: FormulaDependency = { 

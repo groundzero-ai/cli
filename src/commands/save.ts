@@ -766,6 +766,14 @@ async function determineTargetVersion(
     console.log(`🎯 Incrementing prerelease version: ${currentVersion} → ${localVersion}`);
     return localVersion;
   } else {
+    // Special case: For new formulas starting with 0.1.0, don't bump to 0.1.1
+    if (currentVersion === '0.1.0') {
+      const localVersion = generateLocalVersion(currentVersion);
+      console.log(`🎯 Converting new formula to prerelease: ${currentVersion} → ${localVersion}`);
+      return localVersion;
+    }
+    
+    // For other stable versions, bump patch and then generate prerelease
     const nextPatchVersion = calculateBumpedVersion(currentVersion, 'patch');
     const localVersion = generateLocalVersion(nextPatchVersion);
     console.log(`🎯 Auto-incrementing to patch prerelease: ${currentVersion} → ${localVersion}`);
