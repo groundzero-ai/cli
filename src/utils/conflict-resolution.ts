@@ -65,6 +65,42 @@ export function analyzeContentConflicts(files: DiscoveredFile[]): ContentAnalysi
     platformSpecificFiles: []
   };
 
+  // Separate platform-specific files from normal files
+  const platformSpecificFiles = files.filter(f => f.forcePlatformSpecific);
+  const normalFiles = files.filter(f => !f.forcePlatformSpecific);
+
+  // Handle platform-specific files - each gets platform prefix
+  for (const file of platformSpecificFiles) {
+    const platformName = getPlatformNameFromSource(file.sourceDir);
+    const originalBase = basename(file.registryPath, '.md');
+    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
+
+    result.platformSpecificFiles.push({
+      file,
+      platformName,
+      finalRegistryPath: platformSpecificPath
+    });
+  }
+
+  // Handle normal files with existing logic
+  if (normalFiles.length > 0) {
+    const normalResult = analyzeNormalConflicts(normalFiles);
+    result.universalFiles.push(...normalResult.universalFiles);
+    result.platformSpecificFiles.push(...normalResult.platformSpecificFiles);
+  }
+
+  return result;
+}
+
+/**
+ * Analyze conflicts for normal (non-platform-specific) files
+ */
+function analyzeNormalConflicts(files: DiscoveredFile[]): ContentAnalysisResult {
+  const result: ContentAnalysisResult = {
+    universalFiles: [],
+    platformSpecificFiles: []
+  };
+
   // Group files by content hash
   const contentGroups = new Map<string, DiscoveredFile[]>();
   for (const file of files) {
@@ -144,7 +180,7 @@ export function analyzeContentConflicts(files: DiscoveredFile[]): ContentAnalysi
       for (const file of files) {
         const platformName = getPlatformNameFromSource(file.sourceDir);
         const originalBase = basename(file.registryPath, '.md');
-        const platformSpecificPath = join(basename(file.registryPath, '.md'), `${originalBase}.${platformName}.md`);
+        const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
 
         result.platformSpecificFiles.push({
           file,
@@ -169,7 +205,7 @@ export function analyzeContentConflicts(files: DiscoveredFile[]): ContentAnalysi
       for (const file of maxMtimeFiles) {
         const platformName = getPlatformNameFromSource(file.sourceDir);
         const originalBase = basename(file.registryPath, '.md');
-        const platformSpecificPath = join(basename(file.registryPath, '.md'), `${originalBase}.${platformName}.md`);
+        const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
 
         result.platformSpecificFiles.push({
           file,

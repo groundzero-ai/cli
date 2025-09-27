@@ -9,6 +9,7 @@ import { readTextFile, writeTextFile } from './fs.js';
 export interface MarkdownFrontmatter {
   formula?: {
     name: string;
+    platformSpecific?: boolean;
   };
 }
 

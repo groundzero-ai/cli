@@ -351,14 +351,16 @@ async function processMarkdownFilesUnified(
         const mtime = await getFileMtime(mdFile.fullPath);
         const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
         const contentHash = await calculateFileHash(content);
-        
+        const forcePlatformSpecific = frontmatter?.formula?.platformSpecific === true;
+
         return {
           fullPath: mdFile.fullPath,
           relativePath: mdFile.relativePath,
           sourceDir: sourceDirName,
           registryPath: targetRegistryPath,
           mtime,
-          contentHash
+          contentHash,
+          forcePlatformSpecific
         };
       }
     } catch (error) {
@@ -398,14 +400,16 @@ async function processDirectoryFiles(
         const mtime = await getFileMtime(mdFile.fullPath);
         const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
         const contentHash = await calculateFileHash(content);
-        
+        const forcePlatformSpecific = frontmatter?.formula?.platformSpecific === true;
+
         return {
           fullPath: mdFile.fullPath,
           relativePath: mdFile.relativePath,
           sourceDir: sourceDirName,
           registryPath: targetRegistryPath,
           mtime,
-          contentHash
+          contentHash,
+          forcePlatformSpecific
         };
       }
     } catch (error) {

@@ -86,6 +86,7 @@ export interface FormulaYml {
   private?: boolean;
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];
+  platformSpecific?: boolean;  // Force platform-specific saving with prefix
   // Optional fields for version management
   created?: string;        // ISO timestamp
   updated?: string;        // ISO timestamp
@@ -251,6 +252,7 @@ export interface DiscoveredFile {
   registryPath: string;
   mtime: number;
   contentHash: string;
+  forcePlatformSpecific?: boolean;  // Force platform-specific saving
 }
 
 export interface ContentAnalysisResult {
