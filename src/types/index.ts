@@ -242,3 +242,25 @@ export interface Logger {
   warn(message: string, meta?: any): void;
   error(message: string, meta?: any): void;
 }
+
+// Conflict resolution types
+export interface DiscoveredFile {
+  fullPath: string;
+  relativePath: string;
+  sourceDir: string;
+  registryPath: string;
+  mtime: number;
+  contentHash: string;
+}
+
+export interface ContentAnalysisResult {
+  universalFiles: Array<{
+    file: DiscoveredFile;
+    finalRegistryPath: string;
+  }>;
+  platformSpecificFiles: Array<{
+    file: DiscoveredFile;
+    platformName: string;
+    finalRegistryPath: string;
+  }>;
+}

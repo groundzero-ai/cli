@@ -8,8 +8,12 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath } from '../utils/paths.js';
 import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, type Platform } from '../constants/index.js';
+
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
+import { calculateFileHash } from '../utils/hash-utils.js';
+import { getPlatformNameFromSource, getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
+import { resolveFileConflicts } from '../utils/conflict-resolution.js';
 import {
   detectAllPlatforms,
   getDetectedPlatforms,
@@ -17,6 +21,7 @@ import {
   getPlatformDirectoryPaths,
   type PlatformName
 } from '../core/platforms.js';
+import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
 import { 
   exists, 
   readTextFile, 
@@ -28,11 +33,7 @@ import {
   getStats
 } from '../utils/fs.js';
 
-// Constants
-const AI_DIR = 'ai';
-const CURSOR_COMMANDS_DIR = '.cursor/commands';
-const CLAUDE_COMMANDS_DIR = '.claude/commands';
-// Constants are now imported from shared constants file
+// Constants are imported from shared constants file
 const MARKDOWN_EXTENSION = '.md';
 const UTF8_ENCODING = 'utf8' as const;
 
@@ -72,15 +73,6 @@ async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchCon
   }
 
   return config;
-}
-
-// New type for discovered files with metadata
-interface DiscoveredFile {
-  fullPath: string;
-  relativePath: string;
-  sourceDir: string;
-  registryPath: string;
-  mtime: number;
 }
 
 // Platform search configuration interface
@@ -262,6 +254,7 @@ async function getFileMtime(filePath: string): Promise<number> {
 }
 
 
+
 /**
  * Unified file discovery function that searches platform-specific directories
  */
@@ -269,16 +262,16 @@ async function discoverMdFilesUnified(formulaDir: string, formulaName: string): 
   const cwd = process.cwd();
   const platformConfigs = await buildPlatformSearchConfig(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
-
+  
   // Process all platform configurations in parallel
   const processPromises = platformConfigs.map(async (config) => {
     const files = await processPlatformFiles(config, formulaDir, formulaName);
     return files;
   });
-
+  
   const results = await Promise.all(processPromises);
   allDiscoveredFiles.push(...results.flat());
-
+  
   return allDiscoveredFiles;
 }
 
@@ -357,13 +350,15 @@ async function processMarkdownFilesUnified(
       if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
         const mtime = await getFileMtime(mdFile.fullPath);
         const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
+        const contentHash = await calculateFileHash(content);
         
         return {
           fullPath: mdFile.fullPath,
           relativePath: mdFile.relativePath,
           sourceDir: sourceDirName,
           registryPath: targetRegistryPath,
-          mtime
+          mtime,
+          contentHash
         };
       }
     } catch (error) {
@@ -371,7 +366,7 @@ async function processMarkdownFilesUnified(
     }
     return null;
   });
-
+  
   const results = await Promise.all(processPromises);
   return results.filter((result): result is NonNullable<typeof result> => result !== null);
 }
@@ -398,17 +393,19 @@ async function processDirectoryFiles(
     try {
       const content = await readTextFile(mdFile.fullPath);
       const frontmatter = parseMarkdownFrontmatter(content);
-
+      
       if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
         const mtime = await getFileMtime(mdFile.fullPath);
         const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
-
+        const contentHash = await calculateFileHash(content);
+        
         return {
           fullPath: mdFile.fullPath,
           relativePath: mdFile.relativePath,
           sourceDir: sourceDirName,
           registryPath: targetRegistryPath,
-          mtime
+          mtime,
+          contentHash
         };
       }
     } catch (error) {
@@ -478,53 +475,13 @@ function getRegistryPathUnified(registryPath: string, relativePath: string, sour
   }
 }
 
-/**
- * Resolve file conflicts by keeping the file with the latest mtime
- */
-function resolveFileConflicts(discoveredFiles: DiscoveredFile[]): DiscoveredFile[] {
-  const fileGroups = new Map<string, DiscoveredFile[]>();
-  
-  // Group files by their target registry path
-  for (const file of discoveredFiles) {
-    if (!fileGroups.has(file.registryPath)) {
-      fileGroups.set(file.registryPath, []);
-    }
-    fileGroups.get(file.registryPath)!.push(file);
-  }
-  
-  const resolvedFiles: DiscoveredFile[] = [];
-  
-  // For each group, keep only the file with the latest mtime
-  for (const [registryPath, files] of Array.from(fileGroups.entries())) {
-    if (files.length === 1) {
-      // No conflict, keep the file
-      resolvedFiles.push(files[0]);
-    } else {
-      // Multiple files with same target path - resolve by mtime
-      const latestFile = files.reduce((latest, current) => 
-        current.mtime > latest.mtime ? current : latest
-      );
-      
-      resolvedFiles.push(latestFile);
-      
-      // Log which files were skipped
-      const skippedFiles = files.filter(f => f !== latestFile);
-      for (const skipped of skippedFiles) {
-        logger.debug(`Skipped ${skipped.fullPath} (older than ${latestFile.fullPath})`);
-        console.log(`⚠️  Skipped ${skipped.relativePath} from ${skipped.sourceDir} (older version)`);
-      }
-    }
-  }
-  
-  return resolvedFiles;
-}
 
 /**
  * Find formula.yml files with the specified formula name
  */
 async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
   const cwd = process.cwd();
-  const aiDir = join(cwd, AI_DIR);
+  const aiDir = join(cwd, PLATFORM_DIRS.AI);
   
   if (!(await exists(aiDir)) || !(await isDirectory(aiDir))) {
     return [];
@@ -687,7 +644,7 @@ function shouldIncludeMarkdownFile(
   const mdFileDir = dirname(mdFile.relativePath);
   
   // For AI directory: include files adjacent to formula.yml or with matching frontmatter
-  if (sourceDir === AI_DIR) {
+  if (sourceDir === PLATFORM_DIRS.AI) {
     if (frontmatter?.formula?.name === formulaName) {
       logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
       return true;
@@ -717,67 +674,7 @@ function shouldIncludeMarkdownFile(
 /**
  * Discover MD files based on new frontmatter rules from multiple directories
  */
-async function discoverMdFiles(formulaDir: string, formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; sourceDir: string }>> {
-  const cwd = process.cwd();
-  const aiDir = join(cwd, AI_DIR);
-  const formulaDirRelativeToAi = formulaDir.substring(aiDir.length + 1);
 
-  // Process all directories in parallel for better performance
-  const [aiFiles, cursorFiles, claudeFiles] = await Promise.all([
-    processMarkdownFiles(aiDir, AI_DIR, formulaName, formulaDirRelativeToAi),
-    processMarkdownFiles(join(cwd, CURSOR_COMMANDS_DIR), CURSOR_COMMANDS_DIR, formulaName),
-    processMarkdownFiles(join(cwd, CLAUDE_COMMANDS_DIR), CLAUDE_COMMANDS_DIR, formulaName)
-  ]);
-
-  return [...aiFiles, ...cursorFiles, ...claudeFiles];
-}
-
-/**
- * Create formula files array with formula.yml and processed markdown files
- */
-async function createFormulaFiles(
-  formulaYmlPath: string,
-  formulaConfig: FormulaYml,
-  discoveredFiles: Array<{ fullPath: string; relativePath: string; sourceDir: string }>
-): Promise<FormulaFile[]> {
-  const formulaFiles: FormulaFile[] = [];
-
-  // Add formula.yml as the first file
-  await writeFormulaYml(formulaYmlPath, formulaConfig);
-  const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
-  formulaFiles.push({
-    path: 'formula.yml',
-    content: updatedFormulaYmlContent,
-    isTemplate: false,
-    encoding: UTF8_ENCODING
-  });
-
-  // Process discovered MD files in parallel
-  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
-    const originalContent = await readTextFile(mdFile.fullPath);
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
-
-    // Update source file if content changed
-    if (updatedContent !== originalContent) {
-      await writeTextFile(mdFile.fullPath, updatedContent);
-      console.log(`✓ Updated frontmatter in ${mdFile.relativePath}`);
-    }
-
-    const registryPath = getRegistryPath(mdFile.sourceDir, mdFile.relativePath);
-
-    return {
-      path: registryPath,
-      content: updatedContent,
-      isTemplate: detectTemplateFile(updatedContent),
-      encoding: UTF8_ENCODING
-    };
-  });
-
-  const processedMdFiles = await Promise.all(mdFilePromises);
-  formulaFiles.push(...processedMdFiles);
-  
-  return formulaFiles;
-}
 
 /**
  * Create formula files array with unified discovery results
@@ -824,22 +721,6 @@ async function createFormulaFilesUnified(
   return formulaFiles;
 }
 
-/**
- * Get registry path for a file based on its source directory (legacy function)
- * This is kept for backward compatibility with the old discovery logic
- */
-function getRegistryPath(sourceDir: string, relativePath: string): string {
-  switch (sourceDir) {
-    case AI_DIR:
-      return basename(relativePath); // Flatten AI files
-    case CURSOR_COMMANDS_DIR:
-      return join('.cursor', 'commands', basename(relativePath));
-    case CLAUDE_COMMANDS_DIR:
-      return join('.claude', 'commands', basename(relativePath));
-    default:
-      return relativePath; // Fallback for local files
-  }
-}
 
 /**
  * Determine target version based on input, version type, and options
@@ -1008,35 +889,6 @@ async function saveFormulaToRegistry(
   }
 }
 
-/**
- * Get target directory for a file based on its path
- */
-function getTargetDirectory(targetPath: string, filePath: string): string {
-  if (filePath.endsWith(MARKDOWN_EXTENSION)) {
-    if (filePath.startsWith(CURSOR_COMMANDS_DIR)) {
-      return join(targetPath, '.cursor', 'commands');
-    } else if (filePath.startsWith(CLAUDE_COMMANDS_DIR)) {
-      return join(targetPath, '.claude', 'commands');
-    } else {
-      return join(targetPath, AI_DIR);
-    }
-  }
-  return targetPath;
-}
-
-/**
- * Get target file path for saving
- */
-function getTargetFilePath(targetDir: string, filePath: string): string {
-  if (filePath.endsWith(MARKDOWN_EXTENSION)) {
-    if (filePath.startsWith(CURSOR_COMMANDS_DIR) || filePath.startsWith(CLAUDE_COMMANDS_DIR)) {
-      return join(targetDir, basename(filePath));
-    } else {
-      return join(targetDir, filePath);
-    }
-  }
-  return join(targetDir, filePath);
-}
 
 /**
  * Setup the save command

@@ -3,7 +3,7 @@
  * Utility functions for platform management, detection, and file operations
  */
 
-import { join, basename } from 'path';
+import { join, basename, dirname } from 'path';
 import { 
   exists, 
   ensureDir, 
@@ -15,7 +15,7 @@ import {
 } from './fs.js';
 import { logger } from './logger.js';
 import { parseMarkdownFrontmatter } from './formula-yml.js';
-import { 
+import {
   ALL_PLATFORMS,
   PLATFORM_DEFINITIONS,
   PLATFORM_CATEGORIES,
@@ -29,6 +29,7 @@ import {
   isPlatformCategory,
   getPlatformDescription
 } from '../core/platforms.js';
+import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS } from '../constants/index.js';
 
 /**
  * Enhanced platform detection with detailed information
@@ -399,4 +400,111 @@ export async function setupDetectedPlatforms(cwd: string): Promise<{
   }
   
   return { created, errors };
+}
+
+/**
+ * Extract platform name from source directory path
+ * Uses platform definitions for scalable platform detection
+ */
+export function getPlatformNameFromSource(sourceDir: string): string {
+  // Handle special case for AI directory
+  if (sourceDir === PLATFORM_DIRS.AI) {
+    return 'ai';
+  }
+
+  // Use platform definitions to find matching platform
+  for (const platform of ALL_PLATFORMS) {
+    const definition = PLATFORM_DEFINITIONS[platform];
+
+    // Check if sourceDir includes the platform's root directory
+    if (sourceDir.includes(definition.rootDir)) {
+      return platform;
+    }
+
+    // Also check rules, commands, and agents directories if they exist
+    if (definition.rulesDir && sourceDir.includes(definition.rulesDir)) {
+      return platform;
+    }
+    if (definition.commandsDir && sourceDir.includes(definition.commandsDir)) {
+      return platform;
+    }
+    if (definition.agentsDir && sourceDir.includes(definition.agentsDir)) {
+      return platform;
+    }
+  }
+
+  // Fallback: extract from path
+  const parts = sourceDir.split('/');
+  return parts[parts.length - 1] || 'unknown';
+}
+
+/**
+ * Get the appropriate target directory for saving a file based on its registry path
+ * Uses platform definitions for accurate directory mapping
+ */
+export function getTargetDirectory(targetPath: string, registryPath: string): string {
+  const { join } = require('path');
+  const MARKDOWN_EXTENSION = '.md';
+
+  if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {
+    return targetPath;
+  }
+
+  // Split the registry path to understand the structure
+  const pathParts = registryPath.split('/');
+  const firstPart = pathParts[0];
+
+  // Check if the first part is a known platform directory
+  const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
+  if (platformDirectories.includes(firstPart)) {
+    return join(targetPath, firstPart);
+  }
+
+  // Check for platform-specific subdirectories (commands, agents, etc.)
+  for (const platform of ALL_PLATFORMS) {
+    const definition = PLATFORM_DEFINITIONS[platform];
+
+    // Check commands directory
+    if (definition.commandsDir && registryPath.includes(definition.commandsDir)) {
+      return join(targetPath, definition.rootDir, PLATFORM_SUBDIRS.COMMANDS);
+    }
+
+    // Check agents directory
+    if (definition.agentsDir && registryPath.includes(definition.agentsDir)) {
+      return join(targetPath, definition.rootDir, PLATFORM_SUBDIRS.AGENTS);
+    }
+
+    // Check rules directory (main platform directory)
+    if (registryPath.includes(definition.rootDir)) {
+      return join(targetPath, definition.rootDir);
+    }
+  }
+
+  // Default to AI directory for markdown files
+  return join(targetPath, PLATFORM_DIRS.AI);
+}
+
+/**
+ * Get the appropriate target file path for saving
+ * Handles platform-specific file naming conventions using platform definitions
+ */
+export function getTargetFilePath(targetDir: string, registryPath: string): string {
+  const { join, basename } = require('path');
+  const MARKDOWN_EXTENSION = '.md';
+
+  if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {
+    return join(targetDir, registryPath);
+  }
+
+  // Check if the file is in a platform-specific commands directory
+  // If so, just use the basename (they already have the correct structure)
+  for (const platform of ALL_PLATFORMS) {
+    const definition = PLATFORM_DEFINITIONS[platform];
+    if (definition.commandsDir && registryPath.includes(definition.commandsDir)) {
+      return join(targetDir, basename(registryPath));
+    }
+  }
+
+  // For all other files, preserve the full relative path structure
+  return join(targetDir, registryPath);
 }
