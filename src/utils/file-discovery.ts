@@ -401,7 +401,16 @@ export async function discoverFilesForPattern(
       results.push(...directFiles);
 
       // Explicitly exclude any accidental ai/ mappings when using a platform-specific directory
-      return results.filter((f) => !(f.registryPath === PLATFORM_DIRS.AI || f.registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)));
+      const filteredResults = results.filter((f) => !(f.registryPath === PLATFORM_DIRS.AI || f.registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)));
+
+      // When both formula-name and directory are specified (isExplicitPair), also search globally for frontmatter matches
+      if (isExplicitPair) {
+        const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
+        filteredResults.push(...globalFiles);
+        return dedupeDiscoveredFilesPreferUniversal(filteredResults);
+      }
+
+      return filteredResults;
     } else {
       // Directory is not platform-specific - search for platform subdirectories from cwd + direct files
       const platformSubdirFiles = await discoverMdFilesUnified(formulaDir, formulaName, undefined, true);
@@ -410,6 +419,13 @@ export async function discoverFilesForPattern(
       // Also search for direct files in the specified directory
       const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, null);
       results.push(...directFiles);
+
+      // When both formula-name and directory are specified (isExplicitPair), also search globally for additional frontmatter matches
+      if (isExplicitPair) {
+        const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
+        results.push(...globalFiles);
+        return dedupeDiscoveredFilesPreferUniversal(results);
+      }
     }
 
     return results;

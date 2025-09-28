@@ -79,7 +79,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   isExplicitPair: boolean;
 } {
   // Pattern 1: Explicit name + directory (new functionality)
-  if (directory?.startsWith('/')) {
+  if (directory) {
     return {
       name: formulaName,
       isDirectory: true,
@@ -572,17 +572,14 @@ export function setupSaveCommand(program: Command): void {
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
     .action(withErrorHandling(async (formulaName: string, directory?: string, versionType?: string, options?: SaveOptions) => {
-      // Smart argument detection: directories always start with "/", version types don't
+      // Smart argument detection: 'stable' as second argument is treated as version type
       let actualDirectory = directory;
       let actualVersionType = versionType;
 
-      if (directory && !directory.startsWith('/')) {
-        // Directory argument doesn't start with "/", so it might be a version type
-        if (directory === 'stable' && !versionType) {
-          actualVersionType = directory;
-          actualDirectory = undefined;
-        }
-        // Future: Add other version types here if needed
+      if (directory === 'stable' && !versionType) {
+        // Second argument is 'stable' - treat as version type
+        actualVersionType = directory;
+        actualDirectory = undefined;
       }
 
       // Validate version type argument

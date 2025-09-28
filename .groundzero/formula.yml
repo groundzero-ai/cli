@@ -69,4 +69,8 @@ formulas:
   version: ^0.1.0
 - name: scalable-python-clean
   version: ^0.1.0
+- name: test-keywords-formula
+  version: ^0.1.0
+- name: test-additive-formula
+  version: ^0.1.0
 dev-formulas: []
