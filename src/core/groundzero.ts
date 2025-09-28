@@ -1,10 +1,12 @@
 import { join } from 'path';
+import * as semver from 'semver';
 import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
+import { listFormulaVersions } from './directory.js';
 
 /**
  * Formula metadata from groundzero directory
@@ -140,7 +142,7 @@ export async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Ma
 /**
  * Gather version constraints from the main and nested formula.yml files
  */
-export async function gatherGlobalVersionConstraints(cwd: string): Promise<Map<string, string[]>> {
+export async function gatherGlobalVersionConstraints(cwd: string, includeResolutions: boolean = true): Promise<Map<string, string[]>> {
   const constraints = new Map<string, Set<string>>();
 
   const addConstraint = (name?: string, range?: string) => {
@@ -165,6 +167,13 @@ export async function gatherGlobalVersionConstraints(cwd: string): Promise<Map<s
   const collectFromConfig = (config: FormulaYml | null | undefined) => {
     if (!config) {
       return;
+    }
+
+    // Highest precedence: resolutions pins (optional)
+    if (includeResolutions && config.resolutions) {
+      for (const [depName, pinnedVersion] of Object.entries(config.resolutions)) {
+        addConstraint(depName, pinnedVersion);
+      }
     }
 
     config.formulas?.forEach(dep => addConstraint(dep.name, dep.version));
@@ -211,6 +220,95 @@ export async function gatherGlobalVersionConstraints(cwd: string): Promise<Map<s
   }
 
   return result;
+}
+
+/**
+ * Read and write helpers for resolutions in main formula.yml
+ */
+export async function readResolutions(cwd: string): Promise<Record<string, string>> {
+  const mainFormulaPath = getLocalFormulaYmlPath(cwd);
+  if (!(await exists(mainFormulaPath))) {
+    return {};
+  }
+  try {
+    const config = await parseFormulaYml(mainFormulaPath);
+    return config.resolutions || {};
+  } catch {
+    return {};
+  }
+}
+
+export async function writeResolutions(
+  cwd: string,
+  updater: (current: Record<string, string>) => Record<string, string>
+): Promise<void> {
+  const mainFormulaPath = getLocalFormulaYmlPath(cwd);
+  const config = (await exists(mainFormulaPath)) ? await parseFormulaYml(mainFormulaPath) : {
+    name: 'project',
+    version: '0.1.0'
+  } as FormulaYml;
+  const current = config.resolutions || {};
+  const next = updater(current);
+  config.resolutions = next;
+  await (await import('../utils/formula-yml.js')).writeFormulaYml(mainFormulaPath, config);
+}
+
+/**
+ * Remove resolution pins that are no longer necessary (constraints intersect without the pin)
+ */
+export async function cleanupObsoleteResolutions(cwd: string): Promise<{ removed: string[] }> {
+  const mainFormulaPath = getLocalFormulaYmlPath(cwd);
+  if (!(await exists(mainFormulaPath))) {
+    return { removed: [] };
+  }
+
+  const config = await parseFormulaYml(mainFormulaPath);
+  const resolutions = { ...(config.resolutions || {}) };
+  const removed: string[] = [];
+
+  if (Object.keys(resolutions).length === 0) {
+    return { removed: [] };
+  }
+
+  // Gather constraints without resolutions (to see if conflict still exists)
+  const constraintsNoPins = await gatherGlobalVersionConstraints(cwd, false);
+
+  for (const [depName, pinned] of Object.entries(resolutions)) {
+    try {
+      const available = await listFormulaVersions(depName);
+      if (available.length === 0) {
+        continue;
+      }
+
+      const ranges = constraintsNoPins.get(depName) || [];
+      if (ranges.length === 0) {
+        // No constraints apart from pin → pin is unnecessary
+        delete resolutions[depName];
+        removed.push(depName);
+        continue;
+      }
+
+      const satisfying = available.filter(v => ranges.every(r => {
+        try { return semver.satisfies(v, r); } catch { return false; }
+      }));
+
+      if (satisfying.length > 0) {
+        // Constraints now compatible without pin → remove pin
+        delete resolutions[depName];
+        removed.push(depName);
+      }
+    } catch (e) {
+      logger.debug(`Skipping cleanup check for ${depName}: ${e}`);
+    }
+  }
+
+  if (removed.length > 0) {
+    config.resolutions = resolutions;
+    await (await import('../utils/formula-yml.js')).writeFormulaYml(mainFormulaPath, config);
+    logger.info(`Cleaned up obsolete resolutions: ${removed.join(', ')}`);
+  }
+
+  return { removed };
 }
 
 /**

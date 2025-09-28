@@ -5,13 +5,13 @@ import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula }
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints } from '../core/groundzero.js';
+import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, readResolutions, writeResolutions, cleanupObsoleteResolutions } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, ResolvedFormula } from '../core/dependency-resolver.js';
 import { promptFormulaInstallConflict, promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
 import { CURSOR_TEMPLATES, GENERAL_TEMPLATES } from '../utils/embedded-templates.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError, VersionConflictError } from '../utils/errors.js';
 import {
   parseVersionRange,
 } from '../utils/version-ranges.js';
@@ -530,6 +530,8 @@ async function installAllFormulasCommand(
   
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
+  // Cleanup obsolete resolutions before resolving
+  await cleanupObsoleteResolutions(cwd);
   
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
@@ -928,18 +930,59 @@ async function installFormulaCommand(
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
   
-  // Resolve complete dependency tree first
+  // Resolve complete dependency tree first, with conflict handling and persistence
   const globalConstraints = await gatherGlobalVersionConstraints(cwd);
-  const resolvedFormulas = await resolveDependencies(
-    formulaName,
-    cwd,
-    true,
-    new Set(),
-    new Map(),
-    version,
-    new Map(),
-    globalConstraints
-  );
+  let resolvedFormulas: ResolvedFormula[];
+  try {
+    resolvedFormulas = await resolveDependencies(
+      formulaName,
+      cwd,
+      true,
+      new Set(),
+      new Map(),
+      version,
+      new Map(),
+      globalConstraints
+    );
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      // Decide version: if --force, take highest available; else prompt user to select
+      const { details } = (error as any) || {};
+      const depName = details?.formulaName || (error as any).details?.formulaName || (error as any).code;
+      const name = (error as any).details?.formulaName || (error as any).details?.formula || formulaName; // fallback
+      const available: string[] = details?.availableVersions || (error as any).details?.availableVersions || [];
+
+      let chosenVersion: string | null = null;
+      if (options.force) {
+        // pick highest available version
+        chosenVersion = available.sort((a, b) => semver.rcompare(a, b))[0] || null;
+      } else {
+        // ask user to pick a version from available
+        const { promptVersionSelection } = await import('../utils/prompts.js');
+        chosenVersion = await promptVersionSelection(details?.formulaName || name, available);
+      }
+
+      if (!chosenVersion) {
+        return { success: false, error: `Unable to resolve version for ${(error as any).details?.formulaName || name}` };
+      }
+
+      // Persist resolution immediately in main formula.yml
+      await writeResolutions(cwd, (current) => ({ ...current, [(error as any).details?.formulaName || name]: chosenVersion! }));
+
+      // Recompute constraints (now includes resolutions) and re-resolve with overrides
+      const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
+      const overrideResolvedFormulas = await resolveDependenciesWithOverrides(
+        formulaName,
+        cwd,
+        new Map<string, string>([[ (error as any).details?.formulaName || name, chosenVersion! ]]),
+        [],
+        updatedConstraints
+      );
+      resolvedFormulas = overrideResolvedFormulas;
+    } else {
+      throw error;
+    }
+  }
   
   // Check for conflicts with all formulas in the dependency tree
   const conflictResult = await checkAndHandleAllFormulaConflicts(resolvedFormulas, options);

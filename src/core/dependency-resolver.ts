@@ -5,7 +5,7 @@ import { FormulaYml, Formula } from '../types/index.js';
 import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
-import { FormulaNotFoundError, FormulaVersionNotFoundError } from '../utils/errors.js';
+import { FormulaNotFoundError, FormulaVersionNotFoundError, VersionConflictError } from '../utils/errors.js';
 import { isExactVersion } from '../utils/version-ranges.js';
 import { listFormulaVersions } from './directory.js';
 
@@ -111,9 +111,10 @@ export async function resolveDependencies(
     }).sort((a, b) => semver.rcompare(a, b));
 
     if (satisfying.length === 0) {
-      throw new FormulaVersionNotFoundError(
-        `No version of '${formulaName}' satisfies ranges: ${allRanges.join(', ')}. Available versions: ${availableVersions.join(', ')}`
-      );
+      throw new VersionConflictError(formulaName, {
+        ranges: allRanges,
+        availableVersions
+      });
     }
 
     resolvedVersion = satisfying[0];

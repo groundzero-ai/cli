@@ -85,6 +85,7 @@ export interface FormulaYml {
   private?: boolean;
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];
+  resolutions?: Record<string, string>;  // Pinned dependency versions to resolve conflicts
   platformSpecific?: boolean;  // Force platform-specific saving with prefix
   // Optional fields for version management
   created?: string;        // ISO timestamp

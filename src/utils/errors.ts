@@ -17,6 +17,21 @@ export class FormulaVersionNotFoundError extends G0Error {
   }
 }
 
+export class VersionConflictError extends G0Error {
+  constructor(
+    formulaName: string,
+    details: {
+      ranges: string[];
+      parents?: string[];
+      availableVersions?: string[];
+    }
+  ) {
+    const msg = `No version of '${formulaName}' satisfies ranges: ${details.ranges.join(', ')}${details.availableVersions?.length ? `. Available: ${details.availableVersions.join(', ')}` : ''}`;
+    super(msg, ErrorCodes.VALIDATION_ERROR, { formulaName, ...details });
+    this.name = 'VersionConflictError';
+  }
+}
+
 export class FormulaAlreadyExistsError extends G0Error {
   constructor(formulaName: string) {
     super(`Formula '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
