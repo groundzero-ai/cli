@@ -484,7 +484,8 @@ export async function promptFileSelection(
  */
 export async function promptPlatformSpecificSelection(
   options: FileSelectionOption[],
-  message: string = 'Select files to mark as platform-specific (they will keep their platform prefixes):'
+  message: string = 'Select files to mark as platform-specific (they will keep their platform prefixes):',
+  hint?: string
 ): Promise<number[]> {
   const response = await prompts({
     type: 'multiselect',
@@ -495,7 +496,7 @@ export async function promptPlatformSpecificSelection(
       value: index,
       description: option.preview.substring(0, 50) + (option.preview.length > 50 ? '...' : '')
     })),
-    hint: 'Use space to select, Enter to confirm'
+    hint: hint || 'Use space to select, Enter to confirm'
   });
 
   if (isCancelled(response)) {

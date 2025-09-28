@@ -7,10 +7,16 @@ import { join, basename, dirname } from 'path';
 import { logger } from './logger.js';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
-import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview } from './prompts.js';
+import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, isCancelled } from './prompts.js';
 import { addPlatformSpecificFlag } from './formula-yml.js';
 import { readTextFile, writeTextFile } from './fs.js';
+import prompts from 'prompts';
+import { UserCancellationError } from './errors.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
+
+// Constants for conflict resolution
+const MARK_ALL_AS_PLATFORM_SPECIFIC = -1;
 
 // File option interface for user selection
 interface FileSelectionOption {
@@ -95,8 +101,8 @@ export async function analyzeContentConflicts(
   // Handle platform-specific files - each gets platform prefix
   for (const file of platformSpecificFiles) {
     const platformName = getPlatformNameFromSource(file.sourceDir);
-    const originalBase = basename(file.registryPath, '.md');
-    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
+    const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
+    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
 
     result.platformSpecificFiles.push({
       file,
@@ -152,19 +158,39 @@ async function handleInteractiveUniversalSelection(files: DiscoveredFile[]): Pro
   };
 
   try {
-    // Step 1: Prepare file options with previews
+    // Step 1: Prepare file options (without previews for universal selection)
     const fileOptions = await prepareFileOptions(files);
 
-    // Step 2: Handle platform-specific file marking
-    const { platformSpecificFiles, remainingFiles } = await handlePlatformSpecificMarking(files, fileOptions);
+    // Step 2: Universal file selection OR mark all as platform-specific
+    const selectionResult = await handleUniversalFileSelectionWithMarkAll(files, fileOptions);
 
-    // Add platform-specific files to result
-    result.platformSpecificFiles.push(...platformSpecificFiles);
+    if (selectionResult.markAllAsPlatformSpecific) {
+      // Mark all files as platform-specific
+      const allPlatformSpecific = await markAllFilesAsPlatformSpecific(files);
+      result.platformSpecificFiles.push(...allPlatformSpecific);
+    } else {
+      // Step 3: Mark additional platform-specific files (excluding universal)
+      const { platformSpecificFiles, remainingFiles } = await handlePlatformSpecificMarking(
+        files,
+        fileOptions,
+        selectionResult.universalIndex
+      );
 
-    // Step 3: Handle universal file selection and content synchronization
-    const universalResult = await handleUniversalFileSelection(remainingFiles);
-    result.universalFiles.push(...universalResult.universalFiles);
-    result.platformSpecificFiles.push(...universalResult.platformSpecificFiles);
+      // Add platform-specific files to result
+      result.platformSpecificFiles.push(...platformSpecificFiles);
+
+      // Step 4: Set universal file and synchronize unmarked files
+      const universalFile = files[selectionResult.universalIndex!];
+      result.universalFiles.push({
+        file: universalFile,
+        finalRegistryPath: universalFile.registryPath
+      });
+
+      // Synchronize unmarked files with universal file content
+      if (remainingFiles.length > 0) {
+        await syncFilesWithUniversalContent(universalFile, remainingFiles);
+      }
+    }
 
     console.log('✓ Interactive universal file selection completed');
 
@@ -194,11 +220,49 @@ async function prepareFileOptions(files: DiscoveredFile[]) {
 }
 
 /**
+ * Handle universal file selection with option to mark all as platform-specific
+ */
+async function handleUniversalFileSelectionWithMarkAll(
+  files: DiscoveredFile[],
+  fileOptions: FileSelectionOption[]
+): Promise<{ markAllAsPlatformSpecific: boolean; universalIndex?: number }> {
+  const choices = files.map((file, index) => ({
+    title: `${fileOptions[index].platform}: ${fileOptions[index].registryPath}`,
+    value: index
+  }));
+
+  // Add the "mark all as platform-specific" option
+  choices.push({
+    title: 'Mark all as platform-specific',
+    value: MARK_ALL_AS_PLATFORM_SPECIFIC // Special value to indicate mark all
+  });
+
+  const response = await prompts({
+    type: 'select',
+    name: 'selectedValue',
+    message: 'Select universal file or mark all as platform-specific:',
+    choices,
+    hint: 'In the next step, you can select files to mark as platform-specific'
+  });
+
+  if (isCancelled(response) || response.selectedValue === undefined) {
+    throw new UserCancellationError('Universal file selection cancelled');
+  }
+
+  if (response.selectedValue === MARK_ALL_AS_PLATFORM_SPECIFIC) {
+    return { markAllAsPlatformSpecific: true };
+  } else {
+    return { markAllAsPlatformSpecific: false, universalIndex: response.selectedValue };
+  }
+}
+
+/**
  * Handle platform-specific file marking and return updated file sets
  */
 async function handlePlatformSpecificMarking(
   files: DiscoveredFile[],
-  fileOptions: FileSelectionOption[]
+  fileOptions: FileSelectionOption[],
+  excludeIndex?: number
 ): Promise<{
   platformSpecificFiles: Array<{
     file: DiscoveredFile;
@@ -213,14 +277,27 @@ async function handlePlatformSpecificMarking(
     finalRegistryPath: string;
   }> = [];
 
+  // Filter out the excluded file (universal file) from options
+  const filteredOptions = fileOptions.filter((_, index) => index !== excludeIndex);
+  const filteredFiles = files.filter((_, index) => index !== excludeIndex);
+
+  // Create options without content previews
+  const platformSpecificOptions = filteredOptions.map((option, index) => ({
+    platform: option.platform,
+    sourcePath: option.sourcePath,
+    preview: '', // Remove content previews
+    registryPath: option.registryPath
+  }));
+
   const platformSpecificIndices = await promptPlatformSpecificSelection(
-    fileOptions,
-    'Multiple platform files detected with identical timestamps. Select files to mark as platform-specific (they will keep their platform prefixes):'
+    platformSpecificOptions,
+    'Select files to mark as platform-specific (unmarked files will be overwritten with universal file content):',
+    'Unmarked files will be overwritten and use the universal file'
   );
 
   // Mark selected files as platform-specific
   for (const index of platformSpecificIndices) {
-    const file = files[index];
+    const file = filteredFiles[index];
     const content = await readTextFile(file.fullPath);
     const updatedContent = addPlatformSpecificFlag(content);
     await writeTextFile(file.fullPath, updatedContent);
@@ -231,8 +308,8 @@ async function handlePlatformSpecificMarking(
 
     // Add to platform-specific results
     const platformName = getPlatformNameFromSource(file.sourceDir);
-    const originalBase = basename(file.registryPath, '.md');
-    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
+    const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
+    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
 
     platformSpecificFiles.push({
       file,
@@ -241,10 +318,55 @@ async function handlePlatformSpecificMarking(
     });
   }
 
-  // Get remaining files (not marked as platform-specific)
-  const remainingFiles = files.filter((_, index) => !platformSpecificIndices.includes(index));
+  // Get remaining files (not marked as platform-specific, including the excluded universal file)
+  const markedIndices = new Set(platformSpecificIndices.map(idx => {
+    // Find the original index in the full files array
+    const file = filteredFiles[idx];
+    return files.indexOf(file);
+  }));
+
+  const remainingFiles = files.filter((_, index) => !markedIndices.has(index) && index !== excludeIndex);
 
   return { platformSpecificFiles, remainingFiles };
+}
+
+/**
+ * Mark all files as platform-specific
+ */
+async function markAllFilesAsPlatformSpecific(files: DiscoveredFile[]): Promise<Array<{
+  file: DiscoveredFile;
+  platformName: string;
+  finalRegistryPath: string;
+}>> {
+  const platformSpecificFiles: Array<{
+    file: DiscoveredFile;
+    platformName: string;
+    finalRegistryPath: string;
+  }> = [];
+
+  for (const file of files) {
+    // Mark file as platform-specific in frontmatter
+    const content = await readTextFile(file.fullPath);
+    const updatedContent = addPlatformSpecificFlag(content);
+    await writeTextFile(file.fullPath, updatedContent);
+
+    // Update the file object to reflect the change
+    file.forcePlatformSpecific = true;
+    console.log(`✓ Marked ${file.registryPath} as platform-specific`);
+
+    // Add to platform-specific results
+    const platformName = getPlatformNameFromSource(file.sourceDir);
+    const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
+    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
+
+    platformSpecificFiles.push({
+      file,
+      platformName,
+      finalRegistryPath: platformSpecificPath
+    });
+  }
+
+  return platformSpecificFiles;
 }
 
 /**
@@ -319,8 +441,8 @@ function findLatestFile(files: DiscoveredFile[]): DiscoveredFile {
  * Create platform-specific registry path for a file
  */
 function createPlatformSpecificPath(file: DiscoveredFile, platformName: string): string {
-  const originalBase = basename(file.registryPath, '.md');
-  return join(dirname(file.registryPath) || '', `${originalBase}.${platformName}.md`);
+  const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
+  return join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
 }
 
 /**
@@ -441,7 +563,7 @@ export function logConflictResolution(
   const universalCount = analysisResult.universalFiles.length;
   const platformSpecificCount = analysisResult.platformSpecificFiles.length;
 
-  console.log(`📄 Resolving conflicts for ${registryPath} (${totalFiles} files)`);
+  console.log(`📄 Processed conflicts for ${registryPath} (${totalFiles} files)`);
 
   if (universalCount > 0) {
     console.log(`  ✓ Universal: ${universalCount} file(s) saved without prefix`);
@@ -451,17 +573,10 @@ export function logConflictResolution(
     console.log(`  ✓ Platform-specific: ${platformSpecificCount} file(s) saved with platform prefixes`);
   }
 
-  // Log skipped files
-  const keptFiles = new Set([
-    ...analysisResult.universalFiles.map(u => u.file.fullPath),
-    ...analysisResult.platformSpecificFiles.map(p => p.file.fullPath)
-  ]);
-
-  const skippedFiles = originalFiles.filter(f => !keptFiles.has(f.fullPath));
-  if (skippedFiles.length > 0) {
-    console.log(`  ⚠️  Skipped: ${skippedFiles.length} older or duplicate file(s)`);
-    for (const skipped of skippedFiles) {
-      logger.debug(`Skipped ${skipped.fullPath} (content hash: ${skipped.contentHash})`);
-    }
+  // For interactive resolution, all files are accounted for
+  const processedFiles = universalCount + platformSpecificCount;
+  if (processedFiles < totalFiles) {
+    const synchronizedFiles = totalFiles - processedFiles;
+    console.log(`  🔄 Synchronized: ${synchronizedFiles} file(s) updated with universal content`);
   }
 }
