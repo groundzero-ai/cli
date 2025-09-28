@@ -31,6 +31,10 @@ import {
   type PlatformName
 } from '../core/platforms.js';
 import {
+  getPlatformSubdirForType,
+  adjustPathForPlatform
+} from '../utils/platform-utils.js';
+import {
   getLocalFormulaYmlPath,
   getLocalGroundZeroDir,
   getLocalFormulasDir,
@@ -308,15 +312,7 @@ async function installFormulaToGroundzero(
             const platformDefinition = getPlatformDefinition(platform as PlatformName);
 
             // Check if this platform supports the subdirectory type
-            let platformSubdir: string | undefined;
-            if (subdirType === GROUNDZERO_DIRS.RULES) {
-              platformSubdir = platformDefinition.rulesDir.split('/').pop();
-            } else if (subdirType === GROUNDZERO_DIRS.COMMANDS) {
-              platformSubdir = platformDefinition.commandsDir?.split('/').pop();
-            } else if (subdirType === GROUNDZERO_DIRS.AGENTS) {
-              platformSubdir = platformDefinition.agentsDir?.split('/').pop();
-            }
-
+            const platformSubdir = getPlatformSubdirForType(platform as PlatformName, subdirType);
             if (!platformSubdir) {
               // Platform doesn't support this subdirectory type
               return { installedCount: 0, files: [] };
@@ -331,16 +327,13 @@ async function installFormulaToGroundzero(
               return { installedCount: 0, files: [] };
             }
 
-            // Use appropriate file pattern for the platform
-            const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+            // Adjust file path for platform-specific requirements (extension conversion)
+            const platformAdjustedFile = {
+              ...file,
+              path: adjustPathForPlatform(platform as PlatformName, file.path)
+            };
 
-            // Filter files by platform-specific patterns
-            if (!file.path.endsWith(filePattern)) {
-              logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
-              return { installedCount: 0, files: [] };
-            }
-
-            return await installFileType([file], targetDir, `${subdirType}/`, installOptions, options.dryRun);
+            return await installFileType([platformAdjustedFile], targetDir, `${subdirType}/`, installOptions, options.dryRun);
           })
         );
 
@@ -384,16 +377,13 @@ async function installFormulaToGroundzero(
           }
         }
 
-        // Use appropriate file pattern for the platform
-        const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+        // Adjust file path for platform-specific requirements (extension conversion)
+        const platformAdjustedFile = {
+          ...file,
+          path: adjustPathForPlatform(platform, file.path)
+        };
 
-        // Filter files by platform-specific patterns
-        if (!file.path.endsWith(filePattern)) {
-          logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
-          return { installedCount: 0, files: [] };
-        }
-
-        return await installFileType([file], targetDir, `${platformDir}/`, installOptions, options.dryRun);
+        return await installFileType([platformAdjustedFile], targetDir, `${platformDir}/`, installOptions, options.dryRun);
       }
     })
   );

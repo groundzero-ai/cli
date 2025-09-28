@@ -30,7 +30,7 @@ import {
   isPlatformCategory,
   getPlatformDescription
 } from '../core/platforms.js';
-import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS } from '../constants/index.js';
+import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, GROUNDZERO_DIRS, FILE_PATTERNS } from '../constants/index.js';
 
 /**
  * Enhanced platform detection with detailed information
@@ -519,4 +519,40 @@ export function getTargetFilePath(targetDir: string, registryPath: string): stri
 
   // For all other files, preserve the full relative path structure
   return join(targetDir, registryPath);
+}
+
+/**
+ * Get the appropriate subdirectory name for a platform based on universal subdirectory type
+ * Maps GROUNDZERO_DIRS (rules/commands/agents) to platform-specific subdirectory names
+ */
+export function getPlatformSubdirForType(platform: PlatformName, subdirType: string): string | undefined {
+  const definition = PLATFORM_DEFINITIONS[platform];
+
+  if (subdirType === GROUNDZERO_DIRS.RULES) {
+    return definition.rulesDir.split('/').pop();
+  } else if (subdirType === GROUNDZERO_DIRS.COMMANDS) {
+    return definition.commandsDir?.split('/').pop();
+  } else if (subdirType === GROUNDZERO_DIRS.AGENTS) {
+    return definition.agentsDir?.split('/').pop();
+  }
+
+  return undefined;
+}
+
+/**
+ * Adjust file path for platform-specific requirements, primarily handling extension conversion
+ * Converts .md/.mdc extensions based on platform expectations while preserving the rest of the path
+ */
+export function adjustPathForPlatform(platform: PlatformName, relativePath: string): string {
+  const expectedExt = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+
+  // Convert extension if needed
+  if (relativePath.endsWith(FILE_PATTERNS.MD_FILES) && expectedExt === FILE_PATTERNS.MDC_FILES) {
+    return relativePath.replace(/\.md$/, FILE_PATTERNS.MDC_FILES);
+  } else if (relativePath.endsWith(FILE_PATTERNS.MDC_FILES) && expectedExt === FILE_PATTERNS.MD_FILES) {
+    return relativePath.replace(/\.mdc$/, FILE_PATTERNS.MD_FILES);
+  }
+
+  // Return unchanged if already correct or not a markdown file
+  return relativePath;
 }
