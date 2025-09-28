@@ -142,6 +142,35 @@ export async function listDirectories(dirPath: string): Promise<string[]> {
 }
 
 /**
+ * Recursively remove empty directories under a root (but not the root itself)
+ */
+export async function removeEmptyDirectories(root: string): Promise<void> {
+  async function recurse(dir: string): Promise<boolean> {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const child = join(dir, entry.name);
+        await recurse(child);
+      }
+    }
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+      if (entries.length === 0 && dir !== root) {
+        await remove(dir);
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+  await recurse(root);
+}
+
+/**
  * Recursively walk through a directory and yield all files
  */
 export async function* walkFiles(dirPath: string, includePatterns: string[] = []): AsyncGenerator<string> {

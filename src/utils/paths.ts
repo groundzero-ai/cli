@@ -37,7 +37,7 @@ export function getLocalFormulasDir(cwd: string): string {
 /**
  * Get the local formula directory path for a specific formula
  */
-export function getLocalFormulaDir(cwd: string, formulaName: string): string {
+ export function getLocalFormulaDir(cwd: string, formulaName: string): string {
   return join(cwd, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaName);
 }
 

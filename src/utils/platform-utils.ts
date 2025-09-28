@@ -3,7 +3,7 @@
  * Utility functions for platform management, detection, and file operations
  */
 
-import { join, basename, dirname } from 'path';
+import { join, basename, dirname, relative } from 'path';
 import path from 'path';
 import { 
   exists, 
@@ -30,7 +30,8 @@ import {
   isPlatformCategory,
   getPlatformDescription
 } from '../core/platforms.js';
-import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, GROUNDZERO_DIRS, FILE_PATTERNS } from '../constants/index.js';
+import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, GROUNDZERO_DIRS, FILE_PATTERNS, GLOBAL_PLATFORM_FILES } from '../constants/index.js';
+import { discoverFiles } from './file-discovery.js';
 
 /**
  * Enhanced platform detection with detailed information
@@ -213,60 +214,66 @@ export async function cleanupPlatformFiles(
   targetDir: string,
   platform: PlatformName,
   formulaName: string,
-  options: { force?: boolean; dryRun?: boolean } = {}
+  options: { force?: boolean; dryRun?: boolean; skipMemories?: boolean } = {}
 ): Promise<{ removedCount: number; files: string[]; errors: string[] }> {
   const paths = getPlatformDirectoryPaths(targetDir);
   const platformPaths = paths[platform];
-  
-  // Check if platform directory exists
-  if (!(await exists(platformPaths.rulesDir))) {
+
+  // If no rules dir, platform not present
+  if (!platformPaths || !(await exists(platformPaths.rulesDir))) {
     return { removedCount: 0, files: [], errors: [] };
   }
-  
+
+  const preservedGlobal = new Set<string>(Object.values(GLOBAL_PLATFORM_FILES));
+  const removedFiles: string[] = [];
+  const errors: string[] = [];
+
   try {
-    // Find formula-specific files
-    const files = await findPlatformFiles(targetDir, platform, formulaName);
-    const removedFiles: string[] = [];
-    const errors: string[] = [];
-    
-    // Process file removal in parallel
-    const removalPromises = files.map(async (file) => {
-      if (!options.dryRun) {
-        try {
-          await remove(file.fullPath);
-          logger.debug(`Removed platform file: ${file.fullPath}`);
+    // Build subdir list: rules, commands, agents
+    const subdirs: Array<{ dir: string; label: string; leaf: string }> = [];
+    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: PLATFORM_SUBDIRS.RULES, leaf: platformPaths.rulesDir.split('/').pop() || '' });
+    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: PLATFORM_SUBDIRS.COMMANDS, leaf: platformPaths.commandsDir.split('/').pop() || '' });
+    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: PLATFORM_SUBDIRS.AGENTS, leaf: platformPaths.agentsDir.split('/').pop() || '' });
+
+    const filePatterns = getPlatformFilePatterns(platform);
+
+    for (const { dir, label, leaf } of subdirs) {
+      if (options.skipMemories && leaf === 'memories') {
+        continue;
+      }
+
+      const discovered = await discoverFiles(
+        dir,
+        formulaName,
+        platform,
+        label,
+        filePatterns,
+        'platform'
+      );
+
+      const removalPromises = discovered.map(async (file) => {
+        const relFromCwd = relative(targetDir, file.fullPath).replace(/\\/g, '/');
+        if (preservedGlobal.has(relFromCwd)) {
           return { success: true, path: file.fullPath };
-        } catch (error) {
-          logger.error(`Failed to remove file ${file.fullPath}: ${error}`);
-          return { success: false, path: file.fullPath, error: error as Error };
         }
-      }
-      return { success: true, path: file.fullPath };
-    });
-    
-    const results = await Promise.all(removalPromises);
-    
-    for (const result of results) {
-      if (result.success) {
-        removedFiles.push(result.path);
-      } else {
-        errors.push(result.path);
+        if (!options.dryRun) {
+          try {
+            await remove(file.fullPath);
+            logger.debug(`Removed platform file: ${file.fullPath}`);
+          } catch (error) {
+            logger.error(`Failed to remove file ${file.fullPath}: ${error}`);
+            return { success: false, path: file.fullPath };
+          }
+        }
+        return { success: true, path: file.fullPath };
+      });
+
+      const results = await Promise.all(removalPromises);
+      for (const r of results) {
+        if (r.success) removedFiles.push(r.path); else errors.push(r.path);
       }
     }
-    
-    // Check if directory is empty and remove it if so
-    if (!options.dryRun && removedFiles.length > 0) {
-      try {
-        const remainingFiles = await listFiles(platformPaths.rulesDir);
-        if (remainingFiles.length === 0) {
-          await remove(platformPaths.rulesDir);
-          logger.debug(`Removed empty platform directory: ${platformPaths.rulesDir}`);
-        }
-      } catch (error) {
-        logger.debug(`Failed to remove empty directory ${platformPaths.rulesDir}: ${error}`);
-      }
-    }
-    
+
     return { removedCount: removedFiles.length, files: removedFiles, errors };
   } catch (error) {
     logger.error(`Failed to cleanup platform files for ${platform}: ${error}`);

@@ -1,16 +1,12 @@
 name: g0-gpm-cli
 version: 0.1.0
 formulas:
-- name: formula-a
-  version: ^0.1.1
 - name: formula-b
   version: ^0.1.1
 - name: scalable-nestjs-mongodb
   version: ^0.1.0
 - name: formula-main
   version: ^0.1.0
-- name: test-new-formula
-  version: ^0.1.1
 - name: test-bug-check
   version: ^0.1.1
 - name: my-test-formula

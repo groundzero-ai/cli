@@ -1,125 +1,55 @@
 import { Command } from 'commander';
-import { join } from 'path';
-import { readdir } from 'fs/promises';
+import { join, relative } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
+import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { findFormulaDirectory } from '../core/groundzero.js';
+import { discoverFiles } from '../utils/file-discovery.js';
+import { type PlatformName } from '../core/platforms.js';
+import { detectPlatforms } from '../utils/formula-installation.js';
+import { cleanupPlatformFiles as cleanupPlatformFilesForSingle } from '../utils/platform-utils.js';
 import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
-import { exists, remove, readTextFile } from '../utils/fs.js';
+import { cleanupObsoleteResolutions } from '../core/groundzero.js';
+import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import {
   PLATFORM_DIRS,
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
-  GLOBAL_PLATFORM_FILES
+  GLOBAL_PLATFORM_FILES,
 } from '../constants/index.js';
-import { getLocalFormulaYmlPath, getAIDir } from '../utils/paths.js';
+import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 
 
 /**
- * Clean up platform-specific files for a formula
- * Note: Global platform files (groundzero.mdc, groundzero.md) are preserved as they're shared across formulas
+ * Clean up platform-specific files for a formula across all detected platforms
+ * - Iterates detected platforms
+ * - Traverses supported subdirs (rules/commands/agents and platform-specific rules)
+ * - Deletes files whose frontmatter formula.name matches target
+ * - Preserves global groundzero files defined in GLOBAL_PLATFORM_FILES
+ * - Honors --keep-data by skipping deletions in memories subdirs
  */
 async function cleanupPlatformFiles(
   targetDir: string,
   formulaName: string,
   options: UninstallOptions
-): Promise<{ cursorFiles: string[]; claudeFiles: string[] }> {
-  const cleaned = { cursorFiles: [] as string[], claudeFiles: [] as string[] };
-  
-  // Process both platforms in parallel
-  const platformTasks = [
-    processPlatform(targetDir, PLATFORM_DIRS.CURSOR, formulaName, options, cleaned.cursorFiles),
-    processPlatform(targetDir, PLATFORM_DIRS.CLAUDECODE, formulaName, options, cleaned.claudeFiles)
-  ];
-  
-  await Promise.all(platformTasks);
-  return cleaned;
-}
+): Promise<Record<string, string[]>> {
+  const cwd = targetDir;
+  const platforms = await detectPlatforms(cwd);
+  const cleanedByPlatform: Record<string, string[]> = {};
 
-/**
- * Process a single platform directory
- */
-async function processPlatform(
-  targetDir: string,
-  platformDir: string,
-  formulaName: string,
-  options: UninstallOptions,
-  cleanedFiles: string[]
-): Promise<void> {
-  const fullPath = join(targetDir, platformDir);
-  if (!(await exists(fullPath))) return;
-  
-  logger.debug(`Checking for formula-specific ${platformDir} files for: ${formulaName}`);
-  
-  const formulaFiles = await findFormulaSpecificFiles(fullPath, formulaName);
-  for (const filePath of formulaFiles) {
-    if (!options.keepData) {
-      await remove(filePath);
-      const relativePath = filePath.replace(fullPath + '/', '');
-      cleanedFiles.push(`${platformDir}/${relativePath}`);
-      logger.info(`Removed formula-specific ${platformDir} file: ${relativePath}`);
-    }
-  }
-  
-  const globalFile = platformDir === PLATFORM_DIRS.CURSOR
-    ? GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO
-    : GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO;
-  logger.debug(`Preserved global ${platformDir} file: ${globalFile}`);
-}
+  // Process each detected platform using the shared single-platform cleanup
+  await Promise.all(platforms.map(async (platform) => {
+    const result = await cleanupPlatformFilesForSingle(
+      cwd,
+      platform as PlatformName,
+      formulaName,
+      { dryRun: options.dryRun, skipMemories: options.keepData }
+    );
+    cleanedByPlatform[platform] = result.files.map(p => relative(cwd, p).replace(/\\/g, '/'));
+  }));
 
-/**
- * Find formula-specific files in a platform directory based on YAML frontmatter
- * This function looks for markdown files that have frontmatter with the specific formula name
- */
-async function findFormulaSpecificFiles(platformDir: string, formulaName: string): Promise<string[]> {
-  const formulaFiles: string[] = [];
-  
-  try {
-    const findFiles = async (dir: string, basePath: string = ''): Promise<void> => {
-      const entries = await readdir(dir, { withFileTypes: true });
-      
-      // Process entries in parallel for better performance
-      const tasks = entries.map(async (entry) => {
-        const fullPath = join(dir, entry.name);
-        const relativePath = basePath ? join(basePath, entry.name) : entry.name;
-        
-        if (entry.isDirectory()) {
-          await findFiles(fullPath, relativePath);
-        } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.mdc'))) {
-          // Skip global files that should be preserved
-          const isGlobalFile = (
-            relativePath === `rules/${FILE_PATTERNS.GROUNDZERO_MDC}` ||
-            relativePath === FILE_PATTERNS.GROUNDZERO_MD
-          );
-          
-          if (!isGlobalFile) {
-            try {
-              const content = await readTextFile(fullPath);
-              const frontmatter = parseMarkdownFrontmatter(content);
-              
-              if (frontmatter?.formula?.name === formulaName) {
-                formulaFiles.push(fullPath);
-                logger.debug(`Found formula-specific file: ${relativePath} (frontmatter: formula.name = ${formulaName})`);
-              }
-            } catch (error) {
-              logger.warn(`Failed to read or parse frontmatter from ${relativePath}: ${error}`);
-            }
-          }
-        }
-      });
-      
-      await Promise.all(tasks);
-    };
-    
-    await findFiles(platformDir);
-  } catch (error) {
-    logger.warn(`Failed to scan platform directory ${platformDir}: ${error}`);
-  }
-  
-  return formulaFiles;
+  return cleanedByPlatform;
 }
 
 /**
@@ -208,45 +138,93 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
 async function displayDryRunInfo(
   formulaName: string,
   targetDir: string,
-  formulaDirectoryPath: string,
   options: UninstallOptions,
   danglingDependencies: Set<string>,
-  groundzeroPath: string
+  groundzeroPath: string,
+  aiFilesToRemove: string[],
+  formulasToRemove: string[]
 ): Promise<void> {
   console.log(`🔍 Dry run - showing what would be uninstalled:\n`);
-  
-  console.log(`Main formula: ${formulaName}`);
-  console.log(`Directory to remove: ${formulaDirectoryPath}`);
-  
-  if (options.recursive && danglingDependencies.size > 0) {
-    console.log(`\nDangling dependencies to remove:`);
+
+  console.log(`📦 Formulas to remove: ${formulasToRemove.length}`);
+  console.log(`├── Main: ${formulaName}`);
+  if (danglingDependencies.size > 0) {
     for (const dep of danglingDependencies) {
-      const depPath = await findFormulaDirectory(groundzeroPath, dep);
-      if (depPath) {
-        console.log(`├── ${dep} (${depPath})`);
-      }
+      console.log(`├── Dependency: ${dep}`);
     }
+  }
+
+  if (aiFilesToRemove.length > 0) {
+    console.log(`\n🗑️  AI files to remove (${aiFilesToRemove.length}):`);
+    const preview = aiFilesToRemove.slice(0, 10);
+    for (const f of preview) {
+      console.log(`├── ${f}`);
+    }
+    if (aiFilesToRemove.length > preview.length) {
+      console.log(`… and ${aiFilesToRemove.length - preview.length} more`);
+    }
+  } else {
+    console.log(`\n🗑️  AI files to remove: none`);
+  }
+
+  // Check formula.yml files that would be removed
+  const formulasDir = getLocalFormulasDir(targetDir);
+  const formulaYmlFilesToRemove: string[] = [];
+  for (const formula of formulasToRemove) {
+    const formulaDir = getLocalFormulaDir(targetDir, formula);
+    const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+    if (await exists(formulaYmlPath)) {
+      formulaYmlFilesToRemove.push(formula);
+    }
+  }
+
+  if (formulaYmlFilesToRemove.length > 0) {
+    console.log(`\n📄 Formula metadata to remove (${formulaYmlFilesToRemove.length}):`);
+    for (const formula of formulaYmlFilesToRemove) {
+      console.log(`├── ${formula}`);
+    }
+  } else {
+    console.log(`\n📄 Formula metadata to remove: none`);
   }
   
   console.log('');
   
-  // Check platform files that would be cleaned up
-  const platformCleanup = await cleanupPlatformFiles(targetDir, formulaName, { ...options, dryRun: true });
+  // Check platform files that would be cleaned up for all formulas
+  const dryRunPlatformCleanupPromises = formulasToRemove.map(formula =>
+    cleanupPlatformFiles(targetDir, formula, { ...options, dryRun: true })
+  );
+  const dryRunPlatformCleanupResults = await Promise.all(dryRunPlatformCleanupPromises);
+
+  // Aggregate platform cleanup results across all formulas
+  const platformCleanup: Record<string, string[]> = {};
+  for (const result of dryRunPlatformCleanupResults) {
+    for (const [platform, files] of Object.entries(result)) {
+      if (!platformCleanup[platform]) {
+        platformCleanup[platform] = [];
+      }
+      platformCleanup[platform].push(...files);
+    }
+  }
   displayPlatformCleanupInfo(platformCleanup);
-  
-  // Check if formula would be removed from formula.yml
+
+  // Check formula.yml updates
   const configPaths = [
     getLocalFormulaYmlPath(targetDir),
     join(targetDir, FILE_PATTERNS.HIDDEN_FORMULA_YML)
   ];
-  
+
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
   if (hasConfigFile.some(exists => exists)) {
-    console.log(`Would remove ${formulaName} from formula dependencies`);
+    console.log(`📋 Would attempt to remove formulas from formula dependencies:`);
+    for (const formula of formulasToRemove) {
+      console.log(`├── ${formula}`);
+    }
   } else {
-    console.log('No .groundzero/formula.yml file to update');
+    console.log('📋 No formula.yml file to update');
   }
-  
+
+  console.log(`🧹 Would clean up any obsolete dependency resolution pins`);
+
   if (options.keepData) {
     console.log('💾 Keep data mode - this would preserve data files during uninstall');
   }
@@ -255,19 +233,24 @@ async function displayDryRunInfo(
 /**
  * Display platform cleanup information
  */
-function displayPlatformCleanupInfo(platformCleanup: { cursorFiles: string[]; claudeFiles: string[] }): void {
-  if (platformCleanup.cursorFiles.length > 0 || platformCleanup.claudeFiles.length > 0) {
+function displayPlatformCleanupInfo(platformCleanup: Record<string, string[]>): void {
+  const platforms = Object.keys(platformCleanup);
+  const any = platforms.some(p => (platformCleanup[p] || []).length > 0);
+  if (any) {
     console.log('Platform files that would be cleaned up:');
-    if (platformCleanup.cursorFiles.length > 0) {
-      console.log(`├── Cursor files: ${platformCleanup.cursorFiles.join(', ')}`);
-    }
-    if (platformCleanup.claudeFiles.length > 0) {
-      console.log(`├── Claude files: ${platformCleanup.claudeFiles.join(', ')}`);
+    for (const p of platforms) {
+      const files = platformCleanup[p];
+      if (files && files.length > 0) {
+        console.log(`├── ${p}: ${files.join(', ')}`);
+      }
     }
   } else {
     console.log('Platform files: No formula-specific platform files to clean up');
-    console.log(`├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO}`);
+    const preserved = Object.values(GLOBAL_PLATFORM_FILES);
+    if (preserved.length > 0) {
+      console.log('├── Preserved global files:');
+      for (const f of preserved) console.log(`   ├── ${f}`);
+    }
   }
 }
 
@@ -279,45 +262,69 @@ function displayUninstallSuccess(
   targetDir: string,
   options: UninstallOptions,
   danglingDependencies: Set<string>,
-  removedDirectories: string[],
-  removedFromYml: boolean,
-  platformCleanup: { cursorFiles: string[]; claudeFiles: string[] }
+  removedAiFiles: string[],
+  ymlRemovalResults: Record<string, boolean>,
+  platformCleanup: Record<string, string[]>,
+  cleanedResolutions: string[]
 ): void {
   console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
   
-  if (options.recursive && danglingDependencies.size > 0) {
-    console.log(`🗑️  Removed main formula: ai/${formulaName}`);
-    console.log(`🗑️  Removed ${danglingDependencies.size} dangling dependencies:`);
-    for (const dep of danglingDependencies) {
-      if (removedDirectories.includes(dep)) {
-        console.log(`   ├── ai/${dep}`);
-      }
+  const aiRemovalCount = removedAiFiles.length;
+  console.log(`🗑️  Removed AI files: ${aiRemovalCount}`);
+  if (aiRemovalCount > 0) {
+    // Show up to first 10 entries to keep output concise
+    const preview = removedAiFiles.slice(0, 10);
+    for (const f of preview) {
+      console.log(`   ├── ${f}`);
     }
-    console.log(`📊 Total directories removed: ${removedDirectories.length}`);
-  } else {
-    console.log(`🗑️  Removed directory: ai/${formulaName}`);
+    if (removedAiFiles.length > preview.length) {
+      console.log(`   … and ${removedAiFiles.length - preview.length} more`);
+    }
   }
   
-  if (removedFromYml) {
-    console.log(`📋 Removed from formula dependencies`);
-  } else {
-    console.log(`⚠️  Could not update formula.yml (not found or formula not listed)`);
+  // Report formula.yml updates
+  const successfulRemovals = Object.entries(ymlRemovalResults).filter(([, success]) => success);
+  const failedRemovals = Object.entries(ymlRemovalResults).filter(([, success]) => !success);
+
+  if (successfulRemovals.length > 0) {
+    console.log(`📋 Removed from formula dependencies:`);
+    for (const [formula] of successfulRemovals) {
+      console.log(`   ├── ${formula}`);
+    }
   }
-  
+
+  if (failedRemovals.length > 0) {
+    console.log(`⚠️  Could not update formula.yml for:`);
+    for (const [formula] of failedRemovals) {
+      console.log(`   ├── ${formula} (not found or not listed)`);
+    }
+  }
+
+  if (cleanedResolutions.length > 0) {
+    console.log(`🧹 Cleaned up obsolete resolution pins: ${cleanedResolutions.length}`);
+    for (const dep of cleanedResolutions) {
+      console.log(`   ├── ${dep}`);
+    }
+  }
+
   // Report platform cleanup
-  if (platformCleanup.cursorFiles.length > 0 || platformCleanup.claudeFiles.length > 0) {
+  const platforms = Object.keys(platformCleanup);
+  const any = platforms.some(p => (platformCleanup[p] || []).length > 0);
+  if (any) {
     console.log(`🧹 Cleaned up platform files:`);
-    if (platformCleanup.cursorFiles.length > 0) {
-      console.log(`   ├── Cursor: ${platformCleanup.cursorFiles.join(', ')}`);
-    }
-    if (platformCleanup.claudeFiles.length > 0) {
-      console.log(`   ├── Claude: ${platformCleanup.claudeFiles.join(', ')}`);
+    for (const p of platforms) {
+      const files = platformCleanup[p];
+      if (files && files.length > 0) {
+        console.log(`   ├── ${p}: ${files.join(', ')}`);
+      }
     }
   } else {
     console.log(`🧹 Platform files: No formula-specific files to clean up`);
-    console.log(`   ├── Preserved global Cursor file: ${GLOBAL_PLATFORM_FILES.CURSOR_GROUNDZERO}`);
-    console.log(`   ├── Preserved global Claude file: ${GLOBAL_PLATFORM_FILES.CLAUDECODE_GROUNDZERO}`);
+    const preserved = Object.values(GLOBAL_PLATFORM_FILES);
+    if (preserved.length > 0) {
+      for (const f of preserved) console.log(`   ├── Preserved: ${f}`);
+    }
   }
 }
 
@@ -334,7 +341,11 @@ async function uninstallFormulaCommand(
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  const groundzeroPath = getAIDir(targetDir);
+  const cwd = process.cwd();
+  const aiRootPath = getAIDir(cwd);
+  const groundzeroPath = targetDir && targetDir !== '.'
+    ? join(aiRootPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
+    : aiRootPath;
   
   // Check if ai directory exists
   if (!(await exists(groundzeroPath))) {
@@ -345,18 +356,8 @@ async function uninstallFormulaCommand(
       error: 'Formula not found'
     };
   }
-  
-  // Find the formula directory in ai
-  const formulaDirectoryPath = await findFormulaDirectory(groundzeroPath, formulaName);
-  
-  if (!formulaDirectoryPath) {
-    console.log(`❌ Formula '${formulaName}' not found`);
-    console.log(`No matching formula found in ai directory`);
-    return {
-      success: false,
-      error: 'Formula not found'
-    };
-  }
+
+  // Helper now available in fs utils: removeEmptyDirectories
   
   // Determine what formulas to remove
   let formulasToRemove = [formulaName];
@@ -364,7 +365,7 @@ async function uninstallFormulaCommand(
   
   if (options.recursive) {
     // Build dependency tree and find dangling dependencies
-    const protectedFormulas = await getProtectedFormulas(targetDir);
+    const protectedFormulas = await getProtectedFormulas(cwd);
     const dependencyTree = await buildDependencyTree(groundzeroPath, protectedFormulas);
     danglingDependencies = await findDanglingDependencies(formulaName, dependencyTree);
     
@@ -381,18 +382,45 @@ async function uninstallFormulaCommand(
     }
   }
   
+  // Compute AI files to remove for main + dependencies
+  const aiFilesToRemoveSets = await Promise.all(formulasToRemove.map(async (name) => {
+    const discovered = await discoverFiles(
+      groundzeroPath,
+      name,
+      'ai' as PlatformName,
+      PLATFORM_DIRS.AI,
+      [FILE_PATTERNS.MD_FILES],
+      'platform'
+    );
+    return discovered.map(d => d.fullPath);
+  }));
+  const aiFilesToRemove = Array.from(new Set(aiFilesToRemoveSets.flat()));
+
+  // If no ai files found for main formula and not recursive, treat as not found
+  if (!options.recursive) {
+    if (aiFilesToRemove.length === 0) {
+      console.log(`❌ Formula '${formulaName}' not found`);
+      console.log(`No matching AI files found in ai directory`);
+      return {
+        success: false,
+        error: 'Formula not found'
+      };
+    }
+  }
+
   // Dry run mode
   if (options.dryRun) {
-    await displayDryRunInfo(formulaName, targetDir, formulaDirectoryPath, options, danglingDependencies, groundzeroPath);
+    const relAiFiles = aiFilesToRemove.map(p => relative(groundzeroPath, p));
+    await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, relAiFiles, formulasToRemove);
     
-    const platformCleanup = await cleanupPlatformFiles(targetDir, formulaName, { ...options, dryRun: true });
+    const platformCleanup = await cleanupPlatformFiles(cwd, formulaName, { ...options, dryRun: true });
     return {
       success: true,
       data: {
         dryRun: true,
         formulaName,
         targetDir,
-        formulaDirectory: formulaDirectoryPath,
+        aiFiles: relAiFiles,
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
         totalToRemove: formulasToRemove.length,
@@ -403,41 +431,84 @@ async function uninstallFormulaCommand(
   
   // Perform actual uninstallation
   try {
-    const removedDirectories: string[] = [];
+    const removedAiFiles: string[] = [];
     
-    // Remove all formulas (main + dangling dependencies)
-    for (const formulaToRemove of formulasToRemove) {
-      const formulaDirPath = await findFormulaDirectory(groundzeroPath, formulaToRemove);
-      if (formulaDirPath) {
-        await remove(formulaDirPath);
-        removedDirectories.push(formulaToRemove);
-        logger.info(`Removed formula directory: ${formulaDirPath}`);
-      } else {
-        logger.warn(`Formula directory not found for: ${formulaToRemove}`);
+    // Remove AI files (main + dangling dependencies)
+    for (const filePath of aiFilesToRemove) {
+      await remove(filePath);
+      removedAiFiles.push(relative(groundzeroPath, filePath));
+      logger.info(`Removed AI file: ${filePath}`);
+    }
+
+    // Remove empty directories under ai target path
+    await removeEmptyDirectories(groundzeroPath);
+
+    // Remove formula.yml files and directories for all formulas being removed
+    const formulasDir = getLocalFormulasDir(cwd);
+    for (const formula of formulasToRemove) {
+      const formulaDir = getLocalFormulaDir(cwd, formula);
+      const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+
+      // Remove the formula.yml file if it exists
+      if (await exists(formulaYmlPath)) {
+        await remove(formulaYmlPath);
+        logger.info(`Removed formula.yml file: ${formulaYmlPath}`);
+      }
+
+      // Remove the formula directory if it exists
+      if (await exists(formulaDir)) {
+        await remove(formulaDir);
+        logger.info(`Removed formula directory: ${formulaDir}`);
+      }
+    }
+
+    // Remove empty directories under .groundzero/formulas
+    if (await exists(formulasDir)) {
+      await removeEmptyDirectories(formulasDir);
+    }
+
+    // Clean up platform-specific files for all formulas being removed
+    const platformCleanupPromises = formulasToRemove.map(formula =>
+      cleanupPlatformFiles(cwd, formula, options)
+    );
+    const platformCleanupResults = await Promise.all(platformCleanupPromises);
+
+    // Aggregate platform cleanup results across all formulas
+    const platformCleanup: Record<string, string[]> = {};
+    for (const result of platformCleanupResults) {
+      for (const [platform, files] of Object.entries(result)) {
+        if (!platformCleanup[platform]) {
+          platformCleanup[platform] = [];
+        }
+        platformCleanup[platform].push(...files);
       }
     }
     
-    // Clean up platform-specific files for the main formula
-    const platformCleanup = await cleanupPlatformFiles(targetDir, formulaName, options);
-    
-    // Remove main formula from formula.yml or .formula.yml
-    const removedFromYml = await removeFormulaFromYml(targetDir, formulaName);
-    
+    // Remove all formulas being uninstalled from formula.yml or .formula.yml
+    const ymlRemovalResults: Record<string, boolean> = {};
+    for (const formula of formulasToRemove) {
+      ymlRemovalResults[formula] = await removeFormulaFromYml(cwd, formula);
+    }
+    const removedFromYml = ymlRemovalResults[formulaName];
+
+    // Clean up obsolete dependency resolutions
+    const { removed: cleanedResolutions } = await cleanupObsoleteResolutions(cwd);
+
     // Success output
-    displayUninstallSuccess(formulaName, targetDir, options, danglingDependencies, removedDirectories, removedFromYml, platformCleanup);
-    
+    displayUninstallSuccess(formulaName, targetDir, options, danglingDependencies, removedAiFiles, ymlRemovalResults, platformCleanup, cleanedResolutions);
+
     return {
       success: true,
       data: {
         formulaName,
         targetDir,
-        formulaDirectory: formulaDirectoryPath,
-        removedFromYml,
+        aiFiles: removedAiFiles,
+        ymlRemovalResults,
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
-        removedDirectories,
-        totalRemoved: removedDirectories.length,
-        platformCleanup
+        totalRemoved: removedAiFiles.length,
+        platformCleanup,
+        cleanedResolutions
       }
     };
   } catch (error) {
