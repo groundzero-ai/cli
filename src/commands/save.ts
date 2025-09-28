@@ -1,171 +1,69 @@
 import { Command } from 'commander';
-import { join, dirname, basename, relative } from 'path';
+import { join, basename } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
+import { parseFormulaYml, writeFormulaYml, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
+import { getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, FORMULA_DIRS } from '../constants/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
-import { calculateFileHash } from '../utils/hash-utils.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
-import {
-  getDetectedPlatforms,
-  getPlatformDefinition,
-  getPlatformDirectoryPaths,
-  type PlatformName
-} from '../core/platforms.js';
+import { discoverFilesForPattern } from '../utils/file-discovery.js';
 import type { DiscoveredFile } from '../types/index.js';
-import {
-  exists,
-  readTextFile,
-  writeTextFile,
-  listFiles,
-  listDirectories,
-  isDirectory,
-  ensureDir,
-  getStats
-} from '../utils/fs.js';
+import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
 const DEFAULT_VERSION = '0.1.0';
-const LOG_PREFIX_CREATED = '✓ Created formula.yml in';
-const LOG_PREFIX_FOUND = '✓ Found existing formula.yml';
-const LOG_PREFIX_NAME = '📦 Name:';
-const LOG_PREFIX_VERSION = '📦 Version:';
-const LOG_PREFIX_FILES = '📄 Found';
-const LOG_PREFIX_FILES_SUFFIX = 'markdown files';
-const LOG_PREFIX_RESOLVED = '📄 Conflicts resolved, processed';
-const LOG_PREFIX_SAVED = '✅ Saved';
-const LOG_PREFIX_UPDATED = '✓ Updated frontmatter in';
-const LOG_PREFIX_EXPLICIT_VERSION = '🎯 Using explicit version:';
-const LOG_PREFIX_PRERELEASE = '🎯 No version found, setting to prerelease:';
-const LOG_PREFIX_BUMP_STABLE = '🎯 Bumping to stable version:';
-const LOG_PREFIX_BUMP_PRERELEASE = '🎯 Bumping to prerelease version:';
-const LOG_PREFIX_CONVERT_STABLE = '🎯 Converting to stable version:';
-const LOG_PREFIX_OVERWRITE_STABLE = '🎯 Overwriting stable version:';
-const LOG_PREFIX_INCREMENT_PRERELEASE = '🎯 Incrementing prerelease version:';
-const LOG_PREFIX_AUTO_INCREMENT = '🎯 Auto-incrementing to patch prerelease:';
-const LOG_PREFIX_WARNING = '⚠️  Version';
-const LOG_PREFIX_WARNING_SUFFIX = 'is already stable.';
-const ARROW_SEPARATOR = ' → ';
 const VERSION_TYPE_STABLE = 'stable';
 
-/**
- * Check if a path matches a platform pattern and extract platform info
- */
-function checkPlatformMatch(normalizedPath: string, platform: PlatformName, platformDir: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
-  // Check for absolute paths
-  const absPlatformPattern = `/${platformDir}/`;
-  let platformIndex = normalizedPath.indexOf(absPlatformPattern);
-  let isAbsolute = true;
+const BUMP_TYPES = {
+  PATCH: 'patch',
+  MINOR: 'minor',
+  MAJOR: 'major'
+} as const;
 
-  if (platformIndex === -1) {
-    // Check for relative paths
-    const relPlatformPattern = `${platformDir}/`;
-    platformIndex = normalizedPath.indexOf(relPlatformPattern);
-    isAbsolute = false;
-  }
+type BumpType = typeof BUMP_TYPES[keyof typeof BUMP_TYPES];
 
-  if (platformIndex !== -1) {
-    const patternLength = isAbsolute ? absPlatformPattern.length - 1 : `${platformDir}/`.length - 1;
-    const relativePath = normalizedPath.substring(platformIndex + patternLength);
-    return { platform, relativePath: relativePath.startsWith('/') ? relativePath.substring(1) : relativePath, platformName: platform };
-  }
+const ERROR_MESSAGES = {
+  INVALID_FORMULA_SYNTAX: 'Invalid formula syntax: %s. Use format: formula@version',
+  VERSION_EXISTS: 'Version %s already exists. Use --force to overwrite.',
+  SAVE_FAILED: 'Failed to save formula',
+  OPERATION_CANCELLED: 'Operation cancelled by user',
+  INVALID_VERSION_FORMAT: 'Invalid version format: %s',
+  INVALID_BUMP_TYPE: 'Invalid bump type: %s. Must be \'patch\', \'minor\', or \'major\'.',
+  INVALID_VERSION_TYPE: 'Invalid version type: %s. Only \'%s\' is supported.',
+  PARSE_FORMULA_FAILED: 'Failed to parse existing formula.yml at %s: %s'
+} as const;
 
-  // Check for exact platform directory matches
-  if (normalizedPath === `/${platformDir}` || normalizedPath === platformDir || normalizedPath.endsWith(`/${platformDir}`)) {
-    return { platform, relativePath: '', platformName: platform };
-  }
-
-  return null;
-}
-
-/**
- * Parse a directory path to determine if it's a platform-specific directory
- */
-function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
-  const normalizedPath = directoryPath.replace(/\\/g, '/'); // Normalize for cross-platform
-
-  // Check for AI directory first (special case)
-  const aiMatch = checkPlatformMatch(normalizedPath, PLATFORM_DIRS.AI as PlatformName, PLATFORM_DIRS.AI);
-  if (aiMatch) {
-    return aiMatch;
-  }
-
-  // Check for other platforms
-  const platforms = Object.values(PLATFORMS) as PlatformName[];
-  for (const platform of platforms) {
-    if (platform === (PLATFORM_DIRS.AI as PlatformName)) continue; // Already handled above
-
-    // Map platform name to platform directory using the correct key format
-    const platformKey = platform.toUpperCase() as keyof typeof PLATFORM_DIRS;
-    const platformDir = PLATFORM_DIRS[platformKey];
-    const match = checkPlatformMatch(normalizedPath, platform, platformDir);
-    if (match) {
-      return match;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Build platform-based search configuration for file discovery
- */
-async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchConfig[]> {
-  const detectedPlatforms = await getDetectedPlatforms(cwd);
-  const config: PlatformSearchConfig[] = [];
-
-  // Add AI directory as required feature
-  config.push({
-    name: PLATFORM_DIRS.AI,
-    platform: PLATFORM_DIRS.AI as PlatformName, // Special case for AI directory
-    rootDir: PLATFORM_DIRS.AI,
-    rulesDir: join(cwd, PLATFORM_DIRS.AI),
-    filePatterns: [FILE_PATTERNS.MD_FILES],
-    registryPath: '' // Empty for AI directory to avoid double ai/ prefix
-  });
-
-  // Add detected platform configurations
-  for (const platform of detectedPlatforms) {
-    const definition = getPlatformDefinition(platform);
-    const paths = getPlatformDirectoryPaths(cwd);
-    const platformPaths = paths[platform];
-
-    config.push({
-      name: platform,
-      platform,
-      rootDir: definition.rootDir,
-      rulesDir: platformPaths.rulesDir,
-      commandsDir: platformPaths.commandsDir,
-      agentsDir: platformPaths.agentsDir,
-      filePatterns: [...definition.filePatterns],
-      registryPath: '' // Use empty registry path for universal storage
-    });
-  }
-
-  return config;
-}
-
-// Platform search configuration interface
-interface PlatformSearchConfig {
-  name: string;
-  platform: PlatformName;
-  rootDir: string;
-  rulesDir: string;
-  commandsDir?: string;
-  agentsDir?: string;
-  filePatterns: string[];
-  registryPath: string;
-}
+const LOG_PREFIXES = {
+  CREATED: '✓ Created formula.yml in',
+  FOUND: '✓ Found existing formula.yml',
+  NAME: '📦 Name:',
+  VERSION: '📦 Version:',
+  FILES: '📄 Found',
+  FILES_SUFFIX: 'markdown files',
+  RESOLVED: '📄 Conflicts resolved, processed',
+  SAVED: '✅ Saved',
+  UPDATED: '✓ Updated frontmatter in',
+  EXPLICIT_VERSION: '🎯 Using explicit version:',
+  PRERELEASE: '🎯 No version found, setting to prerelease:',
+  BUMP_STABLE: '🎯 Bumping to stable version:',
+  BUMP_PRERELEASE: '🎯 Bumping to prerelease version:',
+  CONVERT_STABLE: '🎯 Converting to stable version:',
+  OVERWRITE_STABLE: '🎯 Overwriting stable version:',
+  INCREMENT_PRERELEASE: '🎯 Incrementing prerelease version:',
+  AUTO_INCREMENT: '🎯 Auto-incrementing to patch prerelease:',
+  WARNING: '⚠️  Version',
+  WARNING_SUFFIX: 'is already stable.',
+  ARROW_SEPARATOR: ' → '
+} as const;
 
 /**
  * Parse formula inputs to handle three usage patterns:
@@ -222,7 +120,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   const version = formulaName.substring(atIndex + 1);
 
   if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaName}. Use format: formula@version`);
+    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_SYNTAX.replace('%s', formulaName));
   }
 
   return {
@@ -232,7 +130,6 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
     isExplicitPair: false
   };
 }
-
 
 /**
  * Create formula.yml automatically in a directory without user prompts
@@ -256,9 +153,9 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   
   // Create the formula.yml file
   await writeFormulaYml(formulaYmlPath, formulaConfig);
-  console.log(`${LOG_PREFIX_CREATED} ${formulaDir}`);
-  console.log(`${LOG_PREFIX_NAME} ${formulaConfig.name}`);
-  console.log(`${LOG_PREFIX_VERSION} ${formulaConfig.version}`);
+  console.log(`${LOG_PREFIXES.CREATED} ${formulaDir}`);
+  console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
+  console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
   
   return {
     fullPath: formulaYmlPath,
@@ -268,22 +165,22 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 }
 
 /**
- * Handle formula name input for non-existing formulas
- * Checks if formula.yml exists in .groundzero/formulas/<formula-name>/formula.yml and creates it if not
+ * Get or create formula configuration in the specified directory
+ * @param formulaDir - Directory where formula.yml should be located
+ * @param formulaName - Name of the formula
+ * @returns Formula configuration info
  */
-async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
-  const cwd = process.cwd();
-  const formulaDir = getLocalFormulaDir(cwd, formulaName);
+async function getOrCreateFormulaConfig(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
-  // Check if formula.yml already exists in .groundzero/formulas/<formula-name>/
+  // Check if formula.yml already exists
   if (await exists(formulaYmlPath)) {
     logger.debug('Found existing formula.yml, parsing...');
     try {
       const formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(LOG_PREFIX_FOUND);
-      console.log(`${LOG_PREFIX_NAME} ${formulaConfig.name}`);
-      console.log(`${LOG_PREFIX_VERSION} ${formulaConfig.version}`);
+      console.log(LOG_PREFIXES.FOUND);
+      console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
+      console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
 
       return {
         fullPath: formulaYmlPath,
@@ -291,100 +188,13 @@ async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: 
         isNewFormula: false
       };
     } catch (error) {
-      throw new ValidationError(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
+      throw new ValidationError(ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace('%s', formulaYmlPath).replace('%s', String(error)));
     }
   } else {
     logger.debug('No formula.yml found, creating automatically...');
     return await createFormulaYmlInDirectory(formulaDir, formulaName);
   }
 }
-
-/**
- * Handle directory-based formula input
- * Creates formula.yml in .groundzero/formulas/<formula-name>/formula.yml
- */
-async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
-  const cwd = process.cwd();
-  const sourceDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
-  const formulaDir = getLocalFormulaDir(cwd, formulaName);
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
-  
-  logger.debug(`Handling directory input: source=${sourceDir}, formula=${formulaDir}`);
-  
-  // Check if formula.yml already exists in .groundzero/formulas/<formula-name>/
-  if (await exists(formulaYmlPath)) {
-    logger.debug('Found existing formula.yml, parsing...');
-    try {
-      const formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(LOG_PREFIX_FOUND);
-      console.log(`${LOG_PREFIX_NAME} ${formulaConfig.name}`);
-      console.log(`${LOG_PREFIX_VERSION} ${formulaConfig.version}`);
-
-      return {
-        fullPath: formulaYmlPath,
-        config: formulaConfig,
-        isNewFormula: false
-      };
-    } catch (error) {
-      throw new ValidationError(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
-    }
-  } else {
-    logger.debug('No formula.yml found, creating automatically...');
-    return await createFormulaYmlInDirectory(formulaDir, formulaName);
-  }
-}
-
-/**
- * Recursively find files by extension in a directory
- */
-async function findFilesByExtension(
-  dir: string, 
-  extension: string, 
-  baseDir: string = dir
-): Promise<Array<{ fullPath: string; relativePath: string }>> {
-  if (!(await exists(dir)) || !(await isDirectory(dir))) {
-    return [];
-  }
-  
-  const files: Array<{ fullPath: string; relativePath: string }> = [];
-  
-  // Check current directory files
-  const dirFiles = await listFiles(dir);
-  for (const file of dirFiles) {
-    if (file.endsWith(extension)) {
-      const fullPath = join(dir, file);
-      const relativePath = fullPath.substring(baseDir.length + 1);
-      files.push({ fullPath, relativePath });
-    }
-  }
-  
-  // Recursively search subdirectories
-  const subdirs = await listDirectories(dir);
-  const subFilesPromises = subdirs.map(subdir => 
-    findFilesByExtension(join(dir, subdir), extension, baseDir)
-  );
-  const subFiles = await Promise.all(subFilesPromises);
-  files.push(...subFiles.flat());
-  
-  return files;
-}
-
-/**
- * Find all markdown files in a directory
- */
-const findAllMarkdownFiles = (dir: string, baseDir: string = dir) =>
-  findFilesByExtension(dir, FILE_PATTERNS.MD_FILES, baseDir);
-
-
-/**
- * Get file modification time
- * @throws Error if unable to get file stats
- */
-async function getFileMtime(filePath: string): Promise<number> {
-  const stats = await getStats(filePath);
-  return stats.mtime.getTime();
-}
-
 
 
 /**
@@ -416,692 +226,27 @@ async function resolveSourceDirectory(directoryPath: string | undefined, isExpli
   }
 }
 
-/**
- * Discover platform subdirectories (rules/commands/agents) within a specific source directory
- * This searches for universal subdirectory names regardless of platform context
- */
-async function discoverPlatformSubdirsInDirectory(
-  sourceDir: string,
-  formulaName: string,
-  platformName: PlatformName
-): Promise<DiscoveredFile[]> {
-  const platformDefinition = getPlatformDefinition(platformName);
-  const allFiles: DiscoveredFile[] = [];
-
-  // Search for 'rules' subdirectory within sourceDir
-  const rulesDirPath = join(sourceDir, PLATFORM_SUBDIRS.RULES);
-  if (await exists(rulesDirPath) && await isDirectory(rulesDirPath)) {
-    const rulesFiles = await discoverFiles(
-      rulesDirPath,
-      formulaName,
-      platformName,
-      PLATFORM_SUBDIRS.RULES, // Universal registry path
-      [...platformDefinition.filePatterns],
-      'platform'
-    );
-    allFiles.push(...rulesFiles);
-  }
-
-  // Search for 'commands' subdirectory within sourceDir
-  const commandsDirPath = join(sourceDir, PLATFORM_SUBDIRS.COMMANDS);
-  if (await exists(commandsDirPath) && await isDirectory(commandsDirPath)) {
-    const commandFiles = await discoverFiles(
-      commandsDirPath,
-      formulaName,
-      platformName,
-      PLATFORM_SUBDIRS.COMMANDS, // Universal registry path
-      [...platformDefinition.filePatterns],
-      'platform'
-    );
-    allFiles.push(...commandFiles);
-  }
-
-  // Search for 'agents' subdirectory within sourceDir
-  const agentsDirPath = join(sourceDir, PLATFORM_SUBDIRS.AGENTS);
-  if (await exists(agentsDirPath) && await isDirectory(agentsDirPath)) {
-    const agentFiles = await discoverFiles(
-      agentsDirPath,
-      formulaName,
-      platformName,
-      PLATFORM_SUBDIRS.AGENTS, // Universal registry path
-      [...platformDefinition.filePatterns],
-      'platform'
-    );
-    allFiles.push(...agentFiles);
-  }
-
-  return allFiles;
-}
 
 /**
- * Discover md files directly in a directory (shallow search - only immediate directory, not subdirectories)
+ * Process discovered files: resolve conflicts and create formula files array
  */
-async function discoverFilesShallow(
-  directoryPath: string,
-  formulaName: string,
-  platformName: PlatformName,
-  registryPathPrefix: string = '',
-  filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
-  inclusionMode: 'directory' | 'platform' = 'directory'
-): Promise<DiscoveredFile[]> {
-  if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
-    return [];
+async function processDiscoveredFiles(
+  formulaYmlPath: string,
+  formulaConfig: FormulaYml,
+  discoveredFiles: DiscoveredFile[]
+): Promise<FormulaFile[]> {
+  console.log(`${LOG_PREFIXES.FILES} ${discoveredFiles.length} ${LOG_PREFIXES.FILES_SUFFIX}`);
+
+  // Resolve file conflicts (keep latest mtime)
+  const resolvedFiles = await resolveFileConflicts(discoveredFiles, formulaConfig.version);
+  if (resolvedFiles.length !== discoveredFiles.length) {
+    console.log(`${LOG_PREFIXES.RESOLVED} ${resolvedFiles.length} files`);
   }
 
-  // Only search immediate directory files, not subdirectories
-  const files: Array<{ fullPath: string; relativePath: string }> = [];
-
-  // Check current directory files only
-  const dirFiles = await listFiles(directoryPath);
-  for (const file of dirFiles) {
-    // Skip directories - we only want immediate files
-    const filePath = join(directoryPath, file);
-    if (await isDirectory(filePath)) {
-      continue;
-    }
-
-    // Check if file matches patterns
-    let matchesPattern = false;
-    for (const pattern of filePatterns) {
-      const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
-      if (file.endsWith(extension)) {
-        matchesPattern = true;
-        break;
-      }
-    }
-
-    if (matchesPattern) {
-      const fullPath = filePath;
-      const relativePath = file; // since we're only in the immediate directory
-      files.push({ fullPath, relativePath });
-    }
-  }
-
-  // Process files (similar to discoverFiles but without subdirectory recursion)
-  const processPromises = files.map(async (file) => {
-    try {
-      const content = await readTextFile(file.fullPath);
-      let frontmatter;
-      try {
-        frontmatter = parseMarkdownFrontmatter(content);
-      } catch (parseError) {
-        logger.warn(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
-        frontmatter = null;
-      }
-
-      const shouldInclude = inclusionMode === 'directory'
-        ? shouldIncludeForDirectoryMode(file, frontmatter, formulaName)
-        : shouldIncludeForPlatformMode(file, frontmatter, platformName, formulaName);
-
-      if (shouldInclude) {
-        // Skip template files
-        if (detectTemplateFile(content)) {
-          logger.debug(`Skipping template file: ${file.relativePath}`);
-          return null;
-        }
-
-        try {
-          const mtime = await getFileMtime(file.fullPath);
-          const contentHash = await calculateFileHash(content);
-
-          const registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
-
-          const result: DiscoveredFile = {
-            fullPath: file.fullPath,
-            relativePath: file.relativePath,
-            sourceDir: platformName,
-            registryPath,
-            mtime,
-            contentHash
-          };
-
-          if (frontmatter?.formula?.platformSpecific === true) {
-            result.forcePlatformSpecific = true;
-          }
-
-          return result;
-        } catch (error) {
-          logger.warn(`Failed to process file metadata for ${file.relativePath}: ${error}`);
-        }
-      }
-    } catch (error) {
-      logger.warn(`Failed to read ${file.relativePath}: ${error}`);
-    }
-    return null;
-  });
-
-  const results = await Promise.all(processPromises);
-  return results.filter((result): result is DiscoveredFile => result !== null);
+  // Create formula files array
+  return await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
 }
 
-/**
- * Discover md files directly in a specified directory (not in platform subdirectories)
- */
-async function discoverDirectMdFiles(
-  directoryPath: string,
-  formulaName: string,
-  platformInfo?: { platform: string; relativePath: string; platformName: PlatformName } | null
-): Promise<DiscoveredFile[]> {
-  if (!platformInfo) {
-    // Non-platform directory - search for .md files directly
-    return discoverFiles(directoryPath, formulaName, 'ai' as PlatformName, '', [FILE_PATTERNS.MD_FILES], 'directory');
-  } else {
-    // Platform-specific directory - search for .md files directly (shallow) and map to universal subdirs
-    const definition = getPlatformDefinition(platformInfo.platformName);
-    const filePatterns = platformInfo.platformName === (PLATFORM_DIRS.AI as PlatformName)
-      ? [FILE_PATTERNS.MD_FILES]
-      : [...getPlatformDefinition(platformInfo.platformName).filePatterns];
-
-    // Determine which universal subdir this directory is under (rules/commands/agents)
-    const relativeFromPlatformRoot = platformInfo.relativePath || '';
-    const rulesSubdirName = definition.rulesDir ? definition.rulesDir.split('/').pop() : undefined;
-    const commandsSubdirName = definition.commandsDir ? definition.commandsDir.split('/').pop() : undefined;
-    const agentsSubdirName = definition.agentsDir ? definition.agentsDir.split('/').pop() : undefined;
-
-    let universalSubdir: string | undefined;
-    let remainderWithinSubdir = '';
-
-    if (rulesSubdirName && (relativeFromPlatformRoot === rulesSubdirName || relativeFromPlatformRoot.startsWith(`${rulesSubdirName}/`))) {
-      universalSubdir = PLATFORM_SUBDIRS.RULES;
-      remainderWithinSubdir = relativeFromPlatformRoot.substring(rulesSubdirName.length);
-    } else if (commandsSubdirName && (relativeFromPlatformRoot === commandsSubdirName || relativeFromPlatformRoot.startsWith(`${commandsSubdirName}/`))) {
-      universalSubdir = PLATFORM_SUBDIRS.COMMANDS;
-      remainderWithinSubdir = relativeFromPlatformRoot.substring(commandsSubdirName.length);
-    } else if (agentsSubdirName && (relativeFromPlatformRoot === agentsSubdirName || relativeFromPlatformRoot.startsWith(`${agentsSubdirName}/`))) {
-      universalSubdir = PLATFORM_SUBDIRS.AGENTS;
-      remainderWithinSubdir = relativeFromPlatformRoot.substring(agentsSubdirName.length);
-    }
-
-    // Build registry prefix: prefer universal subdir mapping (rules/commands/agents). Fallback to platform path if unknown.
-    let registryPathPrefix: string;
-    if (universalSubdir) {
-      const cleanedRemainder = remainderWithinSubdir.replace(/^\//, '');
-      registryPathPrefix = cleanedRemainder ? join(universalSubdir, cleanedRemainder) : universalSubdir;
-    } else {
-      // Fallback: keep platform path structure
-      registryPathPrefix = relativeFromPlatformRoot ? join(platformInfo.platform, relativeFromPlatformRoot) : platformInfo.platform;
-    }
-
-    return discoverFilesShallow(directoryPath, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory');
-  }
-}
-
-/**
- * Discover files based on the input pattern (explicit directory, directory mode, or formula name)
- * @param formulaDir - Path to the formula directory
- * @param formulaName - Name of the formula
- * @param isExplicitPair - Whether this is an explicit name + directory pair
- * @param isDirectory - Whether input was a directory path
- * @param directoryPath - The directory path if provided
- * @param sourceDir - The resolved source directory to search in
- * @returns Promise resolving to array of discovered files
- */
-async function discoverFilesForPattern(
-  formulaDir: string,
-  formulaName: string,
-  isExplicitPair: boolean,
-  isDirectory: boolean,
-  directoryPath: string | undefined,
-  sourceDir: string
-): Promise<DiscoveredFile[]> {
-  if ((isExplicitPair || isDirectory) && directoryPath) {
-    // Patterns 1 & 2: Directory-based input
-    const results: DiscoveredFile[] = [];
-    const platformInfo = parsePlatformDirectory(directoryPath);
-
-    if (platformInfo) {
-      // Directory is platform-specific - search for direct md files in the specified directory only
-      // Don't search for platform subdirectories within the source directory since we already have the explicit path
-      const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, platformInfo);
-      results.push(...directFiles);
-
-      // Explicitly exclude any accidental ai/ mappings when using a platform-specific directory
-      return results.filter((f) => !(f.registryPath === PLATFORM_DIRS.AI || f.registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)));
-    } else {
-      // Directory is not platform-specific - search for platform subdirectories from cwd + direct files
-      const platformSubdirFiles = await discoverMdFilesUnified(formulaDir, formulaName, undefined, true);
-      results.push(...platformSubdirFiles);
-
-      // Also search for direct files in the specified directory
-      const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, null);
-      results.push(...directFiles);
-    }
-
-    return results;
-  } else {
-    // Pattern 3: Legacy formula name input - use unified discovery from formula directory
-    return discoverMdFilesUnified(formulaDir, formulaName);
-  }
-}
-
-/**
- * Discover markdown files in a directory with specified patterns and inclusion rules
- */
-async function discoverFiles(
-  directoryPath: string,
-  formulaName: string,
-  platformName: PlatformName,
-  registryPathPrefix: string = '',
-  filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
-  inclusionMode: 'directory' | 'platform' = 'directory',
-  formulaDir?: string
-): Promise<DiscoveredFile[]> {
-  if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
-    return [];
-  }
-
-  // Find files with the specified patterns
-  const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
-  for (const pattern of filePatterns) {
-    const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
-    const files = await findFilesByExtension(directoryPath, extension, directoryPath);
-    allFiles.push(...files);
-  }
-
-  // Process files in parallel
-  const processPromises = allFiles.map(async (file) => {
-    try {
-      const content = await readTextFile(file.fullPath);
-      let frontmatter;
-      try {
-        frontmatter = parseMarkdownFrontmatter(content);
-      } catch (parseError) {
-        logger.warn(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
-        frontmatter = null;
-      }
-
-      const shouldInclude = inclusionMode === 'directory'
-        ? shouldIncludeForDirectoryMode(file, frontmatter, formulaName)
-        : shouldIncludeForPlatformMode(file, frontmatter, platformName, formulaName, formulaDir, inclusionMode === 'platform');
-
-      if (shouldInclude) {
-        // Skip template files
-        if (detectTemplateFile(content)) {
-          logger.debug(`Skipping template file: ${file.relativePath}`);
-          return null;
-        }
-
-        try {
-          const mtime = await getFileMtime(file.fullPath);
-          const contentHash = await calculateFileHash(content);
-
-          // For platform mode, check if file should be universal (has matching frontmatter)
-          // Universal files don't get the platform prefix in their registry path
-          let registryPath: string;
-          if (inclusionMode === 'platform' && platformName !== ('ai' as PlatformName) && frontmatter?.formula?.name === formulaName) {
-            // Universal file from platform directory - map into universal subdir (rules/commands/agents)
-            // Compute path relative to the scanned directory (rulesDir/commandsDir/agentsDir)
-            let relativeFromSourceDir = relative(directoryPath, file.fullPath);
-            if (relativeFromSourceDir.startsWith('../')) {
-              // Safety fallback if traversal occurs unexpectedly
-              relativeFromSourceDir = file.relativePath;
-            }
-            if (relativeFromSourceDir.endsWith(FILE_PATTERNS.MDC_FILES)) {
-              relativeFromSourceDir = relativeFromSourceDir.replace(new RegExp(`\\${FILE_PATTERNS.MDC_FILES}$`), FILE_PATTERNS.MD_FILES);
-            }
-            registryPath = registryPathPrefix ? join(registryPathPrefix, relativeFromSourceDir) : relativeFromSourceDir;
-          } else {
-            // Platform-specific file or directory mode - use normal registry path logic
-            registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
-          }
-
-          const result: DiscoveredFile = {
-            fullPath: file.fullPath,
-            relativePath: file.relativePath,
-            sourceDir: platformName,
-            registryPath,
-            mtime,
-            contentHash
-          };
-
-          if (frontmatter?.formula?.platformSpecific === true) {
-            result.forcePlatformSpecific = true;
-          }
-
-          return result;
-        } catch (error) {
-          logger.warn(`Failed to process file metadata for ${file.relativePath}: ${error}`);
-        }
-      }
-    } catch (error) {
-      logger.warn(`Failed to read ${file.relativePath}: ${error}`);
-    }
-    return null;
-  });
-
-  const results = await Promise.all(processPromises);
-  return results.filter((result): result is DiscoveredFile => result !== null);
-}
-
-/**
- * Determine if a file should be included in directory mode
- * @param file - File information with relative path
- * @param frontmatter - Parsed frontmatter from the file
- * @param formulaName - Name of the formula to match against
- * @returns true if the file should be included
- */
-function shouldIncludeForDirectoryMode(
-  file: { relativePath: string },
-  frontmatter: any,
-  formulaName: string
-): boolean {
-  // Include files that either:
-  // 1. Have no frontmatter (will get frontmatter added)
-  // 2. Have matching frontmatter
-  // 3. Have no conflicting frontmatter
-  return !frontmatter ||
-         !frontmatter.formula ||
-         frontmatter?.formula?.name === formulaName ||
-         !frontmatter?.formula?.name;
-}
-
-/**
- * Determine if a file should be included in platform mode
- */
-function shouldIncludeForPlatformMode(
-  file: { relativePath: string },
-  frontmatter: any,
-  platformName: PlatformName,
-  formulaName: string,
-  formulaDir?: string,
-  isDirectoryMode?: boolean
-): boolean {
-  return shouldIncludeMarkdownFile(file, frontmatter, platformName, formulaName, formulaDir, isDirectoryMode);
-}
-
-/**
- * Unified file discovery function that searches platform-specific directories
- */
-async function discoverMdFilesUnified(formulaDir: string, formulaName: string, baseDir?: string, isDirectoryMode?: boolean): Promise<DiscoveredFile[]> {
-  const cwd = baseDir || process.cwd();
-  const platformConfigs = await buildPlatformSearchConfig(cwd);
-  const allDiscoveredFiles: DiscoveredFile[] = [];
-
-  // Process all platform configurations in parallel
-  const processPromises = platformConfigs.map(async (config) => {
-    return processPlatformFiles(config, formulaDir, formulaName, isDirectoryMode);
-  });
-
-  const results = await Promise.all(processPromises);
-  allDiscoveredFiles.push(...results.flat());
-
-  return allDiscoveredFiles;
-}
-
-/**
- * Process files for a specific platform configuration
- */
-async function processPlatformFiles(
-  config: PlatformSearchConfig,
-  formulaDir: string,
-  formulaName: string,
-  isDirectoryMode?: boolean
-): Promise<DiscoveredFile[]> {
-  const allFiles: DiscoveredFile[] = [];
-
-  // Handle AI directory separately - it's not a platform subdirectory structure
-  if (config.name === PLATFORM_DIRS.AI) {
-    const aiFiles = await discoverFiles(
-      config.rulesDir,
-      formulaName,
-      config.platform,
-      PLATFORM_DIRS.AI, // AI directory uses 'ai' prefix
-      config.filePatterns,
-      'platform',
-      formulaDir
-    );
-    allFiles.push(...aiFiles);
-    return allFiles;
-  }
-
-  // Process platform subdirectories with universal registry paths
-  // Process rules directory
-  if (config.rulesDir) {
-    const rulesFiles = await discoverFiles(
-      config.rulesDir,
-      formulaName,
-      config.platform,
-      PLATFORM_SUBDIRS.RULES, // Universal registry path for rules
-      config.filePatterns,
-      'platform',
-      formulaDir
-    );
-    allFiles.push(...rulesFiles);
-  }
-
-  // Process commands directory if available
-  if (config.commandsDir) {
-    const commandFiles = await discoverFiles(
-      config.commandsDir,
-      formulaName,
-      config.platform,
-      PLATFORM_SUBDIRS.COMMANDS, // Universal registry path for commands
-      config.filePatterns,
-      'platform',
-      formulaDir
-    );
-    allFiles.push(...commandFiles);
-  }
-
-  // Process agents directory if available
-  if (config.agentsDir) {
-    const agentFiles = await discoverFiles(
-      config.agentsDir,
-      formulaName,
-      config.platform,
-      PLATFORM_SUBDIRS.AGENTS, // Universal registry path for agents
-      config.filePatterns,
-      'platform',
-      formulaDir
-    );
-    allFiles.push(...agentFiles);
-  }
-
-  return allFiles;
-}
-
-
-/**
- * Determine if a markdown file should be included based on frontmatter rules
- */
-function shouldIncludeMarkdownFile(
-  mdFile: { relativePath: string },
-  frontmatter: any,
-  sourceDir: string,
-  formulaName: string,
-  formulaDirRelativeToAi?: string,
-  isDirectoryMode?: boolean
-): boolean {
-  const mdFileDir = dirname(mdFile.relativePath);
-
-  // For AI directory: include files adjacent to formula.yml or with matching frontmatter
-  if (sourceDir === PLATFORM_DIRS.AI) {
-    if (frontmatter?.formula?.name === formulaName) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
-      return true;
-    }
-
-    // For directory mode, skip the "adjacent to formula.yml" check since there's no formula.yml in source
-    if (!isDirectoryMode && mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
-      return true;
-    }
-
-    // For directory mode, include files without conflicting frontmatter
-    if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (directory mode, no conflicting frontmatter)`);
-      return true;
-    }
-
-    if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
-    } else {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (not adjacent to formula.yml and no matching frontmatter)`);
-    }
-    return false;
-  }
-
-  // For command directories: only include files with matching frontmatter
-  if (frontmatter?.formula?.name === formulaName) {
-    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
-    return true;
-  }
-
-  // For directory mode in platform directories, include files without conflicting frontmatter
-  if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
-    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
-    return true;
-  }
-
-  logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDir} (no matching frontmatter)`);
-  return false;
-}
-
-
-
-/**
- * Find formula.yml files with the specified formula name
- * Searches in both .groundzero/formulas directory
- * Also scans for files with matching frontmatter
- */
-async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
-  const cwd = process.cwd();
-  const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: FormulaYml }> = [];
-  
-  // Search in .groundzero/formulas directory
-  const formulasDir = getLocalFormulasDir(cwd);
-  if (await exists(formulasDir) && await isDirectory(formulasDir)) {
-    const formulaDirs = await listDirectories(formulasDir);
-    
-    // Process formula directories in parallel
-    const formulaPromises = formulaDirs.map(async (formulaDir) => {
-      const formulaYmlPath = join(formulasDir, formulaDir, FILE_PATTERNS.FORMULA_YML);
-      if (await exists(formulaYmlPath)) {
-        try {
-          const config = await parseFormulaYml(formulaYmlPath);
-          if (config.name === formulaName) {
-            return {
-              fullPath: formulaYmlPath,
-              relativePath: join(PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaDir, FILE_PATTERNS.FORMULA_YML),
-              config
-            };
-          }
-        } catch (error) {
-          logger.warn(`Failed to parse formula.yml at ${formulaYmlPath}: ${error}`);
-        }
-      }
-      return null;
-    });
-
-    const formulaResults = await Promise.all(formulaPromises);
-    matchingFormulas.push(...formulaResults.filter((result): result is { fullPath: string; relativePath: string; config: FormulaYml } => result !== null));
-  }
-  
-  
-  // Scan for files with matching frontmatter
-  const frontmatterMatches = await findFormulasByFrontmatter(formulaName);
-  matchingFormulas.push(...frontmatterMatches);
-  
-  // Deduplicate results based on fullPath to avoid duplicates
-  const uniqueFormulas = new Map<string, { fullPath: string; relativePath: string; config: FormulaYml }>();
-  
-  for (const formula of matchingFormulas) {
-    if (!uniqueFormulas.has(formula.fullPath)) {
-      uniqueFormulas.set(formula.fullPath, formula);
-    }
-  }
-  
-  return Array.from(uniqueFormulas.values());
-}
-
-/**
- * Find formulas by scanning markdown files for matching frontmatter
- * Only checks /ai directory and platform-specific rules/commands/agents directories
- */
-async function findFormulasByFrontmatter(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: FormulaYml }>> {
-  const cwd = process.cwd();
-  const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: FormulaYml }> = [];
-  
-  // Helper function to process markdown files in a directory
-  const processMarkdownFiles = async (
-    dirPath: string, 
-    registryPath: string, 
-    sourceName: string
-  ): Promise<void> => {
-    if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
-      return;
-    }
-    
-    const allMdFiles = await findAllMarkdownFiles(dirPath);
-
-    // Process markdown files in parallel
-    const filePromises = allMdFiles.map(async (mdFile) => {
-      try {
-        const content = await readTextFile(mdFile.fullPath);
-        const frontmatter = parseMarkdownFrontmatter(content);
-
-        if (frontmatter?.formula?.name === formulaName) {
-          // Create a virtual formula.yml config based on frontmatter
-          const config: FormulaYml = {
-            name: formulaName,
-            version: DEFAULT_VERSION // Default version for frontmatter-based formulas
-          };
-
-          return {
-            fullPath: mdFile.fullPath, // Use the markdown file as the "formula" location
-            relativePath: registryPath ? join(registryPath, mdFile.relativePath) : mdFile.relativePath,
-            config
-          };
-        }
-      } catch (error) {
-        logger.warn(`Failed to read or parse ${mdFile.relativePath} from ${sourceName}: ${error}`);
-      }
-      return null;
-    });
-
-    const fileResults = await Promise.all(filePromises);
-    matchingFormulas.push(...fileResults.filter((result): result is { fullPath: string; relativePath: string; config: FormulaYml } => result !== null));
-  };
-  
-  // Search in AI directory for markdown files with matching frontmatter
-  const aiDir = join(cwd, PLATFORM_DIRS.AI);
-  await processMarkdownFiles(aiDir, '', PLATFORM_DIRS.AI);
-  
-  // Search in platform-specific directories (rules, commands, agents)
-  const platformConfigs = await buildPlatformSearchConfig(cwd);
-  
-  for (const config of platformConfigs) {
-    // Skip AI directory since it's handled above
-    if (config.name === PLATFORM_DIRS.AI) {
-      continue;
-    }
-    
-    // Check rules directory
-    if (config.rulesDir) {
-      await processMarkdownFiles(config.rulesDir, config.registryPath, config.name);
-    }
-    
-    // Check commands directory
-    if (config.commandsDir) {
-      await processMarkdownFiles(
-        config.commandsDir, 
-        join(config.registryPath, PLATFORM_SUBDIRS.COMMANDS), 
-        config.name
-      );
-    }
-    
-    // Check agents directory
-    if (config.agentsDir) {
-      await processMarkdownFiles(
-        config.agentsDir, 
-        join(config.registryPath, PLATFORM_SUBDIRS.AGENTS), 
-        config.name
-      );
-    }
-  }
-  
-  return matchingFormulas;
-}
 
 /**
  * Main implementation of the save formula command
@@ -1124,27 +269,14 @@ async function saveFormulaCommand(
   const { name, version: explicitVersion, isDirectory, directoryPath, isExplicitPair } = parseFormulaInputs(formulaName, directory);
 
   logger.debug(`Saving formula with name: ${name}`, { explicitVersion, isDirectory, directoryPath, isExplicitPair, options });
-  
-  // Ensure registry directories exist
+
+  // Initialize formula environment
   await ensureRegistryDirectories();
-  
-  // Ensure main formula.yml exists for the codebase
-  const newFormulaYml = await createBasicFormulaYml(cwd);
-  
-  let formulaInfo: { fullPath: string; config: FormulaYml; isNewFormula: boolean };
+  await createBasicFormulaYml(cwd);
 
-  if (isExplicitPair && directoryPath) {
-    // Pattern 1: Explicit name + directory - formula.yml in .groundzero/formulas/<name>/
-    formulaInfo = await handleFormulaNameInput(name);
-  } else if (isDirectory && directoryPath && !isExplicitPair) {
-    // Pattern 2: Legacy directory input - formula.yml in the source directory
-    formulaInfo = await handleDirectoryInput(directoryPath, name);
-  } else {
-    // Pattern 3: Legacy formula name input - formula.yml in .groundzero/formulas/<name>/
-    formulaInfo = await handleFormulaNameInput(name);
-  }
-
-  const formulaDir = dirname(formulaInfo.fullPath);
+  // Get formula configuration based on input pattern
+  const formulaDir = getLocalFormulaDir(cwd, name);
+  const formulaInfo = await getOrCreateFormulaConfig(formulaDir, name);
   const formulaYmlPath = formulaInfo.fullPath;
   let formulaConfig = formulaInfo.config;
 
@@ -1157,7 +289,7 @@ async function saveFormulaCommand(
   if (!options?.force) {
     const versionExists = await hasFormulaVersion(name, targetVersion);
     if (versionExists) {
-      throw new Error(`Version ${targetVersion} already exists. Use --force to overwrite.`);
+      throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace('%s', targetVersion));
     }
   }
 
@@ -1172,61 +304,64 @@ async function saveFormulaCommand(
   // Discover and include MD files using appropriate logic
   let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
 
-  console.log(`${LOG_PREFIX_FILES} ${discoveredFiles.length} ${LOG_PREFIX_FILES_SUFFIX}`);
-  
-  // Resolve file conflicts (keep latest mtime)
-  const resolvedFiles = await resolveFileConflicts(discoveredFiles, targetVersion);
-  if (resolvedFiles.length !== discoveredFiles.length) {
-    console.log(`${LOG_PREFIX_RESOLVED} ${resolvedFiles.length} files`);
-  }
-  
-  // Create formula files array
-  const formulaFiles = await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
-  
+  // Process discovered files and create formula files array
+  const formulaFiles = await processDiscoveredFiles(formulaYmlPath, formulaConfig, discoveredFiles);
+
   // Save formula to local registry
   const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, formulaYmlPath, options?.force);
-  
+
   if (!saveResult.success) {
-    return { success: false, error: saveResult.error || 'Failed to save formula' };
+    return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
   }
-  
-  // Add saved formula to main formula.yml dependencies
+
+  // Finalize the save operation
   await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version);
-  
-  console.log(`${LOG_PREFIX_SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
+  console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
+
   return { success: true, data: formulaConfig };
 }
-/**
- * Dedupe discovered files by source fullPath, preferring universal subdirs over ai
- */
-function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): DiscoveredFile[] {
-  const preference = (registryPath: string): number => {
-    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.RULES}/`) || registryPath === PLATFORM_SUBDIRS.RULES) return 3;
-    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.COMMANDS}/`) || registryPath === PLATFORM_SUBDIRS.COMMANDS) return 3;
-    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.AGENTS}/`) || registryPath === PLATFORM_SUBDIRS.AGENTS) return 3;
-    if (registryPath.startsWith(`${PLATFORM_DIRS.AI}/`) || registryPath === PLATFORM_DIRS.AI) return 2;
-    return 1;
-  };
 
-  const map = new Map<string, DiscoveredFile>();
-  for (const file of files) {
-    const existing = map.get(file.fullPath);
-    if (!existing) {
-      map.set(file.fullPath, file);
-      continue;
-    }
-    if (preference(file.registryPath) > preference(existing.registryPath)) {
-      map.set(file.fullPath, file);
-    }
-  }
-  return Array.from(map.values());
+/**
+ * Create the formula.yml file entry for the formula files array
+ */
+async function createFormulaYmlFile(formulaYmlPath: string, formulaConfig: FormulaYml): Promise<FormulaFile> {
+  // Write and read the formula.yml content
+  await writeFormulaYml(formulaYmlPath, formulaConfig);
+  const content = await readTextFile(formulaYmlPath);
+
+  return {
+    path: FILE_PATTERNS.FORMULA_YML,
+    content,
+    isTemplate: false,
+    encoding: UTF8_ENCODING
+  };
 }
 
-
 /**
- * Discover MD files based on new frontmatter rules from multiple directories
+ * Process discovered markdown files and return formula file entries
  */
+async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: DiscoveredFile[]): Promise<FormulaFile[]> {
+  // Process discovered MD files in parallel
+  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
+    const originalContent = await readTextFile(mdFile.fullPath);
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
 
+    // Update source file if content changed
+    if (updatedContent !== originalContent) {
+      await writeTextFile(mdFile.fullPath, updatedContent);
+      console.log(`${LOG_PREFIXES.UPDATED} ${mdFile.relativePath}`);
+    }
+
+    return {
+      path: mdFile.registryPath,
+      content: updatedContent,
+      isTemplate: detectTemplateFile(updatedContent),
+      encoding: UTF8_ENCODING
+    };
+  });
+
+  return await Promise.all(mdFilePromises);
+}
 
 /**
  * Create formula files array with unified discovery results
@@ -1239,117 +374,17 @@ async function createFormulaFilesUnified(
   const formulaFiles: FormulaFile[] = [];
 
   // Add formula.yml as the first file
-  await writeFormulaYml(formulaYmlPath, formulaConfig);
-  // Reuse the formula config content instead of reading the file again
-  const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
-  formulaFiles.push({
-    path: FILE_PATTERNS.FORMULA_YML,
-    content: updatedFormulaYmlContent,
-    isTemplate: false,
-    encoding: UTF8_ENCODING
-  });
+  const formulaYmlFile = await createFormulaYmlFile(formulaYmlPath, formulaConfig);
+  formulaFiles.push(formulaYmlFile);
 
-  // Process discovered MD files in parallel
-  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
-    const originalContent = await readTextFile(mdFile.fullPath);
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
-
-    // Update source file if content changed
-    if (updatedContent !== originalContent) {
-      await writeTextFile(mdFile.fullPath, updatedContent);
-      console.log(`${LOG_PREFIX_UPDATED} ${mdFile.relativePath}`);
-    }
-
-    return {
-      path: mdFile.registryPath,
-      content: updatedContent,
-      isTemplate: detectTemplateFile(updatedContent),
-      encoding: UTF8_ENCODING
-    };
-  });
-
-  const processedMdFiles = await Promise.all(mdFilePromises);
+  // Process discovered MD files
+  const processedMdFiles = await processMarkdownFiles(formulaConfig, discoveredFiles);
   formulaFiles.push(...processedMdFiles);
-  
+
   return formulaFiles;
 }
 
 
-/**
- * Handle explicit version input from user
- * @param explicitVersion - The version string provided by the user
- * @returns The explicit version string
- */
-function handleExplicitVersion(explicitVersion: string): string {
-  console.log(`${LOG_PREFIX_EXPLICIT_VERSION} ${explicitVersion}`);
-  return explicitVersion;
-}
-
-/**
- * Handle new formula with no current version
- */
-function handleNewFormula(): string {
-  const prereleaseVersion = generateLocalVersion(DEFAULT_VERSION);
-  console.log(`${LOG_PREFIX_PRERELEASE} ${prereleaseVersion}`);
-  return prereleaseVersion;
-}
-
-/**
- * Handle bump operations
- */
-function handleBumpOperation(currentVersion: string, versionType: string | undefined, bumpType: 'patch' | 'minor' | 'major'): string {
-  if (versionType === VERSION_TYPE_STABLE) {
-    const bumpedVersion = bumpToStable(currentVersion, bumpType);
-    console.log(`${LOG_PREFIX_BUMP_STABLE} ${currentVersion} ${ARROW_SEPARATOR} ${bumpedVersion}`);
-    return bumpedVersion;
-  } else {
-    const bumpedVersion = bumpToPrerelease(currentVersion, bumpType);
-    console.log(`${LOG_PREFIX_BUMP_PRERELEASE} ${currentVersion} ${ARROW_SEPARATOR} ${bumpedVersion}`);
-    return bumpedVersion;
-  }
-}
-
-/**
- * Handle stable conversion
- */
-async function handleStableConversion(currentVersion: string, options?: SaveOptions): Promise<string> {
-  if (isPrerelease(currentVersion)) {
-    const stableVersion = convertPrereleaseToStable(currentVersion);
-    console.log(`${LOG_PREFIX_CONVERT_STABLE} ${currentVersion} ${ARROW_SEPARATOR} ${stableVersion}`);
-    return stableVersion;
-  } else {
-    // Already stable - prompt for confirmation
-    console.log(`${LOG_PREFIX_WARNING} ${currentVersion} ${LOG_PREFIX_WARNING_SUFFIX}`);
-    if (!options?.force) {
-      const shouldOverwrite = await promptConfirmation(
-        `Overwrite existing stable version ${currentVersion}?`,
-        false
-      );
-      if (!shouldOverwrite) {
-        throw new Error('Operation cancelled by user');
-      }
-    }
-    console.log(`${LOG_PREFIX_OVERWRITE_STABLE} ${currentVersion}`);
-    return currentVersion;
-  }
-}
-
-/**
- * Handle default smart increment behavior
- */
-function handleSmartIncrement(currentVersion: string): string {
-  if (isPrerelease(currentVersion)) {
-    const localVersion = generateLocalVersion(extractBaseVersion(currentVersion));
-    console.log(`${LOG_PREFIX_INCREMENT_PRERELEASE} ${currentVersion} ${ARROW_SEPARATOR} ${localVersion}`);
-    return localVersion;
-  } else {
-    // For other stable versions, bump patch and then generate prerelease
-    const nextPatchVersion = calculateBumpedVersion(currentVersion, 'patch');
-    const localVersion = generateLocalVersion(nextPatchVersion);
-    console.log(`${LOG_PREFIX_AUTO_INCREMENT} ${currentVersion} ${ARROW_SEPARATOR} ${localVersion}`);
-    return localVersion;
-  }
-}
 
 /**
  * Determine target version based on input, version type, and options
@@ -1361,43 +396,72 @@ async function determineTargetVersion(
   currentVersion?: string
 ): Promise<string> {
   if (explicitVersion) {
-    return handleExplicitVersion(explicitVersion);
+    console.log(`${LOG_PREFIXES.EXPLICIT_VERSION} ${explicitVersion}`);
+    return explicitVersion;
   }
 
   if (!currentVersion) {
-    return handleNewFormula();
+    const prereleaseVersion = generateLocalVersion(DEFAULT_VERSION);
+    console.log(`${LOG_PREFIXES.PRERELEASE} ${prereleaseVersion}`);
+    return prereleaseVersion;
   }
 
   if (options?.bump) {
-    return handleBumpOperation(currentVersion, versionType, options.bump);
+    if (versionType === VERSION_TYPE_STABLE) {
+      const bumpedVersion = bumpToStable(currentVersion, options.bump);
+      console.log(`${LOG_PREFIXES.BUMP_STABLE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${bumpedVersion}`);
+      return bumpedVersion;
+    } else {
+      const bumpedVersion = bumpToPrerelease(currentVersion, options.bump);
+      console.log(`${LOG_PREFIXES.BUMP_PRERELEASE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${bumpedVersion}`);
+      return bumpedVersion;
+    }
   }
 
   if (versionType === VERSION_TYPE_STABLE) {
-    return handleStableConversion(currentVersion, options);
+    if (isLocalVersion(currentVersion)) {
+      const stableVersion = extractBaseVersion(currentVersion);
+      console.log(`${LOG_PREFIXES.CONVERT_STABLE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${stableVersion}`);
+      return stableVersion;
+    } else {
+      // Already stable - prompt for confirmation
+      console.log(`${LOG_PREFIXES.WARNING} ${currentVersion} ${LOG_PREFIXES.WARNING_SUFFIX}`);
+      if (!options?.force) {
+        const shouldOverwrite = await promptConfirmation(
+          `Overwrite existing stable version ${currentVersion}?`,
+          false
+        );
+        if (!shouldOverwrite) {
+          throw new Error(ERROR_MESSAGES.OPERATION_CANCELLED);
+        }
+      }
+      console.log(`${LOG_PREFIXES.OVERWRITE_STABLE} ${currentVersion}`);
+      return currentVersion;
+    }
   }
 
-  return handleSmartIncrement(currentVersion);
+  // Default smart increment behavior
+  if (isLocalVersion(currentVersion)) {
+    const localVersion = generateLocalVersion(extractBaseVersion(currentVersion));
+    console.log(`${LOG_PREFIXES.INCREMENT_PRERELEASE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${localVersion}`);
+    return localVersion;
+  } else {
+    // For other stable versions, bump patch and then generate prerelease
+    const nextPatchVersion = calculateBumpedVersion(currentVersion, 'patch');
+    const localVersion = generateLocalVersion(nextPatchVersion);
+    console.log(`${LOG_PREFIXES.AUTO_INCREMENT} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${localVersion}`);
+    return localVersion;
+  }
 }
 
-/**
- * Convert a prerelease version to stable version
- * Example: "1.2.3-dev.abc" -> "1.2.3"
- */
-function convertPrereleaseToStable(version: string): string {
-  return extractBaseVersion(version);
-}
-
-/**
- * Check if a version is a prerelease version
- */
-function isPrerelease(version: string): boolean {
-  return isLocalVersion(version);
-}
 
 /**
  * Bump version to prerelease (default behavior for --bump)
+ * @param version - The current version string
+ * @param bumpType - The type of bump to apply
+ * @returns A new prerelease version string
  */
-function bumpToPrerelease(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
+function bumpToPrerelease(version: string, bumpType: BumpType): string {
   const baseVersion = extractBaseVersion(version);
   const bumpedBase = calculateBumpedVersion(baseVersion, bumpType);
   return generateLocalVersion(bumpedBase);
@@ -1405,23 +469,30 @@ function bumpToPrerelease(version: string, bumpType: 'patch' | 'minor' | 'major'
 
 /**
  * Bump version to stable (when combined with 'stable' argument)
+ * @param version - The current version string
+ * @param bumpType - The type of bump to apply
+ * @returns A new stable version string
  */
-function bumpToStable(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
+function bumpToStable(version: string, bumpType: BumpType): string {
   const baseVersion = extractBaseVersion(version);
   return calculateBumpedVersion(baseVersion, bumpType);
 }
 
 /**
  * Calculate bumped version based on type (stable output)
+ * @param version - The base version string to bump
+ * @param bumpType - The type of bump to apply ('patch', 'minor', or 'major')
+ * @returns The bumped version string
+ * @throws ValidationError if version format is invalid or bump type is unknown
  */
-function calculateBumpedVersion(version: string, bumpType: 'patch' | 'minor' | 'major'): string {
+function calculateBumpedVersion(version: string, bumpType: BumpType): string {
   // Extract base version (remove any prerelease identifiers and build metadata)
   const baseVersion = version.split('-')[0].split('+')[0];
   const parts = baseVersion.split('.').map(Number);
 
   // Validate that we have valid numbers
   if (parts.some(isNaN)) {
-    throw new ValidationError(`Invalid version format: ${version}`);
+    throw new ValidationError(ERROR_MESSAGES.INVALID_VERSION_FORMAT.replace('%s', version));
   }
 
   switch (bumpType) {
@@ -1432,10 +503,9 @@ function calculateBumpedVersion(version: string, bumpType: 'patch' | 'minor' | '
     case 'major':
       return parts.length >= 1 ? `${parts[0] + 1}.0.0` : baseVersion;
     default:
-      throw new ValidationError(`Invalid bump type: ${bumpType}. Must be 'patch', 'minor', or 'major'.`);
+      throw new ValidationError(ERROR_MESSAGES.INVALID_BUMP_TYPE.replace('%s', bumpType));
   }
 }
-
 
 /**
  * Save formula to local registry
@@ -1517,7 +587,7 @@ export function setupSaveCommand(program: Command): void {
 
       // Validate version type argument
       if (actualVersionType && actualVersionType !== VERSION_TYPE_STABLE) {
-        throw new ValidationError(`Invalid version type: ${actualVersionType}. Only '${VERSION_TYPE_STABLE}' is supported.`);
+        throw new ValidationError(ERROR_MESSAGES.INVALID_VERSION_TYPE.replace('%s', actualVersionType).replace('%s', VERSION_TYPE_STABLE));
       }
 
       const result = await saveFormulaCommand(formulaName, actualDirectory, actualVersionType, options);
