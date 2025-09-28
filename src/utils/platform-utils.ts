@@ -410,7 +410,7 @@ export async function setupDetectedPlatforms(cwd: string): Promise<{
 export function getPlatformNameFromSource(sourceDir: string): string {
   // Handle special case for AI directory
   if (sourceDir === PLATFORM_DIRS.AI) {
-    return 'ai';
+    return PLATFORM_DIRS.AI;
   }
 
   // Use platform definitions to find matching platform

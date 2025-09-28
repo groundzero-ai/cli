@@ -5,6 +5,7 @@ import { parseVersionRange } from './version-ranges.js';
 import { promptPlatformSelection } from './prompts.js';
 import { detectAllPlatforms } from '../core/platforms.js';
 import { getAIDir, getLocalFormulaYmlPath } from './paths.js';
+import { DEPENDENCY_ARRAYS } from '../constants/index.js';
 
 /**
  * Parse formula input to extract name and version/range
@@ -115,7 +116,7 @@ export function displayInstallationResults(
 
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   if (mainFormula) {
-    const dependencyType = options.dev ? 'dev-formulas' : 'formulas';
+    const dependencyType = options.dev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
     console.log(`📋 Added to ${dependencyType} in .groundzero/formula.yml: ${formulaName}@${mainFormula.version}`);
   }
 

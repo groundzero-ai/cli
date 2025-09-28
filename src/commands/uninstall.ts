@@ -9,10 +9,11 @@ import { buildDependencyTree, findDanglingDependencies } from '../core/dependenc
 import { exists, remove, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { 
-  PLATFORM_DIRS, 
-  FILE_PATTERNS, 
-  GLOBAL_PLATFORM_FILES 
+import {
+  PLATFORM_DIRS,
+  FILE_PATTERNS,
+  DEPENDENCY_ARRAYS,
+  GLOBAL_PLATFORM_FILES
 } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getAIDir } from '../utils/paths.js';
 
@@ -176,7 +177,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
     let removed = false;
     
     // Remove from both formulas and dev-formulas arrays
-    const sections = ['formulas', 'dev-formulas'] as const;
+    const sections = [DEPENDENCY_ARRAYS.FORMULAS, DEPENDENCY_ARRAYS.DEV_FORMULAS] as const;
     for (const section of sections) {
       if (config[section]) {
         const initialLength = config[section]!.length;

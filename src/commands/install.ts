@@ -19,6 +19,7 @@ import {
   PLATFORM_DIRS,
   PLATFORMS,
   FILE_PATTERNS,
+  PLATFORM_SUBDIRS,
   DEPENDENCY_ARRAYS,
   CONFLICT_RESOLUTION,
   GROUNDZERO_DIRS
@@ -364,10 +365,10 @@ async function installFormulaToGroundzero(
 
         // Map GROUNDZERO_DIRS to platform-specific subdirectories
         if (file.path.includes(`/${GROUNDZERO_DIRS.RULES}/`)) {
-          targetDir = join(targetDir, platformDefinition.rulesDir.split('/').pop() || 'rules');
+          targetDir = join(targetDir, platformDefinition.rulesDir.split('/').pop() || PLATFORM_SUBDIRS.RULES);
         } else if (file.path.includes(`/${GROUNDZERO_DIRS.COMMANDS}/`)) {
           if (platformDefinition.commandsDir) {
-            targetDir = join(targetDir, platformDefinition.commandsDir.split('/').pop() || 'commands');
+            targetDir = join(targetDir, platformDefinition.commandsDir.split('/').pop() || PLATFORM_SUBDIRS.COMMANDS);
           } else {
             // Skip if platform doesn't support commands
             logger.debug(`Skipping commands file for platform ${platform} (not supported): ${file.path}`);
@@ -375,7 +376,7 @@ async function installFormulaToGroundzero(
           }
         } else if (file.path.includes(`/${GROUNDZERO_DIRS.AGENTS}/`)) {
           if (platformDefinition.agentsDir) {
-            targetDir = join(targetDir, platformDefinition.agentsDir.split('/').pop() || 'agents');
+            targetDir = join(targetDir, platformDefinition.agentsDir.split('/').pop() || PLATFORM_SUBDIRS.AGENTS);
           } else {
             // Skip if platform doesn't support agents
             logger.debug(`Skipping agents file for platform ${platform} (not supported): ${file.path}`);

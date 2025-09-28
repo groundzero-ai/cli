@@ -2,6 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
 import { G0Directories } from '../types/index.js';
+import { PLATFORM_DIRS, FORMULA_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 
@@ -16,12 +17,12 @@ import { logger } from '../utils/logger.js';
  */
 export function getG0Directories(): G0Directories {
   const homeDir = os.homedir();
-  const g0Dir = path.join(homeDir, '.groundzero');
+  const g0Dir = path.join(homeDir, PLATFORM_DIRS.GROUNDZERO);
   
   return {
     config: g0Dir,
     data: g0Dir,  // Same directory - follows dotfile convention
-    cache: path.join(g0Dir, 'cache'),
+    cache: path.join(g0Dir, FORMULA_DIRS.CACHE),
     runtime: path.join(os.tmpdir(), 'groundzero')
   };
 }
@@ -56,7 +57,7 @@ export function getRegistryDirectories(): { formulas: string } {
   const registryDir = path.join(g0Dirs.data, 'registry');
   
   return {
-    formulas: path.join(registryDir, 'formulas')
+    formulas: path.join(registryDir, FORMULA_DIRS.FORMULAS)
   };
 }
 

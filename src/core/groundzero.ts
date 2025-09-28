@@ -3,7 +3,7 @@ import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { FILE_PATTERNS } from '../constants/index.js';
+import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath } from '../utils/paths.js';
 
 /**
@@ -41,7 +41,7 @@ async function findFormulaConfigFile(directoryPath: string): Promise<string | nu
  * Get the version of an installed formula by formula name
  */
 export async function getInstalledFormulaVersion(formulaName: string, targetDir: string): Promise<string | null> {
-  const groundzeroPath = join(targetDir, 'ai');
+  const groundzeroPath = join(targetDir, PLATFORM_DIRS.AI);
   const formulaGroundzeroPath = join(groundzeroPath, formulaName);
   
   if (!(await exists(formulaGroundzeroPath))) {
@@ -167,9 +167,9 @@ export async function checkExistingFormulaInMarkdownFiles(
   formulaName: string
 ): Promise<{ found: boolean; version?: string; location?: string }> {
   const searchDirectories = [
-    join(cwd, 'ai'),
-    join(cwd, '.claude'),
-    join(cwd, '.cursor')
+    join(cwd, PLATFORM_DIRS.AI),
+    join(cwd, PLATFORM_DIRS.CLAUDECODE),
+    join(cwd, PLATFORM_DIRS.CURSOR)
   ];
 
   logger.debug(`Checking for existing formula '${formulaName}' in directories: ${searchDirectories.join(', ')}`);

@@ -8,7 +8,7 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import { getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS } from '../constants/index.js';
+import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, FORMULA_DIRS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
@@ -512,8 +512,8 @@ async function discoverFiles(
               // Safety fallback if traversal occurs unexpectedly
               relativeFromSourceDir = file.relativePath;
             }
-            if (relativeFromSourceDir.endsWith('.mdc')) {
-              relativeFromSourceDir = relativeFromSourceDir.replace(/\.mdc$/, '.md');
+            if (relativeFromSourceDir.endsWith(FILE_PATTERNS.MDC_FILES)) {
+              relativeFromSourceDir = relativeFromSourceDir.replace(new RegExp(`\\${FILE_PATTERNS.MDC_FILES}$`), FILE_PATTERNS.MD_FILES);
             }
             registryPath = registryPathPrefix ? join(registryPathPrefix, relativeFromSourceDir) : relativeFromSourceDir;
           } else {
@@ -758,7 +758,7 @@ async function findFormulaYmlByName(formulaName: string): Promise<Array<{ fullPa
           if (config.name === formulaName) {
             return {
               fullPath: formulaYmlPath,
-              relativePath: join('.groundzero', 'formulas', formulaDir, FILE_PATTERNS.FORMULA_YML),
+              relativePath: join(PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaDir, FILE_PATTERNS.FORMULA_YML),
               config
             };
           }
@@ -841,14 +841,14 @@ async function findFormulasByFrontmatter(formulaName: string): Promise<Array<{ f
   
   // Search in AI directory for markdown files with matching frontmatter
   const aiDir = join(cwd, PLATFORM_DIRS.AI);
-  await processMarkdownFiles(aiDir, '', 'ai');
+  await processMarkdownFiles(aiDir, '', PLATFORM_DIRS.AI);
   
   // Search in platform-specific directories (rules, commands, agents)
   const platformConfigs = await buildPlatformSearchConfig(cwd);
   
   for (const config of platformConfigs) {
     // Skip AI directory since it's handled above
-    if (config.name === 'ai') {
+    if (config.name === PLATFORM_DIRS.AI) {
       continue;
     }
     
@@ -993,7 +993,7 @@ async function createFormulaFilesUnified(
   // Reuse the formula config content instead of reading the file again
   const updatedFormulaYmlContent = await readTextFile(formulaYmlPath);
   formulaFiles.push({
-    path: 'formula.yml',
+    path: FILE_PATTERNS.FORMULA_YML,
     content: updatedFormulaYmlContent,
     isTemplate: false,
     encoding: UTF8_ENCODING
