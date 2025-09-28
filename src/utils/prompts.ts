@@ -15,7 +15,12 @@ export async function safePrompts(
   questions: prompts.PromptObject | prompts.PromptObject[],
   options?: prompts.Options
 ): Promise<prompts.Answers<string>> {
-  const response = await prompts(questions, options);
+  const response = await prompts(questions, {
+    onCancel: () => {
+      throw new UserCancellationError('Operation cancelled by user');
+    },
+    ...(options || {})
+  });
   
   if (isCancelled(response)) {
     throw new UserCancellationError('Operation cancelled by user');
@@ -28,18 +33,14 @@ export async function safePrompts(
  * Prompt for simple confirmation
  */
 export async function promptConfirmation(message: string, initial: boolean = false): Promise<boolean> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'confirm',
     name: 'confirmed',
     message,
     initial
   });
   
-  if (isCancelled(response)) {
-    throw new UserCancellationError();
-  }
-  
-  return response.confirmed || false;
+  return (response as any).confirmed || false;
 }
 
 /**

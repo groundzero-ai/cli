@@ -4,7 +4,7 @@ import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
-import { scanGroundzeroFormulas, GroundzeroFormula } from '../core/groundzero.js';
+import { scanGroundzeroFormulas, GroundzeroFormula, gatherGlobalVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
 import { exists, listDirectories } from '../utils/fs.js';
@@ -309,7 +309,17 @@ async function buildFormulaDependencyTree(
 ): Promise<FormulaStatusInfo[]> {
   try {
     // Use the install command's dependency resolver to get the complete tree
-    const resolvedFormulas = await resolveDependencies(formulaName, cwd, true, new Set(), new Map(), version);
+    const constraints = await gatherGlobalVersionConstraints(cwd);
+    const resolvedFormulas = await resolveDependencies(
+      formulaName,
+      cwd,
+      true,
+      new Set(),
+      new Map(),
+      version,
+      new Map(),
+      constraints
+    );
     
     // Convert resolved formulas to status info in parallel
     const dependencyPromises = resolvedFormulas

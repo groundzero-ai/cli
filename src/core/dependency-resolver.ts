@@ -6,10 +6,7 @@ import { formulaManager } from './formula.js';
 import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
 import { logger } from '../utils/logger.js';
 import { FormulaNotFoundError, FormulaVersionNotFoundError } from '../utils/errors.js';
-import { 
-  resolveVersionRange, 
-  isExactVersion, 
-} from '../utils/version-ranges.js';
+import { isExactVersion } from '../utils/version-ranges.js';
 import { listFormulaVersions } from './directory.js';
 
 /**
@@ -60,7 +57,8 @@ export async function resolveDependencies(
   visitedStack: Set<string> = new Set(),
   resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
   version?: string,
-  requiredVersions: Map<string, string[]> = new Map()
+  requiredVersions: Map<string, string[]> = new Map(),
+  globalConstraints?: Map<string, string[]>
 ): Promise<ResolvedFormula[]> {
   // 1. Cycle detection
   if (visitedStack.has(formulaName)) {
@@ -70,40 +68,57 @@ export async function resolveDependencies(
     throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your formula dependencies to break the cycle.`);
   }
   
-  // 2. Resolve version range to specific version if needed
+  // 2. Resolve version range(s) to specific version if needed
   let resolvedVersion: string | undefined;
   let versionRange: string | undefined;
-  
+  const allRanges: string[] = [];
+
   if (version) {
-    try {
-      // Check if it's a version range or exact version
-      if (isExactVersion(version)) {
-        resolvedVersion = version;
-        versionRange = version;
-      } else {
-        // It's a version range - resolve it to a specific version
-        const availableVersions = await listFormulaVersions(formulaName);
-        if (availableVersions.length === 0) {
-          throw new FormulaNotFoundError(formulaName);
-        }
-        
-        resolvedVersion = resolveVersionRange(version, availableVersions) || undefined;
-        if (!resolvedVersion) {
-          throw new FormulaVersionNotFoundError(
-            `No version of '${formulaName}' satisfies range '${version}'. Available versions: ${availableVersions.join(', ')}`
-          );
-        }
-        versionRange = version;
-        logger.debug(`Resolved version range '${version}' to '${resolvedVersion}' for formula '${formulaName}'`);
-      }
-    } catch (error) {
-      if (error instanceof FormulaNotFoundError || error instanceof FormulaVersionNotFoundError) {
-        throw error;
-      }
-      // If range parsing fails, treat as exact version
-      resolvedVersion = version;
-      versionRange = version;
+    allRanges.push(version);
+  }
+
+  const globalRanges = globalConstraints?.get(formulaName);
+  if (globalRanges) {
+    allRanges.push(...globalRanges);
+  }
+
+  const priorRanges = requiredVersions.get(formulaName) || [];
+  if (priorRanges.length > 0) {
+    allRanges.push(...priorRanges);
+  }
+
+  if (allRanges.length === 0) {
+    // No constraints provided - resolvedVersion stays undefined so latest is used
+  } else if (allRanges.length === 1 && isExactVersion(allRanges[0])) {
+    resolvedVersion = allRanges[0];
+    versionRange = allRanges[0];
+  } else {
+    // Intersect ranges by filtering available versions
+    const availableVersions = await listFormulaVersions(formulaName);
+    if (availableVersions.length === 0) {
+      throw new FormulaNotFoundError(formulaName);
     }
+
+    const satisfying = availableVersions.filter(versionCandidate => {
+      return allRanges.every(range => {
+        try {
+          return semver.satisfies(versionCandidate, range);
+        } catch (error) {
+          logger.debug(`Failed to evaluate semver for ${formulaName}@${versionCandidate} against range '${range}': ${error}`);
+          return false;
+        }
+      });
+    }).sort((a, b) => semver.rcompare(a, b));
+
+    if (satisfying.length === 0) {
+      throw new FormulaVersionNotFoundError(
+        `No version of '${formulaName}' satisfies ranges: ${allRanges.join(', ')}. Available versions: ${availableVersions.join(', ')}`
+      );
+    }
+
+    resolvedVersion = satisfying[0];
+    versionRange = allRanges.join(' & ');
+    logger.debug(`Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for formula '${formulaName}'`);
   }
 
   // 3. Attempt to repair dependency from local registry
@@ -286,7 +301,7 @@ export async function resolveDependencies(
     
     for (const dep of dependencies) {
       // Pass the required version from the dependency specification
-      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions);
+      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints);
     }
     
     // For root formula, also process dev-formulas
@@ -294,7 +309,7 @@ export async function resolveDependencies(
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
         // Pass the required version from the dev dependency specification
-        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions);
+        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints);
       }
     }
     

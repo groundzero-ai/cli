@@ -4,7 +4,7 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
-import { getLocalFormulaYmlPath } from '../utils/paths.js';
+import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
 
 /**
  * Formula metadata from groundzero directory
@@ -135,6 +135,82 @@ export async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Ma
   }
   
   return formulas;
+}
+
+/**
+ * Gather version constraints from the main and nested formula.yml files
+ */
+export async function gatherGlobalVersionConstraints(cwd: string): Promise<Map<string, string[]>> {
+  const constraints = new Map<string, Set<string>>();
+
+  const addConstraint = (name?: string, range?: string) => {
+    if (!name || !range) {
+      return;
+    }
+
+    const trimmedName = name.trim();
+    const trimmedRange = range.trim();
+
+    if (!trimmedName || !trimmedRange) {
+      return;
+    }
+
+    if (!constraints.has(trimmedName)) {
+      constraints.set(trimmedName, new Set());
+    }
+
+    constraints.get(trimmedName)!.add(trimmedRange);
+  };
+
+  const collectFromConfig = (config: FormulaYml | null | undefined) => {
+    if (!config) {
+      return;
+    }
+
+    config.formulas?.forEach(dep => addConstraint(dep.name, dep.version));
+    config['dev-formulas']?.forEach(dep => addConstraint(dep.name, dep.version));
+  };
+
+  // Collect from main .groundzero/formula.yml if present
+  const mainFormulaPath = getLocalFormulaYmlPath(cwd);
+  if (await exists(mainFormulaPath)) {
+    try {
+      const mainConfig = await parseFormulaYml(mainFormulaPath);
+      collectFromConfig(mainConfig);
+    } catch (error) {
+      logger.debug(`Failed to parse main formula.yml for constraints: ${error}`);
+    }
+  }
+
+  // Collect from each formula under .groundzero/formulas
+  const formulasDir = getLocalFormulasDir(cwd);
+  if (await exists(formulasDir) && await isDirectory(formulasDir)) {
+    try {
+      const subdirs = await listDirectories(formulasDir);
+      for (const subdir of subdirs) {
+        const configPath = join(formulasDir, subdir, FILE_PATTERNS.FORMULA_YML);
+        if (!(await exists(configPath))) {
+          continue;
+        }
+
+        try {
+          const subConfig = await parseFormulaYml(configPath);
+          collectFromConfig(subConfig);
+        } catch (error) {
+          logger.debug(`Failed to parse formula.yml for ${subdir}: ${error}`);
+        }
+      }
+    } catch (error) {
+      logger.debug(`Failed to enumerate formulas directory for constraints: ${error}`);
+    }
+  }
+
+  const result = new Map<string, string[]>();
+  for (const [name, ranges] of constraints) {
+    result.set(name, Array.from(ranges));
+  }
+
+  return result;
 }
 
 /**
