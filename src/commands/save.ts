@@ -165,6 +165,37 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 }
 
 /**
+ * Handle formula name input for non-existing formulas
+ * Checks if formula.yml exists in .groundzero/formulas/<formula-name>/formula.yml and creates it if not
+ */
+async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+  const cwd = process.cwd();
+  const formulaDir = getLocalFormulaDir(cwd, formulaName);
+  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+
+  // Check if formula.yml already exists in .groundzero/formulas/<formula-name>/
+  if (await exists(formulaYmlPath)) {
+    logger.debug('Found existing formula.yml, parsing...');
+    try {
+      const formulaConfig = await parseFormulaYml(formulaYmlPath);
+      console.log(`✓ Found existing formula.yml`);
+      console.log(`📦 Name: ${formulaConfig.name}`);
+      console.log(`📦 Version: ${formulaConfig.version}`);
+
+      return {
+        fullPath: formulaYmlPath,
+        config: formulaConfig
+      };
+    } catch (error) {
+      throw new Error(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
+    }
+  } else {
+    logger.debug('No formula.yml found, creating automatically...');
+    return await createFormulaYmlInDirectory(formulaDir, formulaName);
+  }
+}
+
+/**
  * Handle directory-based formula input
  * Creates formula.yml in .groundzero/formulas/<formula-name>/formula.yml
  */
@@ -676,38 +707,8 @@ async function saveFormulaCommand(
     // Handle directory input - find or create formula.yml in specified directory
     formulaInfo = await handleDirectoryInput(directoryPath, formulaName);
   } else {
-    // Handle traditional formula name input - search for existing formula.yml files
-    const matchingFormulas = await findFormulaYmlByName(formulaName);
-    
-    if (matchingFormulas.length === 0) {
-      throw new FormulaNotFoundError(formulaName);
-    }
-    
-    if (matchingFormulas.length > 1) {
-      // Prioritize formula.yml files over frontmatter-based files
-      const formulaYmlFiles = matchingFormulas.filter(f => f.fullPath.endsWith('formula.yml'));
-      const frontmatterFiles = matchingFormulas.filter(f => f.fullPath.endsWith('.md'));
-      
-      if (formulaYmlFiles.length > 1) {
-        const locations = formulaYmlFiles.map(f => f.relativePath).join(', ');
-        throw new Error(`Multiple formula.yml files found with name '${formulaName}': ${locations}. Please ensure formula names are unique.`);
-      } else if (formulaYmlFiles.length === 1) {
-        // Use the formula.yml file if available
-        formulaInfo = {
-          fullPath: formulaYmlFiles[0].fullPath,
-          config: formulaYmlFiles[0].config
-        };
-      } else {
-        // Multiple frontmatter files - this is an error
-        const locations = frontmatterFiles.map(f => f.relativePath).join(', ');
-        throw new Error(`Multiple markdown files found with formula name '${formulaName}' in frontmatter: ${locations}. Please ensure formula names are unique.`);
-      }
-    } else {
-      formulaInfo = {
-        fullPath: matchingFormulas[0].fullPath,
-        config: matchingFormulas[0].config
-      };
-    }
+    // Handle formula name input - check/create formula.yml in .groundzero/formulas/<formula-name>/
+    formulaInfo = await handleFormulaNameInput(formulaName);
   }
   
   const formulaDir = dirname(formulaInfo.fullPath);
