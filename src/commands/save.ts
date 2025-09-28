@@ -39,6 +39,60 @@ const MARKDOWN_EXTENSION = '.md';
 const UTF8_ENCODING = 'utf8' as const;
 
 /**
+ * Parse a directory path to determine if it's a platform-specific directory
+ */
+function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
+  const normalizedPath = directoryPath.replace(/\\/g, '/'); // Normalize for cross-platform
+
+  // Check for AI directory (both absolute and relative paths)
+  if (normalizedPath.includes('/ai/') || normalizedPath.startsWith('ai/') || normalizedPath === '/ai' || normalizedPath === 'ai' || normalizedPath.endsWith('/ai')) {
+    let aiIndex = normalizedPath.indexOf('/ai/');
+    if (aiIndex === -1) {
+      aiIndex = normalizedPath.indexOf('ai/');
+    }
+    if (aiIndex !== -1) {
+      const relativePath = normalizedPath.substring(aiIndex + 3); // Remove 'ai' or '/ai'
+      return { platform: 'ai', relativePath: relativePath.startsWith('/') ? relativePath.substring(1) : relativePath, platformName: 'ai' as PlatformName };
+    }
+    if (normalizedPath === '/ai' || normalizedPath === 'ai' || normalizedPath.endsWith('/ai')) {
+      return { platform: 'ai', relativePath: '', platformName: 'ai' as PlatformName };
+    }
+  }
+
+  // Check for other platforms (both absolute and relative paths)
+  const platforms = Object.values(PLATFORMS) as PlatformName[];
+  for (const platform of platforms) {
+    if (platform === ('ai' as PlatformName)) continue; // Already handled above
+
+    const platformDir = PLATFORM_DIRS[platform as keyof typeof PLATFORM_DIRS];
+
+    // Check for absolute paths
+    const absPlatformPattern = `/${platformDir}/`;
+    let platformIndex = normalizedPath.indexOf(absPlatformPattern);
+    let isAbsolute = true;
+
+    if (platformIndex === -1) {
+      // Check for relative paths
+      const relPlatformPattern = `${platformDir}/`;
+      platformIndex = normalizedPath.indexOf(relPlatformPattern);
+      isAbsolute = false;
+    }
+
+    if (platformIndex !== -1) {
+      const patternLength = isAbsolute ? absPlatformPattern.length - 1 : `${platformDir}/`.length - 1;
+      const relativePath = normalizedPath.substring(platformIndex + patternLength);
+      return { platform, relativePath: relativePath.startsWith('/') ? relativePath.substring(1) : relativePath, platformName: platform };
+    }
+
+    if (normalizedPath === `/${platformDir}` || normalizedPath === platformDir || normalizedPath.endsWith(`/${platformDir}`)) {
+      return { platform, relativePath: '', platformName: platform };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Build platform-based search configuration for file discovery
  */
 async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchConfig[]> {
@@ -320,33 +374,55 @@ async function getFileMtime(filePath: string): Promise<number> {
 /**
  * Discover markdown files in a specific directory (for directory input)
  */
-async function discoverMdFilesInDirectory(directoryPath: string, formulaName: string): Promise<DiscoveredFile[]> {
-  const allMdFiles = await findAllMarkdownFiles(directoryPath, directoryPath);
+async function discoverMdFilesInDirectory(
+  directoryPath: string,
+  formulaName: string,
+  platformName: PlatformName = 'ai' as PlatformName,
+  registryPathPrefix: string = ''
+): Promise<DiscoveredFile[]> {
+  // Get the appropriate file patterns for the platform
+  const filePatterns = platformName === ('ai' as PlatformName) ? [MARKDOWN_EXTENSION] : getPlatformDefinition(platformName).filePatterns;
+
+  // Find files with the appropriate patterns
+  const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
+  for (const pattern of filePatterns) {
+    const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
+    const files = await findFilesByExtension(directoryPath, extension, directoryPath);
+    allFiles.push(...files);
+  }
+
   const allDiscoveredFiles: DiscoveredFile[] = [];
 
   // Process files in parallel
-  const processPromises = allMdFiles.map(async (mdFile) => {
+  const processPromises = allFiles.map(async (file) => {
     try {
-      const content = await readTextFile(mdFile.fullPath);
-      const frontmatter = parseMarkdownFrontmatter(content);
+      const content = await readTextFile(file.fullPath);
+      let frontmatter;
+      try {
+        frontmatter = parseMarkdownFrontmatter(content);
+      } catch (parseError) {
+        logger.warn(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
+        frontmatter = null;
+      }
 
       // For directory input, include files that either:
       // 1. Have no frontmatter (will get frontmatter added)
       // 2. Have matching frontmatter
       // 3. Have no conflicting frontmatter
-      const shouldInclude = !frontmatter || 
-                           !frontmatter.formula || 
-                           frontmatter.formula.name === formulaName ||
-                           !frontmatter.formula.name;
+      const shouldInclude = !frontmatter ||
+                           !frontmatter.formula ||
+                           frontmatter?.formula?.name === formulaName ||
+                           !frontmatter?.formula?.name;
 
       if (shouldInclude) {
-        const mtime = await getFileMtime(mdFile.fullPath);
+        const mtime = await getFileMtime(file.fullPath);
         const contentHash = await calculateFileHash(content);
+        const registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
         const result: DiscoveredFile = {
-          fullPath: mdFile.fullPath,
-          relativePath: mdFile.relativePath,
-          sourceDir: 'ai', // Use 'ai' as the source directory for registry path
-          registryPath: mdFile.relativePath, // Use relative path as registry path
+          fullPath: file.fullPath,
+          relativePath: file.relativePath,
+          sourceDir: platformName,
+          registryPath,
           mtime,
           contentHash
         };
@@ -358,7 +434,7 @@ async function discoverMdFilesInDirectory(directoryPath: string, formulaName: st
         return result;
       }
     } catch (error) {
-      logger.warn(`Failed to read or parse ${mdFile.relativePath}: ${error}`);
+      logger.warn(`Failed to read ${file.relativePath}: ${error}`);
     }
     return null;
   });
@@ -370,20 +446,20 @@ async function discoverMdFilesInDirectory(directoryPath: string, formulaName: st
 /**
  * Unified file discovery function that searches platform-specific directories
  */
-async function discoverMdFilesUnified(formulaDir: string, formulaName: string): Promise<DiscoveredFile[]> {
-  const cwd = process.cwd();
+async function discoverMdFilesUnified(formulaDir: string, formulaName: string, baseDir?: string, isDirectoryMode?: boolean): Promise<DiscoveredFile[]> {
+  const cwd = baseDir || process.cwd();
   const platformConfigs = await buildPlatformSearchConfig(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
-  
+
   // Process all platform configurations in parallel
   const processPromises = platformConfigs.map(async (config) => {
-    const files = await processPlatformFiles(config, formulaDir, formulaName);
+    const files = await processPlatformFiles(config, formulaDir, formulaName, isDirectoryMode);
     return files;
   });
-  
+
   const results = await Promise.all(processPromises);
   allDiscoveredFiles.push(...results.flat());
-  
+
   return allDiscoveredFiles;
 }
 
@@ -393,7 +469,8 @@ async function discoverMdFilesUnified(formulaDir: string, formulaName: string): 
 async function processPlatformFiles(
   config: PlatformSearchConfig,
   formulaDir: string,
-  formulaName: string
+  formulaName: string,
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
   const allFiles: DiscoveredFile[] = [];
 
@@ -404,7 +481,9 @@ async function processPlatformFiles(
       config.name,
       formulaName,
       config.registryPath || config.name, // Use config.name if registryPath is empty (for AI)
-      formulaDir
+      formulaDir,
+      config.filePatterns,
+      isDirectoryMode
     );
     allFiles.push(...rulesFiles);
   }
@@ -416,7 +495,9 @@ async function processPlatformFiles(
       config.name,
       formulaName,
       join(config.registryPath, PLATFORM_SUBDIRS.COMMANDS),
-      formulaDir
+      formulaDir,
+      config.filePatterns,
+      isDirectoryMode
     );
     allFiles.push(...commandFiles);
   }
@@ -428,7 +509,9 @@ async function processPlatformFiles(
       config.name,
       formulaName,
       join(config.registryPath, PLATFORM_SUBDIRS.AGENTS),
-      formulaDir
+      formulaDir,
+      config.filePatterns,
+      isDirectoryMode
     );
     allFiles.push(...agentFiles);
   }
@@ -444,9 +527,11 @@ async function processMarkdownFilesUnified(
   sourceDirName: string,
   formulaName: string,
   registryPath: string,
-  formulaDir: string
+  formulaDir: string,
+  filePatterns?: string[],
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
-  return processDirectoryFiles(dirPath, sourceDirName, formulaName, registryPath, formulaDir);
+  return processDirectoryFiles(dirPath, sourceDirName, formulaName, registryPath, formulaDir, filePatterns, isDirectoryMode);
 }
 
 /**
@@ -457,13 +542,14 @@ async function processMarkdownFile(
   sourceDirName: string,
   formulaName: string,
   registryPath: string,
-  formulaDir: string
+  formulaDir: string,
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile | null> {
   try {
     const content = await readTextFile(mdFile.fullPath);
     const frontmatter = parseMarkdownFrontmatter(content);
 
-    if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir)) {
+    if (shouldIncludeMarkdownFileUnified(mdFile, frontmatter, sourceDirName, formulaName, formulaDir, isDirectoryMode)) {
       const mtime = await getFileMtime(mdFile.fullPath);
       const targetRegistryPath = getRegistryPathUnified(registryPath, mdFile.relativePath, sourceDirName);
       const contentHash = await calculateFileHash(content);
@@ -493,17 +579,25 @@ async function processDirectoryFiles(
   sourceDirName: string,
   formulaName: string,
   registryPath: string,
-  formulaDir: string
+  formulaDir: string,
+  filePatterns: string[] = [MARKDOWN_EXTENSION],
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
   if (!(await exists(dirPath)) || !(await isDirectory(dirPath))) {
     return [];
   }
 
-  const allMdFiles = await findAllMarkdownFiles(dirPath, dirPath);
+  // Find files with the specified patterns
+  const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
+  for (const pattern of filePatterns) {
+    const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
+    const files = await findFilesByExtension(dirPath, extension, dirPath);
+    allFiles.push(...files);
+  }
 
   // Process files in parallel
-  const processPromises = allMdFiles.map(mdFile =>
-    processMarkdownFile(mdFile, sourceDirName, formulaName, registryPath, formulaDir)
+  const processPromises = allFiles.map(file =>
+    processMarkdownFile(file, sourceDirName, formulaName, registryPath, formulaDir, isDirectoryMode)
   );
 
   const results = await Promise.all(processPromises);
@@ -518,9 +612,10 @@ function shouldIncludeMarkdownFileUnified(
   frontmatter: any,
   sourceDirName: string,
   formulaName: string,
-  formulaDir?: string
+  formulaDir?: string,
+  isDirectoryMode?: boolean
 ): boolean {
-  return shouldIncludeMarkdownFile(mdFile, frontmatter, sourceDirName, formulaName, formulaDir);
+  return shouldIncludeMarkdownFile(mdFile, frontmatter, sourceDirName, formulaName, formulaDir, isDirectoryMode);
 }
 
 /**
@@ -531,7 +626,8 @@ function shouldIncludeMarkdownFile(
   frontmatter: any,
   sourceDir: string,
   formulaName: string,
-  formulaDirRelativeToAi?: string
+  formulaDirRelativeToAi?: string,
+  isDirectoryMode?: boolean
 ): boolean {
   const mdFileDir = dirname(mdFile.relativePath);
 
@@ -541,10 +637,19 @@ function shouldIncludeMarkdownFile(
       logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
       return true;
     }
-    if (mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
+
+    // For directory mode, skip the "adjacent to formula.yml" check since there's no formula.yml in source
+    if (!isDirectoryMode && mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
       logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
       return true;
     }
+
+    // For directory mode, include files without conflicting frontmatter
+    if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
+      logger.debug(`Including ${mdFile.relativePath} from ai (directory mode, no conflicting frontmatter)`);
+      return true;
+    }
+
     if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
       logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
     } else {
@@ -556,6 +661,12 @@ function shouldIncludeMarkdownFile(
   // For command directories: only include files with matching frontmatter
   if (frontmatter?.formula?.name === formulaName) {
     logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
+    return true;
+  }
+
+  // For directory mode in platform directories, include files without conflicting frontmatter
+  if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
+    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
     return true;
   }
 
@@ -765,10 +876,36 @@ async function saveFormulaCommand(
   let sourceDir: string;
   if (isExplicitPair && directoryPath) {
     // Pattern 1: Use the explicitly specified directory
-    sourceDir = join(process.cwd(), directoryPath.substring(1));
+    if (directoryPath.startsWith('/')) {
+      const absolutePath = directoryPath;
+      const relativePath = join(process.cwd(), directoryPath.substring(1));
+      // Use the path that exists, prefer absolute
+      if (await exists(absolutePath)) {
+        sourceDir = absolutePath;
+      } else if (await exists(relativePath)) {
+        sourceDir = relativePath;
+      } else {
+        sourceDir = absolutePath; // Default to absolute
+      }
+    } else {
+      sourceDir = join(process.cwd(), directoryPath);
+    }
   } else if (isDirectory && directoryPath && !isExplicitPair) {
     // Pattern 2: Legacy directory input - use the directory as source
-    sourceDir = join(process.cwd(), directoryPath.substring(1));
+    if (directoryPath.startsWith('/')) {
+      const absolutePath = directoryPath;
+      const relativePath = join(process.cwd(), directoryPath.substring(1));
+      // Use the path that exists, prefer absolute
+      if (await exists(absolutePath)) {
+        sourceDir = absolutePath;
+      } else if (await exists(relativePath)) {
+        sourceDir = relativePath;
+      } else {
+        sourceDir = absolutePath; // Default to absolute
+      }
+    } else {
+      sourceDir = join(process.cwd(), directoryPath);
+    }
   } else {
     // Pattern 3: Legacy formula name input - use formula directory for unified discovery
     sourceDir = formulaDir;
@@ -777,14 +914,30 @@ async function saveFormulaCommand(
   // Discover and include MD files using appropriate logic
   let discoveredFiles: DiscoveredFile[];
   if (isExplicitPair && directoryPath) {
-    // Pattern 1: Search directly in the specified directory
-    discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name);
+    // Pattern 1: Explicit name + directory
+    const platformInfo = parsePlatformDirectory(directoryPath);
+    if (platformInfo) {
+      // Directory is a platform-specific directory, search directly in it
+      const registryPathPrefix = platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
+      discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name, platformInfo.platformName, registryPathPrefix);
+    } else {
+      // Directory is a formula root, search for platform subdirectories
+      discoveredFiles = await discoverMdFilesUnified(formulaDir, formulaConfig.name, sourceDir, true);
+    }
   } else if (isDirectory && directoryPath && !isExplicitPair) {
-    // Pattern 2: Legacy directory input - search in directory
-    discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name);
+    // Pattern 2: Legacy directory input
+    const platformInfo = parsePlatformDirectory(directoryPath);
+    if (platformInfo) {
+      // Directory is a platform-specific directory, search directly in it
+      const registryPathPrefix = platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
+      discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name, platformInfo.platformName, registryPathPrefix);
+    } else {
+      // Directory is a formula root, search for platform subdirectories
+      discoveredFiles = await discoverMdFilesUnified(formulaDir, formulaConfig.name, sourceDir, true);
+    }
   } else {
-    // Pattern 3: Legacy formula name input - use unified discovery
-    discoveredFiles = await discoverMdFilesUnified(sourceDir, formulaConfig.name);
+    // Pattern 3: Legacy formula name input - use unified discovery from formula directory
+    discoveredFiles = await discoverMdFilesUnified(formulaDir, formulaConfig.name);
   }
   console.log(`📄 Found ${discoveredFiles.length} markdown files`);
   

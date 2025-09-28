@@ -35,4 +35,8 @@ formulas:
   version: ^0.1.0
 - name: test-stable-dir
   version: ^0.1.0
+- name: test-directory-behavior
+  version: ^0.1.0
+- name: scalable-typescript
+  version: ^0.1.0
 dev-formulas: []
