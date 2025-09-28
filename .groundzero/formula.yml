@@ -39,4 +39,34 @@ formulas:
   version: ^0.1.0
 - name: scalable-typescript
   version: ^0.1.0
+- name: scalable-python
+  version: ^0.1.0
+- name: scalable-python-fix
+  version: ^0.1.0
+- name: scalable-python-fix2
+  version: ^0.1.0
+- name: scalable-python-fix3
+  version: ^0.1.0
+- name: scalable-python-fix4
+  version: ^0.1.0
+- name: scalable-python-fix5
+  version: ^0.1.0
+- name: scalable-python-fix6
+  version: ^0.1.0
+- name: scalable-python-fix7
+  version: ^0.1.0
+- name: scalable-python-fix8
+  version: ^0.1.0
+- name: scalable-python-fix9
+  version: ^0.1.0
+- name: scalable-python-fix10
+  version: ^0.1.0
+- name: scalable-python-fix11
+  version: ^0.1.0
+- name: scalable-python-final
+  version: ^0.1.0
+- name: scalable-python-final2
+  version: ^0.1.0
+- name: scalable-python-clean
+  version: ^0.1.0
 dev-formulas: []

@@ -105,7 +105,9 @@ function parsePlatformDirectory(directoryPath: string): { platform: string; rela
   for (const platform of platforms) {
     if (platform === (PLATFORM_DIRS.AI as PlatformName)) continue; // Already handled above
 
-    const platformDir = PLATFORM_DIRS[platform as keyof typeof PLATFORM_DIRS];
+    // Map platform name to platform directory using the correct key format
+    const platformKey = platform.toUpperCase() as keyof typeof PLATFORM_DIRS;
+    const platformDir = PLATFORM_DIRS[platformKey];
     const match = checkPlatformMatch(normalizedPath, platform, platformDir);
     if (match) {
       return match;
@@ -415,6 +417,216 @@ async function resolveSourceDirectory(directoryPath: string | undefined, isExpli
 }
 
 /**
+ * Discover platform subdirectories (rules/commands/agents) within a specific source directory
+ * This searches for universal subdirectory names regardless of platform context
+ */
+async function discoverPlatformSubdirsInDirectory(
+  sourceDir: string,
+  formulaName: string,
+  platformName: PlatformName
+): Promise<DiscoveredFile[]> {
+  const platformDefinition = getPlatformDefinition(platformName);
+  const allFiles: DiscoveredFile[] = [];
+
+  // Search for 'rules' subdirectory within sourceDir
+  const rulesDirPath = join(sourceDir, PLATFORM_SUBDIRS.RULES);
+  if (await exists(rulesDirPath) && await isDirectory(rulesDirPath)) {
+    const rulesFiles = await discoverFiles(
+      rulesDirPath,
+      formulaName,
+      platformName,
+      PLATFORM_SUBDIRS.RULES, // Universal registry path
+      [...platformDefinition.filePatterns],
+      'platform'
+    );
+    allFiles.push(...rulesFiles);
+  }
+
+  // Search for 'commands' subdirectory within sourceDir
+  const commandsDirPath = join(sourceDir, PLATFORM_SUBDIRS.COMMANDS);
+  if (await exists(commandsDirPath) && await isDirectory(commandsDirPath)) {
+    const commandFiles = await discoverFiles(
+      commandsDirPath,
+      formulaName,
+      platformName,
+      PLATFORM_SUBDIRS.COMMANDS, // Universal registry path
+      [...platformDefinition.filePatterns],
+      'platform'
+    );
+    allFiles.push(...commandFiles);
+  }
+
+  // Search for 'agents' subdirectory within sourceDir
+  const agentsDirPath = join(sourceDir, PLATFORM_SUBDIRS.AGENTS);
+  if (await exists(agentsDirPath) && await isDirectory(agentsDirPath)) {
+    const agentFiles = await discoverFiles(
+      agentsDirPath,
+      formulaName,
+      platformName,
+      PLATFORM_SUBDIRS.AGENTS, // Universal registry path
+      [...platformDefinition.filePatterns],
+      'platform'
+    );
+    allFiles.push(...agentFiles);
+  }
+
+  return allFiles;
+}
+
+/**
+ * Discover md files directly in a directory (shallow search - only immediate directory, not subdirectories)
+ */
+async function discoverFilesShallow(
+  directoryPath: string,
+  formulaName: string,
+  platformName: PlatformName,
+  registryPathPrefix: string = '',
+  filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
+  inclusionMode: 'directory' | 'platform' = 'directory'
+): Promise<DiscoveredFile[]> {
+  if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
+    return [];
+  }
+
+  // Only search immediate directory files, not subdirectories
+  const files: Array<{ fullPath: string; relativePath: string }> = [];
+
+  // Check current directory files only
+  const dirFiles = await listFiles(directoryPath);
+  for (const file of dirFiles) {
+    // Skip directories - we only want immediate files
+    const filePath = join(directoryPath, file);
+    if (await isDirectory(filePath)) {
+      continue;
+    }
+
+    // Check if file matches patterns
+    let matchesPattern = false;
+    for (const pattern of filePatterns) {
+      const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
+      if (file.endsWith(extension)) {
+        matchesPattern = true;
+        break;
+      }
+    }
+
+    if (matchesPattern) {
+      const fullPath = filePath;
+      const relativePath = file; // since we're only in the immediate directory
+      files.push({ fullPath, relativePath });
+    }
+  }
+
+  // Process files (similar to discoverFiles but without subdirectory recursion)
+  const processPromises = files.map(async (file) => {
+    try {
+      const content = await readTextFile(file.fullPath);
+      let frontmatter;
+      try {
+        frontmatter = parseMarkdownFrontmatter(content);
+      } catch (parseError) {
+        logger.warn(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
+        frontmatter = null;
+      }
+
+      const shouldInclude = inclusionMode === 'directory'
+        ? shouldIncludeForDirectoryMode(file, frontmatter, formulaName)
+        : shouldIncludeForPlatformMode(file, frontmatter, platformName, formulaName);
+
+      if (shouldInclude) {
+        // Skip template files
+        if (detectTemplateFile(content)) {
+          logger.debug(`Skipping template file: ${file.relativePath}`);
+          return null;
+        }
+
+        try {
+          const mtime = await getFileMtime(file.fullPath);
+          const contentHash = await calculateFileHash(content);
+
+          const registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
+
+          const result: DiscoveredFile = {
+            fullPath: file.fullPath,
+            relativePath: file.relativePath,
+            sourceDir: platformName,
+            registryPath,
+            mtime,
+            contentHash
+          };
+
+          if (frontmatter?.formula?.platformSpecific === true) {
+            result.forcePlatformSpecific = true;
+          }
+
+          return result;
+        } catch (error) {
+          logger.warn(`Failed to process file metadata for ${file.relativePath}: ${error}`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to read ${file.relativePath}: ${error}`);
+    }
+    return null;
+  });
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is DiscoveredFile => result !== null);
+}
+
+/**
+ * Discover md files directly in a specified directory (not in platform subdirectories)
+ */
+async function discoverDirectMdFiles(
+  directoryPath: string,
+  formulaName: string,
+  platformInfo?: { platform: string; relativePath: string; platformName: PlatformName } | null
+): Promise<DiscoveredFile[]> {
+  if (!platformInfo) {
+    // Non-platform directory - search for .md files directly
+    return discoverFiles(directoryPath, formulaName, 'ai' as PlatformName, '', [FILE_PATTERNS.MD_FILES], 'directory');
+  } else {
+    // Platform-specific directory - search for .md files directly (shallow) and map to universal subdirs
+    const definition = getPlatformDefinition(platformInfo.platformName);
+    const filePatterns = platformInfo.platformName === (PLATFORM_DIRS.AI as PlatformName)
+      ? [FILE_PATTERNS.MD_FILES]
+      : [...getPlatformDefinition(platformInfo.platformName).filePatterns];
+
+    // Determine which universal subdir this directory is under (rules/commands/agents)
+    const relativeFromPlatformRoot = platformInfo.relativePath || '';
+    const rulesSubdirName = definition.rulesDir ? definition.rulesDir.split('/').pop() : undefined;
+    const commandsSubdirName = definition.commandsDir ? definition.commandsDir.split('/').pop() : undefined;
+    const agentsSubdirName = definition.agentsDir ? definition.agentsDir.split('/').pop() : undefined;
+
+    let universalSubdir: string | undefined;
+    let remainderWithinSubdir = '';
+
+    if (rulesSubdirName && (relativeFromPlatformRoot === rulesSubdirName || relativeFromPlatformRoot.startsWith(`${rulesSubdirName}/`))) {
+      universalSubdir = PLATFORM_SUBDIRS.RULES;
+      remainderWithinSubdir = relativeFromPlatformRoot.substring(rulesSubdirName.length);
+    } else if (commandsSubdirName && (relativeFromPlatformRoot === commandsSubdirName || relativeFromPlatformRoot.startsWith(`${commandsSubdirName}/`))) {
+      universalSubdir = PLATFORM_SUBDIRS.COMMANDS;
+      remainderWithinSubdir = relativeFromPlatformRoot.substring(commandsSubdirName.length);
+    } else if (agentsSubdirName && (relativeFromPlatformRoot === agentsSubdirName || relativeFromPlatformRoot.startsWith(`${agentsSubdirName}/`))) {
+      universalSubdir = PLATFORM_SUBDIRS.AGENTS;
+      remainderWithinSubdir = relativeFromPlatformRoot.substring(agentsSubdirName.length);
+    }
+
+    // Build registry prefix: prefer universal subdir mapping (rules/commands/agents). Fallback to platform path if unknown.
+    let registryPathPrefix: string;
+    if (universalSubdir) {
+      const cleanedRemainder = remainderWithinSubdir.replace(/^\//, '');
+      registryPathPrefix = cleanedRemainder ? join(universalSubdir, cleanedRemainder) : universalSubdir;
+    } else {
+      // Fallback: keep platform path structure
+      registryPathPrefix = relativeFromPlatformRoot ? join(platformInfo.platform, relativeFromPlatformRoot) : platformInfo.platform;
+    }
+
+    return discoverFilesShallow(directoryPath, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory');
+  }
+}
+
+/**
  * Discover files based on the input pattern (explicit directory, directory mode, or formula name)
  * @param formulaDir - Path to the formula directory
  * @param formulaName - Name of the formula
@@ -434,16 +646,28 @@ async function discoverFilesForPattern(
 ): Promise<DiscoveredFile[]> {
   if ((isExplicitPair || isDirectory) && directoryPath) {
     // Patterns 1 & 2: Directory-based input
+    const results: DiscoveredFile[] = [];
     const platformInfo = parsePlatformDirectory(directoryPath);
+
     if (platformInfo) {
-      // Directory is a platform-specific directory, search directly in it
-      const registryPathPrefix = platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
-      const filePatterns = platformInfo.platformName === (PLATFORM_DIRS.AI as PlatformName) ? [FILE_PATTERNS.MD_FILES] : [...getPlatformDefinition(platformInfo.platformName).filePatterns];
-      return discoverFiles(sourceDir, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory');
+      // Directory is platform-specific - search for direct md files in the specified directory only
+      // Don't search for platform subdirectories within the source directory since we already have the explicit path
+      const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, platformInfo);
+      results.push(...directFiles);
+
+      // Explicitly exclude any accidental ai/ mappings when using a platform-specific directory
+      return results.filter((f) => !(f.registryPath === PLATFORM_DIRS.AI || f.registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)));
     } else {
-      // Directory is a formula root, search for platform subdirectories
-      return discoverMdFilesUnified(formulaDir, formulaName, sourceDir, true);
+      // Directory is not platform-specific - search for platform subdirectories from cwd + direct files
+      const platformSubdirFiles = await discoverMdFilesUnified(formulaDir, formulaName, undefined, true);
+      results.push(...platformSubdirFiles);
+
+      // Also search for direct files in the specified directory
+      const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, null);
+      results.push(...directFiles);
     }
+
+    return results;
   } else {
     // Pattern 3: Legacy formula name input - use unified discovery from formula directory
     return discoverMdFilesUnified(formulaDir, formulaName);
@@ -946,7 +1170,8 @@ async function saveFormulaCommand(
     : formulaDir;
 
   // Discover and include MD files using appropriate logic
-  const discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
+  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
+
   console.log(`${LOG_PREFIX_FILES} ${discoveredFiles.length} ${LOG_PREFIX_FILES_SUFFIX}`);
   
   // Resolve file conflicts (keep latest mtime)
@@ -970,6 +1195,31 @@ async function saveFormulaCommand(
   
   console.log(`${LOG_PREFIX_SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
   return { success: true, data: formulaConfig };
+}
+/**
+ * Dedupe discovered files by source fullPath, preferring universal subdirs over ai
+ */
+function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): DiscoveredFile[] {
+  const preference = (registryPath: string): number => {
+    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.RULES}/`) || registryPath === PLATFORM_SUBDIRS.RULES) return 3;
+    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.COMMANDS}/`) || registryPath === PLATFORM_SUBDIRS.COMMANDS) return 3;
+    if (registryPath.startsWith(`${PLATFORM_SUBDIRS.AGENTS}/`) || registryPath === PLATFORM_SUBDIRS.AGENTS) return 3;
+    if (registryPath.startsWith(`${PLATFORM_DIRS.AI}/`) || registryPath === PLATFORM_DIRS.AI) return 2;
+    return 1;
+  };
+
+  const map = new Map<string, DiscoveredFile>();
+  for (const file of files) {
+    const existing = map.get(file.fullPath);
+    if (!existing) {
+      map.set(file.fullPath, file);
+      continue;
+    }
+    if (preference(file.registryPath) > preference(existing.registryPath)) {
+      map.set(file.fullPath, file);
+    }
+  }
+  return Array.from(map.values());
 }
 
 
