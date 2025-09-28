@@ -73,4 +73,8 @@ formulas:
   version: ^0.1.0
 - name: test-additive-formula
   version: ^0.1.0
+- name: test-ai-fix
+  version: ^0.1.0
+- name: test-ai-fix2
+  version: ^0.1.0
 dev-formulas: []

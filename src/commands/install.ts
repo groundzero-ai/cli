@@ -254,7 +254,7 @@ async function installFileType(
 }
 
 /**
- * Install formula files to ai/formulaName directory
+ * Install formula files to ai directory
  * @param formulaName - Name of the formula to install
  * @param targetDir - Target directory for installation
  * @param options - Installation options including force and dry-run flags
@@ -271,28 +271,28 @@ async function installFormulaToGroundzero(
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
   const cwd = process.cwd();
   const groundzeroPath = getAIDir(cwd);
-  
-  // Determine formula groundzero path
-  const formulaGroundzeroPath = targetDir && targetDir !== '.' 
+
+  // Determine formula groundzero path (for AI files)
+  const aiGroundzeroPath = targetDir && targetDir !== '.'
     ? join(groundzeroPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
-    : join(groundzeroPath, formulaName);
-  
+    : groundzeroPath;
+
   await ensureDir(groundzeroPath);
-  
+
   // Load formula
   const formula = await formulaManager.loadFormula(formulaName, version);
-  
+
   // Copy registry formula.yml to local project structure
   await copyRegistryFormulaYml(cwd, formulaName, formula);
-  
+
   // Create modified options with force flag if needed
   const installOptions = forceOverwrite ? { ...options, force: true } : options;
-  
+
   // Categorize and install files
   const { aiFiles, platformFiles } = categorizeFormulaFiles(formula.files);
-  
-  // Install AI files (same as before)
-  const aiResult = await installFileType(aiFiles, formulaGroundzeroPath, 'ai/', installOptions, options.dryRun);
+
+  // Install AI files directly to ai/ (not ai/formulaName/)
+  const aiResult = await installFileType(aiFiles, aiGroundzeroPath, 'ai/', installOptions, options.dryRun);
   
   // Install platform files to their respective directories
   const platformResults = await Promise.all(
@@ -657,7 +657,7 @@ async function handleDryRunMode(
       continue;
     }
     
-    console.log(`📁 Would install to ai/${resolved.name}: ${dryRunResult.installedCount} files`);
+    console.log(`📁 Would install to ai${targetDir !== '.' ? '/' + targetDir : ''}: ${dryRunResult.installedCount} files`);
     
     if (dryRunResult.overwritten) {
       console.log(`  ⚠️  Would overwrite existing directory`);
@@ -1083,7 +1083,7 @@ export function setupInstallCommand(program: Command): void {
     .command('install')
     .description('Install formulas from local registry to codebase at cwd. Supports versioning with formula@version syntax.')
     .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified). Supports formula@version syntax.')
-    .argument('[target-dir]', 'target directory relative to cwd/ai (defaults to formula name)', '.')
+    .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--force', 'overwrite existing files')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
