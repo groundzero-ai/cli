@@ -89,46 +89,69 @@ interface PlatformSearchConfig {
 }
 
 /**
- * Parse formula input to extract name and version/range, or detect directory input
- * Supports both formula names (formula@version) and directory paths (/path/to/dir)
+ * Parse formula inputs to handle three usage patterns:
+ * 1. Explicit name + directory: formula-name /path/to/dir
+ * 2. Directory only (legacy): /path/to/dir
+ * 3. Formula name only (legacy): formula-name or formula-name@version
  */
-function parseFormulaInput(formulaInput: string): { 
-  name: string; 
-  version?: string; 
+function parseFormulaInputs(formulaName: string, directory?: string): {
+  name: string;
+  version?: string;
   isDirectory: boolean;
   directoryPath?: string;
+  isExplicitPair: boolean;
 } {
-  // Check if input is a directory path (starts with /)
-  if (formulaInput.startsWith('/')) {
-    const directoryPath = formulaInput;
-    const name = basename(directoryPath);
-    
-    if (!name) {
-      throw new ValidationError(`Invalid directory path: ${formulaInput}`);
-    }
-    
-    return { 
-      name, 
-      isDirectory: true, 
-      directoryPath 
+  // Pattern 1: Explicit name + directory (new functionality)
+  if (directory?.startsWith('/')) {
+    return {
+      name: formulaName,
+      isDirectory: true,
+      directoryPath: directory,
+      isExplicitPair: true
     };
   }
-  
-  // Original formula name parsing logic
-  const atIndex = formulaInput.lastIndexOf('@');
-  
+
+  // Pattern 2: Directory path as first argument (legacy)
+  if (formulaName.startsWith('/')) {
+    const directoryPath = formulaName;
+    const name = basename(directoryPath);
+
+    if (!name) {
+      throw new ValidationError(`Invalid directory path: ${formulaName}`);
+    }
+
+    return {
+      name,
+      isDirectory: true,
+      directoryPath,
+      isExplicitPair: false
+    };
+  }
+
+  // Pattern 3: Formula name with optional version (legacy)
+  const atIndex = formulaName.lastIndexOf('@');
+
   if (atIndex === -1) {
-    return { name: formulaInput, isDirectory: false };
+    return {
+      name: formulaName,
+      isDirectory: false,
+      isExplicitPair: false
+    };
   }
-  
-  const name = formulaInput.substring(0, atIndex);
-  const version = formulaInput.substring(atIndex + 1);
-  
+
+  const name = formulaName.substring(0, atIndex);
+  const version = formulaName.substring(atIndex + 1);
+
   if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version`);
+    throw new ValidationError(`Invalid formula syntax: ${formulaName}. Use format: formula@version`);
   }
-  
-  return { name, version, isDirectory: false };
+
+  return {
+    name,
+    version,
+    isDirectory: false,
+    isExplicitPair: false
+  };
 }
 
 
@@ -136,7 +159,7 @@ function parseFormulaInput(formulaInput: string): {
  * Create formula.yml automatically in a directory without user prompts
  * Reuses init command logic but makes it non-interactive
  */
-async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
   const cwd = process.cwd();
   
   // Ensure the target directory exists (including formulas subdirectory)
@@ -160,7 +183,8 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   
   return {
     fullPath: formulaYmlPath,
-    config: formulaConfig
+    config: formulaConfig,
+    isNewFormula: true
   };
 }
 
@@ -168,7 +192,7 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
  * Handle formula name input for non-existing formulas
  * Checks if formula.yml exists in .groundzero/formulas/<formula-name>/formula.yml and creates it if not
  */
-async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
   const cwd = process.cwd();
   const formulaDir = getLocalFormulaDir(cwd, formulaName);
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
@@ -184,7 +208,8 @@ async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: 
 
       return {
         fullPath: formulaYmlPath,
-        config: formulaConfig
+        config: formulaConfig,
+        isNewFormula: false
       };
     } catch (error) {
       throw new Error(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
@@ -199,7 +224,7 @@ async function handleFormulaNameInput(formulaName: string): Promise<{ fullPath: 
  * Handle directory-based formula input
  * Creates formula.yml in .groundzero/formulas/<formula-name>/formula.yml
  */
-async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml }> {
+async function handleDirectoryInput(directoryPath: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
   const cwd = process.cwd();
   const sourceDir = join(cwd, directoryPath.substring(1)); // Remove leading '/'
   const formulaDir = getLocalFormulaDir(cwd, formulaName);
@@ -215,10 +240,11 @@ async function handleDirectoryInput(directoryPath: string, formulaName: string):
       console.log(`✓ Found existing formula.yml`);
       console.log(`📦 Name: ${formulaConfig.name}`);
       console.log(`📦 Version: ${formulaConfig.version}`);
-      
+
       return {
         fullPath: formulaYmlPath,
-        config: formulaConfig
+        config: formulaConfig,
+        isNewFormula: false
       };
     } catch (error) {
       throw new Error(`Failed to parse existing formula.yml at ${formulaYmlPath}: ${error}`);
@@ -684,16 +710,17 @@ async function findFormulasByFrontmatter(formulaName: string): Promise<Array<{ f
  * Save formula command implementation
  */
 async function saveFormulaCommand(
-  formulaInput: string,
+  formulaName: string,
+  directory?: string,
   versionType?: string,
   options?: SaveOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  
-  // Parse formula input to detect directory vs formula name input
-  const { name: formulaName, version: explicitVersion, isDirectory, directoryPath } = parseFormulaInput(formulaInput);
-  
-  logger.debug(`Saving formula with name: ${formulaName}`, { explicitVersion, isDirectory, directoryPath, options });
+
+  // Parse inputs to determine the pattern being used
+  const { name, version: explicitVersion, isDirectory, directoryPath, isExplicitPair } = parseFormulaInputs(formulaName, directory);
+
+  logger.debug(`Saving formula with name: ${name}`, { explicitVersion, isDirectory, directoryPath, isExplicitPair, options });
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
@@ -701,46 +728,62 @@ async function saveFormulaCommand(
   // Ensure main formula.yml exists for the codebase
   const newFormulaYml = await createBasicFormulaYml(cwd);
   
-  let formulaInfo: { fullPath: string; config: FormulaYml };
-  
-  if (isDirectory && directoryPath) {
-    // Handle directory input - find or create formula.yml in specified directory
-    formulaInfo = await handleDirectoryInput(directoryPath, formulaName);
+  let formulaInfo: { fullPath: string; config: FormulaYml; isNewFormula: boolean };
+
+  if (isExplicitPair && directoryPath) {
+    // Pattern 1: Explicit name + directory - formula.yml in .groundzero/formulas/<name>/
+    formulaInfo = await handleFormulaNameInput(name);
+  } else if (isDirectory && directoryPath && !isExplicitPair) {
+    // Pattern 2: Legacy directory input - formula.yml in the source directory
+    formulaInfo = await handleDirectoryInput(directoryPath, name);
   } else {
-    // Handle formula name input - check/create formula.yml in .groundzero/formulas/<formula-name>/
-    formulaInfo = await handleFormulaNameInput(formulaName);
+    // Pattern 3: Legacy formula name input - formula.yml in .groundzero/formulas/<name>/
+    formulaInfo = await handleFormulaNameInput(name);
   }
-  
+
   const formulaDir = dirname(formulaInfo.fullPath);
   const formulaYmlPath = formulaInfo.fullPath;
   let formulaConfig = formulaInfo.config;
-  
+
   logger.debug(`Found formula.yml at: ${formulaYmlPath}`);
-  
+
   // Determine target version
-  const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, newFormulaYml ? undefined : formulaConfig.version, formulaName);
-  
+  const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, formulaInfo.isNewFormula ? undefined : formulaConfig.version, name);
+
   // Check if version already exists (unless force is used)
   if (!options?.force) {
-    const versionExists = await hasFormulaVersion(formulaName, targetVersion);
+    const versionExists = await hasFormulaVersion(name, targetVersion);
     if (versionExists) {
       throw new Error(`Version ${targetVersion} already exists. Use --force to overwrite.`);
     }
   }
-  
+
   // Update formula config with new version
   formulaConfig = { ...formulaConfig, version: targetVersion };
-  
-  // For directory input, use the source directory for file discovery
-  const sourceDir = isDirectory && directoryPath ? join(process.cwd(), directoryPath.substring(1)) : formulaDir;
-  
-  // Discover and include MD files using unified logic
+
+  // Determine source directory for file discovery
+  let sourceDir: string;
+  if (isExplicitPair && directoryPath) {
+    // Pattern 1: Use the explicitly specified directory
+    sourceDir = join(process.cwd(), directoryPath.substring(1));
+  } else if (isDirectory && directoryPath && !isExplicitPair) {
+    // Pattern 2: Legacy directory input - use the directory as source
+    sourceDir = join(process.cwd(), directoryPath.substring(1));
+  } else {
+    // Pattern 3: Legacy formula name input - use formula directory for unified discovery
+    sourceDir = formulaDir;
+  }
+
+  // Discover and include MD files using appropriate logic
   let discoveredFiles: DiscoveredFile[];
-  if (isDirectory && directoryPath) {
-    // For directory input, search directly in the specified directory
+  if (isExplicitPair && directoryPath) {
+    // Pattern 1: Search directly in the specified directory
+    discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name);
+  } else if (isDirectory && directoryPath && !isExplicitPair) {
+    // Pattern 2: Legacy directory input - search in directory
     discoveredFiles = await discoverMdFilesInDirectory(sourceDir, formulaConfig.name);
   } else {
-    // For formula name input, use the unified discovery logic
+    // Pattern 3: Legacy formula name input - use unified discovery
     discoveredFiles = await discoverMdFilesUnified(sourceDir, formulaConfig.name);
   }
   console.log(`📄 Found ${discoveredFiles.length} markdown files`);
@@ -999,18 +1042,37 @@ async function saveFormulaToRegistry(
 export function setupSaveCommand(program: Command): void {
   program
     .command('save')
-    .argument('<formula-input>', 'formula name, formula@version, or directory path (/path/to/dir)')
+    .argument('<formula-name>', 'formula name or directory path (/path/to/dir)')
+    .argument('[directory]', 'directory path to save from (optional, /path/to/dir)')
     .argument('[version-type]', 'version type: stable (optional)')
-    .description('Save a formula to local registry. Supports directory paths (e.g., /ai/nestjs) to auto-create or find formula.yml files. Auto-generates local dev versions by default.')
+    .description('Save a formula to local registry. \n' +
+      'Usage patterns:\n' +
+      '  g0 save <formula-name> <directory>    # Save MD files from directory to named formula\n' +
+      '  g0 save <formula-name>                # Save MD files for existing formula\n' +
+      '  g0 save /path/to/dir                  # Save directory as formula (auto-named)\n' +
+      'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', 'bump version (patch|minor|major). Creates prerelease by default, stable when combined with "stable" argument')
-    .action(withErrorHandling(async (formulaInput: string, versionType?: string, options?: SaveOptions) => {
-      // Validate version type argument
-      if (versionType && versionType !== 'stable') {
-        throw new ValidationError(`Invalid version type: ${versionType}. Only 'stable' is supported.`);
+    .action(withErrorHandling(async (formulaName: string, directory?: string, versionType?: string, options?: SaveOptions) => {
+      // Smart argument detection: directories always start with "/", version types don't
+      let actualDirectory = directory;
+      let actualVersionType = versionType;
+
+      if (directory && !directory.startsWith('/')) {
+        // Directory argument doesn't start with "/", so it might be a version type
+        if (directory === 'stable' && !versionType) {
+          actualVersionType = directory;
+          actualDirectory = undefined;
+        }
+        // Future: Add other version types here if needed
       }
-      
-      const result = await saveFormulaCommand(formulaInput, versionType, options);
+
+      // Validate version type argument
+      if (actualVersionType && actualVersionType !== 'stable') {
+        throw new ValidationError(`Invalid version type: ${actualVersionType}. Only 'stable' is supported.`);
+      }
+
+      const result = await saveFormulaCommand(formulaName, actualDirectory, actualVersionType, options);
       if (!result.success) {
         throw new Error(result.error || 'Save operation failed');
       }

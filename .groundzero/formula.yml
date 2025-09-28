@@ -13,4 +13,26 @@ formulas:
   version: ^0.1.1
 - name: test-bug-check
   version: ^0.1.1
+- name: my-test-formula
+  version: ^0.1.1
+- name: my-test-formula-2
+  version: ^0.1.1
+- name: test-ai
+  version: ^0.1.1
+- name: my-existing-formula
+  version: ^0.1.1
+- name: test-temp-dir
+  version: ^0.1.1
+- name: another-test
+  version: ^0.1.1
+- name: test-versioning-fix
+  version: ^0.1.1
+- name: test-new-dir
+  version: ^0.1.0
+- name: explicit-test
+  version: ^0.1.0
+- name: test-stable-formula
+  version: ^0.1.0
+- name: test-stable-dir
+  version: ^0.1.0
 dev-formulas: []
