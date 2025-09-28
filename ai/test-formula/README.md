@@ -1,3 +1,9 @@
+---
+# GroundZero formula
+formula:
+  name: test-directory-behavior
+---
+
 # G0 GPM CLI
 
 A basic CLI tool built with Node.js, Commander, and TypeScript.

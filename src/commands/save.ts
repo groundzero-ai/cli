@@ -1,28 +1,27 @@
 import { Command } from 'commander';
-import { join, dirname, basename } from 'path';
-import { SaveOptions, CommandResult, FormulaYml, FormulaFile, FormulaDependency } from '../types/index.js';
+import { join, dirname, basename, relative } from 'path';
+import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, FormulaNotFoundError, ValidationError } from '../utils/errors.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
+import { withErrorHandling, ValidationError } from '../utils/errors.js';
+import { getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, DEPENDENCY_ARRAYS, type Platform } from '../constants/index.js';
+import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { calculateFileHash } from '../utils/hash-utils.js';
-import { getPlatformNameFromSource, getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
+import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
 import {
-  detectAllPlatforms,
   getDetectedPlatforms,
   getPlatformDefinition,
   getPlatformDirectoryPaths,
   type PlatformName
 } from '../core/platforms.js';
-import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
+import type { DiscoveredFile } from '../types/index.js';
 import {
   exists,
   readTextFile,
@@ -147,7 +146,7 @@ async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchCon
       commandsDir: platformPaths.commandsDir,
       agentsDir: platformPaths.agentsDir,
       filePatterns: [...definition.filePatterns],
-      registryPath: platform
+      registryPath: '' // Use empty registry path for universal storage
     });
   }
 
@@ -492,10 +491,35 @@ async function discoverFiles(
         : shouldIncludeForPlatformMode(file, frontmatter, platformName, formulaName, formulaDir, inclusionMode === 'platform');
 
       if (shouldInclude) {
+        // Skip template files
+        if (detectTemplateFile(content)) {
+          logger.debug(`Skipping template file: ${file.relativePath}`);
+          return null;
+        }
+
         try {
           const mtime = await getFileMtime(file.fullPath);
           const contentHash = await calculateFileHash(content);
-          const registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
+
+          // For platform mode, check if file should be universal (has matching frontmatter)
+          // Universal files don't get the platform prefix in their registry path
+          let registryPath: string;
+          if (inclusionMode === 'platform' && platformName !== ('ai' as PlatformName) && frontmatter?.formula?.name === formulaName) {
+            // Universal file from platform directory - map into universal subdir (rules/commands/agents)
+            // Compute path relative to the scanned directory (rulesDir/commandsDir/agentsDir)
+            let relativeFromSourceDir = relative(directoryPath, file.fullPath);
+            if (relativeFromSourceDir.startsWith('../')) {
+              // Safety fallback if traversal occurs unexpectedly
+              relativeFromSourceDir = file.relativePath;
+            }
+            if (relativeFromSourceDir.endsWith('.mdc')) {
+              relativeFromSourceDir = relativeFromSourceDir.replace(/\.mdc$/, '.md');
+            }
+            registryPath = registryPathPrefix ? join(registryPathPrefix, relativeFromSourceDir) : relativeFromSourceDir;
+          } else {
+            // Platform-specific file or directory mode - use normal registry path logic
+            registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
+          }
 
           const result: DiscoveredFile = {
             fullPath: file.fullPath,
@@ -591,13 +615,29 @@ async function processPlatformFiles(
 ): Promise<DiscoveredFile[]> {
   const allFiles: DiscoveredFile[] = [];
 
+  // Handle AI directory separately - it's not a platform subdirectory structure
+  if (config.name === PLATFORM_DIRS.AI) {
+    const aiFiles = await discoverFiles(
+      config.rulesDir,
+      formulaName,
+      config.platform,
+      PLATFORM_DIRS.AI, // AI directory uses 'ai' prefix
+      config.filePatterns,
+      'platform',
+      formulaDir
+    );
+    allFiles.push(...aiFiles);
+    return allFiles;
+  }
+
+  // Process platform subdirectories with universal registry paths
   // Process rules directory
   if (config.rulesDir) {
     const rulesFiles = await discoverFiles(
       config.rulesDir,
       formulaName,
       config.platform,
-      config.registryPath || config.name, // Use config.name if registryPath is empty (for AI)
+      PLATFORM_SUBDIRS.RULES, // Universal registry path for rules
       config.filePatterns,
       'platform',
       formulaDir
@@ -611,7 +651,7 @@ async function processPlatformFiles(
       config.commandsDir,
       formulaName,
       config.platform,
-      join(config.registryPath, PLATFORM_SUBDIRS.COMMANDS),
+      PLATFORM_SUBDIRS.COMMANDS, // Universal registry path for commands
       config.filePatterns,
       'platform',
       formulaDir
@@ -625,7 +665,7 @@ async function processPlatformFiles(
       config.agentsDir,
       formulaName,
       config.platform,
-      join(config.registryPath, PLATFORM_SUBDIRS.AGENTS),
+      PLATFORM_SUBDIRS.AGENTS, // Universal registry path for agents
       config.filePatterns,
       'platform',
       formulaDir

@@ -2,12 +2,28 @@
  * Template file utilities for detecting and processing template variables
  */
 
+import { CURSOR_TEMPLATES, GENERAL_TEMPLATES } from './embedded-templates.js';
+
 /**
- * Detect if a file contains template variables
+ * Detect if a file contains template variables or is a known template file
  * Template variables are in the format {{ variableName }}
+ * Also checks against known embedded templates that shouldn't be saved
  */
 export function detectTemplateFile(content: string): boolean {
-  return /\{\{\s*\w+\s*\}\}/.test(content);
+  // Check for template variables
+  if (/\{\{\s*\w+\s*\}\}/.test(content)) {
+    return true;
+  }
+
+  // Check if content matches known embedded templates
+  const allTemplates = { ...CURSOR_TEMPLATES, ...GENERAL_TEMPLATES };
+  for (const templateContent of Object.values(allTemplates)) {
+    if (content.trim() === templateContent.trim()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

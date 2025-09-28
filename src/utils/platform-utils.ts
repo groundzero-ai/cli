@@ -465,6 +465,13 @@ export function getTargetDirectory(targetPath: string, registryPath: string): st
     return join(targetPath, firstPart);
   }
 
+  // Check for universal subdirectories (rules, commands, agents, etc.)
+  const universalSubdirs = Object.values(PLATFORM_SUBDIRS) as string[];
+  if (universalSubdirs.includes(firstPart)) {
+    // Universal file with subdirectory structure - save directly
+    return targetPath;
+  }
+
   // Check for platform-specific subdirectories (commands, agents, etc.)
   for (const platform of ALL_PLATFORMS) {
     const definition = PLATFORM_DEFINITIONS[platform];

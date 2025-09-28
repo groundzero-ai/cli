@@ -166,22 +166,23 @@ function categorizeFormulaFiles(files: Array<{ path: string; content: string }>)
     file.path.startsWith('ai/') && (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path === `ai/${FILE_PATTERNS.FORMULA_YML}`)
   );
   
-  // Platform files - categorize by platform directory structure
+  // Platform files - files in universal subdirectories should be installed to all platforms
+  // that support that subdirectory type
   for (const file of files) {
     // Skip AI files (already handled above)
     if (file.path.startsWith('ai/')) {
       continue;
     }
-    
-    // Check each platform directory
-    for (const [platformKey, platformDir] of Object.entries(PLATFORM_DIRS)) {
-      if (platformKey === 'GROUNDZERO' || platformKey === 'AI') continue; // Skip these
-      
-      if (file.path.startsWith(`${platformDir}/`)) {
+
+    // Check universal subdirectories (rules, commands, agents)
+    const universalSubdirs = Object.values(GROUNDZERO_DIRS) as string[];
+    for (const subdir of universalSubdirs) {
+      if (file.path.startsWith(`${subdir}/`)) {
+        // Universal files get installed to all platforms that support this subdirectory
         categorized.platformFiles.push({
           ...file,
-          platform: platformKey.toLowerCase(),
-          platformDir
+          platform: 'universal', // Mark as universal - will be installed to all applicable platforms
+          platformDir: subdir
         });
         break;
       }
@@ -295,50 +296,104 @@ async function installFormulaToGroundzero(
   // Install platform files to their respective directories
   const platformResults = await Promise.all(
     platformFiles.map(async (file) => {
-      const platform = file.platform as PlatformName;
-      const platformDir = file.platformDir;
-      const platformDefinition = getPlatformDefinition(platform);
-      
-      // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
-      if (platform === PLATFORMS.GEMINICLI && file.path.includes('/commands/') && file.path.endsWith('.toml')) {
-        logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
-        return { installedCount: 0, files: [] };
-      }
-      
-      // Determine target directory based on GROUNDZERO_DIRS mapping
-      let targetDir = join(cwd, platformDir);
-      
-      // Map GROUNDZERO_DIRS to platform-specific subdirectories
-      if (file.path.includes(`/${GROUNDZERO_DIRS.RULES}/`)) {
-        targetDir = join(targetDir, platformDefinition.rulesDir.split('/').pop() || 'rules');
-      } else if (file.path.includes(`/${GROUNDZERO_DIRS.COMMANDS}/`)) {
-        if (platformDefinition.commandsDir) {
-          targetDir = join(targetDir, platformDefinition.commandsDir.split('/').pop() || 'commands');
-        } else {
-          // Skip if platform doesn't support commands
-          logger.debug(`Skipping commands file for platform ${platform} (not supported): ${file.path}`);
+      if (file.platform === 'universal') {
+        // Universal files should be installed to all platforms that support the subdirectory type
+        const subdirType = file.platformDir; // 'rules', 'commands', or 'agents'
+        const supportedPlatforms = await detectPlatforms(cwd);
+
+        // Install to each supported platform
+        const universalResults = await Promise.all(
+          supportedPlatforms.map(async (platform) => {
+            const platformDefinition = getPlatformDefinition(platform as PlatformName);
+
+            // Check if this platform supports the subdirectory type
+            let platformSubdir: string | undefined;
+            if (subdirType === GROUNDZERO_DIRS.RULES) {
+              platformSubdir = platformDefinition.rulesDir.split('/').pop();
+            } else if (subdirType === GROUNDZERO_DIRS.COMMANDS) {
+              platformSubdir = platformDefinition.commandsDir?.split('/').pop();
+            } else if (subdirType === GROUNDZERO_DIRS.AGENTS) {
+              platformSubdir = platformDefinition.agentsDir?.split('/').pop();
+            }
+
+            if (!platformSubdir) {
+              // Platform doesn't support this subdirectory type
+              return { installedCount: 0, files: [] };
+            }
+
+            const platformDir = PLATFORM_DIRS[(platform as PlatformName).toUpperCase() as keyof typeof PLATFORM_DIRS];
+            const targetDir = join(cwd, platformDir, platformSubdir);
+
+            // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
+            if (platform === PLATFORMS.GEMINICLI && subdirType === GROUNDZERO_DIRS.COMMANDS && file.path.endsWith('.toml')) {
+              logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
+              return { installedCount: 0, files: [] };
+            }
+
+            // Use appropriate file pattern for the platform
+            const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+
+            // Filter files by platform-specific patterns
+            if (!file.path.endsWith(filePattern)) {
+              logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
+              return { installedCount: 0, files: [] };
+            }
+
+            return await installFileType([file], targetDir, `${subdirType}/`, installOptions, options.dryRun);
+          })
+        );
+
+        // Combine results from all platforms
+        const totalInstalled = universalResults.reduce((sum, result) => sum + result.installedCount, 0);
+        const allFiles = universalResults.flatMap(result => result.files);
+        return { installedCount: totalInstalled, files: allFiles };
+      } else {
+        // Legacy platform-specific handling (shouldn't happen with new save format)
+        const platform = file.platform as PlatformName;
+        const platformDir = file.platformDir;
+        const platformDefinition = getPlatformDefinition(platform);
+
+        // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
+        if (platform === PLATFORMS.GEMINICLI && file.path.includes('/commands/') && file.path.endsWith('.toml')) {
+          logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
           return { installedCount: 0, files: [] };
         }
-      } else if (file.path.includes(`/${GROUNDZERO_DIRS.AGENTS}/`)) {
-        if (platformDefinition.agentsDir) {
-          targetDir = join(targetDir, platformDefinition.agentsDir.split('/').pop() || 'agents');
-        } else {
-          // Skip if platform doesn't support agents
-          logger.debug(`Skipping agents file for platform ${platform} (not supported): ${file.path}`);
+
+        // Determine target directory based on GROUNDZERO_DIRS mapping
+        let targetDir = join(cwd, platformDir);
+
+        // Map GROUNDZERO_DIRS to platform-specific subdirectories
+        if (file.path.includes(`/${GROUNDZERO_DIRS.RULES}/`)) {
+          targetDir = join(targetDir, platformDefinition.rulesDir.split('/').pop() || 'rules');
+        } else if (file.path.includes(`/${GROUNDZERO_DIRS.COMMANDS}/`)) {
+          if (platformDefinition.commandsDir) {
+            targetDir = join(targetDir, platformDefinition.commandsDir.split('/').pop() || 'commands');
+          } else {
+            // Skip if platform doesn't support commands
+            logger.debug(`Skipping commands file for platform ${platform} (not supported): ${file.path}`);
+            return { installedCount: 0, files: [] };
+          }
+        } else if (file.path.includes(`/${GROUNDZERO_DIRS.AGENTS}/`)) {
+          if (platformDefinition.agentsDir) {
+            targetDir = join(targetDir, platformDefinition.agentsDir.split('/').pop() || 'agents');
+          } else {
+            // Skip if platform doesn't support agents
+            logger.debug(`Skipping agents file for platform ${platform} (not supported): ${file.path}`);
+            return { installedCount: 0, files: [] };
+          }
+        }
+
+        // Use appropriate file pattern for the platform
+        const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
+
+        // Filter files by platform-specific patterns
+        if (!file.path.endsWith(filePattern)) {
+          logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
           return { installedCount: 0, files: [] };
         }
+
+        return await installFileType([file], targetDir, `${platformDir}/`, installOptions, options.dryRun);
       }
-      
-      // Use appropriate file pattern for the platform
-      const filePattern = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
-      
-      // Filter files by platform-specific patterns
-      if (!file.path.endsWith(filePattern)) {
-        logger.debug(`Skipping file with wrong pattern for platform ${platform}: ${file.path}`);
-        return { installedCount: 0, files: [] };
-      }
-      
-      return await installFileType([file], targetDir, `${platformDir}/`, installOptions, options.dryRun);
     })
   );
   
