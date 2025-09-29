@@ -44,7 +44,7 @@ export async function detectPlatforms(targetDir: string): Promise<string[]> {
     .map(result => result.name);
 
   if (detectedPlatforms.length > 0) {
-    logger.info(`Auto-detected platforms: ${detectedPlatforms.join(', ')}`);
+    logger.debug(`Auto-detected platforms: ${detectedPlatforms.join(', ')}`);
   }
 
   return detectedPlatforms;

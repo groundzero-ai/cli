@@ -214,7 +214,7 @@ export async function cleanupPlatformFiles(
   targetDir: string,
   platform: PlatformName,
   formulaName: string,
-  options: { force?: boolean; dryRun?: boolean; skipMemories?: boolean } = {}
+  options: { force?: boolean; dryRun?: boolean } = {}
 ): Promise<{ removedCount: number; files: string[]; errors: string[] }> {
   const paths = getPlatformDirectoryPaths(targetDir);
   const platformPaths = paths[platform];
@@ -238,9 +238,6 @@ export async function cleanupPlatformFiles(
     const filePatterns = getPlatformFilePatterns(platform);
 
     for (const { dir, label, leaf } of subdirs) {
-      if (options.skipMemories && leaf === 'memories') {
-        continue;
-      }
 
       const discovered = await discoverFiles(
         dir,

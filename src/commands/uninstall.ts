@@ -27,7 +27,6 @@ import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaD
  * - Traverses supported subdirs (rules/commands/agents and platform-specific rules)
  * - Deletes files whose frontmatter formula.name matches target
  * - Preserves global groundzero files defined in GLOBAL_PLATFORM_FILES
- * - Honors --keep-data by skipping deletions in memories subdirs
  */
 async function cleanupPlatformFiles(
   targetDir: string,
@@ -44,7 +43,7 @@ async function cleanupPlatformFiles(
       cwd,
       platform as PlatformName,
       formulaName,
-      { dryRun: options.dryRun, skipMemories: options.keepData }
+      { dryRun: options.dryRun }
     );
     cleanedByPlatform[platform] = result.files.map(p => relative(cwd, p).replace(/\\/g, '/'));
   }));
@@ -224,10 +223,6 @@ async function displayDryRunInfo(
   }
 
   console.log(`🧹 Would clean up any obsolete dependency resolution pins`);
-
-  if (options.keepData) {
-    console.log('💾 Keep data mode - this would preserve data files during uninstall');
-  }
 }
 
 /**
@@ -437,7 +432,7 @@ async function uninstallFormulaCommand(
     for (const filePath of aiFilesToRemove) {
       await remove(filePath);
       removedAiFiles.push(relative(groundzeroPath, filePath));
-      logger.info(`Removed AI file: ${filePath}`);
+      logger.debug(`Removed AI file: ${filePath}`);
     }
 
     // Remove empty directories under ai target path
@@ -452,13 +447,13 @@ async function uninstallFormulaCommand(
       // Remove the formula.yml file if it exists
       if (await exists(formulaYmlPath)) {
         await remove(formulaYmlPath);
-        logger.info(`Removed formula.yml file: ${formulaYmlPath}`);
+        logger.debug(`Removed formula.yml file: ${formulaYmlPath}`);
       }
 
       // Remove the formula directory if it exists
       if (await exists(formulaDir)) {
         await remove(formulaDir);
-        logger.info(`Removed formula directory: ${formulaDir}`);
+        logger.debug(`Removed formula directory: ${formulaDir}`);
       }
     }
 
@@ -527,7 +522,6 @@ export function setupUninstallCommand(program: Command): void {
     .argument('<formula-name>', 'name of the formula to uninstall')
     .argument('[target-dir]', 'target directory (defaults to current directory)', '.')
     .option('--dry-run', 'preview changes without applying them')
-    .option('--keep-data', 'keep data files when removing')
     .option('--recursive', 'recursively remove dangling dependencies (formulas not depended upon by any remaining formulas, excluding those listed in cwd formula.yml)')
     .action(withErrorHandling(async (formulaName: string, targetDir: string, options: UninstallOptions) => {
       const result = await uninstallFormulaCommand(formulaName, targetDir, options);

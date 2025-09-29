@@ -99,7 +99,7 @@ export async function remove(path: string): Promise<void> {
   try {
     const stats = await fs.stat(path);
     if (stats.isDirectory()) {
-      await fs.rmdir(path, { recursive: true });
+      await fs.rm(path, { recursive: true });
     } else {
       await fs.unlink(path);
     }
