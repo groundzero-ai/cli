@@ -2,7 +2,7 @@
  * Template file utilities for detecting and processing template variables
  */
 
-import { CURSOR_TEMPLATES, GENERAL_TEMPLATES } from './embedded-templates.js';
+import { RESOURCES_RULES } from './embedded-resources.js';
 
 /**
  * Detect if a file contains template variables or is a known template file
@@ -15,10 +15,9 @@ export function detectTemplateFile(content: string): boolean {
     return true;
   }
 
-  // Check if content matches known embedded templates
-  const allTemplates = { ...CURSOR_TEMPLATES, ...GENERAL_TEMPLATES };
-  for (const templateContent of Object.values(allTemplates)) {
-    if (content.trim() === templateContent.trim()) {
+  // Check if content matches known embedded resources
+  for (const resourceContent of Object.values(RESOURCES_RULES)) {
+    if (content.trim() === resourceContent.trim()) {
       return true;
     }
   }

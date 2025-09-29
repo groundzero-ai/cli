@@ -49,6 +49,8 @@ export const FILE_PATTERNS = {
   HIDDEN_FORMULA_YML: '.formula.yml',
   GROUNDZERO_MDC: 'groundzero.mdc',
   GROUNDZERO_MD: 'groundzero.md',
+  AI_MDC: 'ai.mdc',
+  AI_MD: 'ai.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',
   CLAUDE_MD: 'CLAUDE.md',

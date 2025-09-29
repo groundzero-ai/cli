@@ -26,7 +26,7 @@ import {
   getPlatformDirectoryPaths,
   createPlatformDirectories,
   validatePlatformStructure,
-  getPlatformFilePatterns,
+  getPlatformRulesDirFilePatterns,
   isPlatformCategory,
   getPlatformDescription
 } from '../core/platforms.js';
@@ -112,13 +112,13 @@ export async function findPlatformFiles(
     return [];
   }
   
-  const filePatterns = getPlatformFilePatterns(platform);
+  const rulesDirFilePatterns = getPlatformRulesDirFilePatterns(platform);
   const allFiles = await listFiles(platformPaths.rulesDir);
   const files: Array<{ fullPath: string; relativePath: string; mtime: number }> = [];
   
   // Process files in parallel for better performance
   const filePromises = allFiles
-    .filter(file => filePatterns.some(pattern => file.endsWith(pattern)))
+    .filter(file => rulesDirFilePatterns.some(pattern => file.endsWith(pattern)))
     .map(async (file) => {
       const fullPath = join(platformPaths.rulesDir, file);
       
@@ -235,7 +235,7 @@ export async function cleanupPlatformFiles(
     if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: PLATFORM_SUBDIRS.COMMANDS, leaf: platformPaths.commandsDir.split('/').pop() || '' });
     if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: PLATFORM_SUBDIRS.AGENTS, leaf: platformPaths.agentsDir.split('/').pop() || '' });
 
-    const filePatterns = getPlatformFilePatterns(platform);
+    const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
     for (const { dir, label, leaf } of subdirs) {
 

@@ -30,7 +30,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rulesDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.MEMORIES}`,
     commandsDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.COMMANDS}`,
     agentsDir: `${PLATFORM_DIRS.CODEXCLI}/${PLATFORM_SUBDIRS.AGENTS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'OpenAI Codex CLI - AGENTS.md + .codex/memories/ + .codex/commands + .codex/agents'
   },
   [PLATFORMS.OPENCODE]: {
@@ -41,7 +41,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rulesDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
     commandsDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.COMMANDS}`,
     agentsDir: `${PLATFORM_DIRS.OPENCODE}/${PLATFORM_SUBDIRS.AGENTS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'OpenCode - AGENTS.md + .opencode/memories/ + .opencode/commands + .opencode/agents'
   },
   
@@ -54,7 +54,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rulesDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
     commandsDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.COMMANDS}`,
     agentsDir: `${PLATFORM_DIRS.CLAUDECODE}/${PLATFORM_SUBDIRS.AGENTS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Claude Code - CLAUDE.md + .claude/memories/ + .claude/commands + .claude/agents'
   },
   [PLATFORMS.QWENCODE]: {
@@ -64,7 +64,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootFile: FILE_PATTERNS.QWEN_MD,
     rulesDir: `${PLATFORM_DIRS.QWENCODE}/${PLATFORM_SUBDIRS.MEMORIES}`,
     agentsDir: `${PLATFORM_DIRS.QWENCODE}/${PLATFORM_SUBDIRS.AGENTS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Qwen Code - QWEN.md + .qwen/memories/ + .qwen/agents'
   },
   [PLATFORMS.GEMINICLI]: {
@@ -74,7 +74,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootFile: FILE_PATTERNS.GEMINI_MD,
     rulesDir: `${PLATFORM_DIRS.GEMINICLI}/${PLATFORM_SUBDIRS.MEMORIES}`,
     commandsDir: `${PLATFORM_DIRS.GEMINICLI}/${PLATFORM_SUBDIRS.COMMANDS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Gemini CLI - GEMINI.md + .gemini/memories/ + .gemini/commands (.toml files)'
   },
   [PLATFORMS.WARP]: {
@@ -83,7 +83,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootDir: PLATFORM_DIRS.WARP,
     rootFile: FILE_PATTERNS.WARP_MD,
     rulesDir: `${PLATFORM_DIRS.WARP}/${PLATFORM_SUBDIRS.MEMORIES}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Warp - WARP.md + .warp/memories/'
   },
   
@@ -94,7 +94,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootDir: PLATFORM_DIRS.CURSOR,
     rulesDir: `${PLATFORM_DIRS.CURSOR}/${PLATFORM_SUBDIRS.RULES}`,
     commandsDir: `${PLATFORM_DIRS.CURSOR}/${PLATFORM_SUBDIRS.COMMANDS}`,
-    filePatterns: [FILE_PATTERNS.MDC_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MDC_FILES] as const,
     description: 'Cursor - .cursor/rules/ (*.mdc files) + .cursor/commands'
   },
   [PLATFORMS.CLINE]: {
@@ -102,7 +102,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
     rootDir: PLATFORM_DIRS.CLINE,
     rulesDir: PLATFORM_DIRS.CLINE,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Cline - .clinerules/ (*.md files)'
   },
   [PLATFORMS.ROO]: {
@@ -111,7 +111,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootDir: PLATFORM_DIRS.ROO,
     rulesDir: `${PLATFORM_DIRS.ROO}/${PLATFORM_SUBDIRS.RULES}`,
     commandsDir: `${PLATFORM_DIRS.ROO}/${PLATFORM_SUBDIRS.COMMANDS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Roo Code - .roo/rules/ (*.md files) + .roo/commands'
   },
   [PLATFORMS.WINDSURF]: {
@@ -119,7 +119,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
     rootDir: PLATFORM_DIRS.WINDSURF,
     rulesDir: `${PLATFORM_DIRS.WINDSURF}/${PLATFORM_SUBDIRS.RULES}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Windsurf - .windsurf/rules/ (*.md files)'
   },
   [PLATFORMS.AUGMENT]: {
@@ -128,7 +128,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     rootDir: PLATFORM_DIRS.AUGMENT,
     rulesDir: `${PLATFORM_DIRS.AUGMENT}/${PLATFORM_SUBDIRS.RULES}`,
     commandsDir: `${PLATFORM_DIRS.AUGMENT}/${PLATFORM_SUBDIRS.COMMANDS}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'AugmentCode - .augment/rules/ (*.md files) + .augment/commands'
   },
   [PLATFORMS.KIRO]: {
@@ -136,7 +136,7 @@ export const PLATFORM_DEFINITIONS: Record<PlatformName, PlatformDefinition> = {
     category: PLATFORM_CATEGORIES.RULES_DIRECTORY,
     rootDir: PLATFORM_DIRS.KIRO,
     rulesDir: `${PLATFORM_DIRS.KIRO}/${PLATFORM_SUBDIRS.STEERING}`,
-    filePatterns: [FILE_PATTERNS.MD_FILES] as const,
+    rulesDirFilePatterns: [FILE_PATTERNS.MD_FILES] as const,
     description: 'Kiro IDE - .kiro/steering/ (*.md files)'
   }
 } as const;
@@ -153,7 +153,7 @@ export interface PlatformDefinition {
   rulesDir: string;
   commandsDir?: string;
   agentsDir?: string;
-  filePatterns: readonly string[];
+  rulesDirFilePatterns: readonly string[];
   description: string;
 }
 
@@ -301,10 +301,10 @@ export async function validatePlatformStructure(
 }
 
 /**
- * Get file patterns for a specific platform
+ * Get rules directory file patterns for a specific platform
  */
-export function getPlatformFilePatterns(platform: PlatformName): string[] {
-  return [...PLATFORM_DEFINITIONS[platform].filePatterns];
+export function getPlatformRulesDirFilePatterns(platform: PlatformName): string[] {
+  return [...PLATFORM_DEFINITIONS[platform].rulesDirFilePatterns];
 }
 
 /**

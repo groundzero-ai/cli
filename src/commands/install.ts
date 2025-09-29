@@ -1,33 +1,29 @@
 import { Command } from 'commander';
 import { join, dirname } from 'path';
 import * as semver from 'semver';
-import { InstallOptions, CommandResult, FormulaYml, FormulaDependency, Formula } from '../types/index.js';
+import { InstallOptions, CommandResult, FormulaYml, Formula } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, readResolutions, writeResolutions, cleanupObsoleteResolutions } from '../core/groundzero.js';
+import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, writeResolutions, cleanupObsoleteResolutions } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, ResolvedFormula } from '../core/dependency-resolver.js';
-import { promptFormulaInstallConflict, promptConfirmation } from '../utils/prompts.js';
+import { promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
-import { CURSOR_TEMPLATES, GENERAL_TEMPLATES } from '../utils/embedded-templates.js';
+import { RESOURCES_RULES } from '../utils/embedded-resources.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError, VersionConflictError } from '../utils/errors.js';
-import {
-  parseVersionRange,
-} from '../utils/version-ranges.js';
 import {
   PLATFORM_DIRS,
   PLATFORMS,
   FILE_PATTERNS,
-  PLATFORM_SUBDIRS,
   DEPENDENCY_ARRAYS,
   CONFLICT_RESOLUTION,
   GROUNDZERO_DIRS
 } from '../constants/index.js';
 import {
-  getPlatformDirectoryPaths,
   createPlatformDirectories,
   getPlatformDefinition,
+  getPlatformRulesDirFilePatterns,
   type PlatformName
 } from '../core/platforms.js';
 import {
@@ -36,7 +32,6 @@ import {
 } from '../utils/platform-utils.js';
 import {
   getLocalFormulaYmlPath,
-  getLocalGroundZeroDir,
   getLocalFormulasDir,
   getAIDir
 } from '../utils/paths.js';
@@ -51,9 +46,7 @@ import {
 import {
   withFileOperationErrorHandling,
   withOperationErrorHandling,
-  handleUserCancellation
 } from '../utils/error-handling.js';
-
 
 /**
  * Copy registry formula.yml to local project structure
@@ -75,9 +68,6 @@ async function copyRegistryFormulaYml(
   logger.debug(`Copied registry formula.yml for ${formulaName} to local project`);
 }
 
-
-
-
 /**
  * Create platform directories for detected or selected platforms
  * @param targetDir - Target directory to create platform directories in
@@ -92,10 +82,10 @@ async function createPlatformDirectoriesForInstall(
 }
 
 /**
- * Add groundzero.md file to each platform's rulesDir
- * Uses platform definitions to determine correct file locations
+ * Add groundzero and ai rule files to each platform's rulesDir
+ * Uses platform definitions to determine correct file locations and extensions
  * @param targetDir - Target directory where platform directories exist
- * @param platforms - Array of platform names to add template files for
+ * @param platforms - Array of platform names to add rule files for
  * @param options - Installation options including force flag
  * @returns Object containing arrays of added files, skipped files, and created directories
  */
@@ -104,19 +94,19 @@ async function provideIdeTemplateFiles(
   platforms: string[],
   options: InstallOptions
 ): Promise<{ filesAdded: string[]; skipped: string[]; directoriesCreated: string[] }> {
-  const provided = { 
-    filesAdded: [] as string[], 
-    skipped: [] as string[], 
-    directoriesCreated: [] as string[] 
+  const provided = {
+    filesAdded: [] as string[],
+    skipped: [] as string[],
+    directoriesCreated: [] as string[]
   };
-  
+
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
     const platformDefinition = getPlatformDefinition(platform as PlatformName);
     const rulesDir = join(targetDir, platformDefinition.rulesDir);
-    
-    logger.info(`Adding groundzero file to ${platform} rules directory`);
-    
+
+    logger.info(`Adding rule files to ${platform} rules directory`);
+
     const rulesDirExists = await exists(rulesDir);
     if (!rulesDirExists) {
       provided.directoriesCreated.push(platformDefinition.rulesDir);
@@ -124,30 +114,59 @@ async function provideIdeTemplateFiles(
 
     // Create rules directory (ensureDir handles existing directories gracefully)
     await ensureDir(rulesDir);
-    
-    // Add groundzero file to the platform's rulesDir
-    // Cursor uses .mdc files, all other platforms use .md files
-    const isCursor = platform === PLATFORMS.CURSOR;
-    const fileName = isCursor ? FILE_PATTERNS.GROUNDZERO_MDC : FILE_PATTERNS.GROUNDZERO_MD;
-    const groundzeroFile = join(rulesDir, fileName);
-    const templateContent = isCursor 
-      ? CURSOR_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MDC]
-      : GENERAL_TEMPLATES[FILE_PATTERNS.GROUNDZERO_MD];
-    
-    const fileExists = await exists(groundzeroFile);
-    
-    if (fileExists && !options.force) {
-      provided.skipped.push(`${platformDefinition.rulesDir}/${fileName}`);
-      logger.debug(`Skipped existing ${fileName} in ${platform} rules directory`);
-    } else {
-      await writeTextFile(groundzeroFile, templateContent);
-      provided.filesAdded.push(`${platformDefinition.rulesDir}/${fileName}`);
-      logger.debug(`Added ${fileName} to ${platform} rules directory: ${groundzeroFile}`);
+
+    // Determine file extensions based on platform's rulesDirFilePatterns
+    const filePatterns = getPlatformRulesDirFilePatterns(platform as PlatformName);
+
+    // Derive the primary file extension from patterns (e.g., '.mdc' -> '.mdc', '.md' -> '.md')
+    const getPrimaryExtension = (patterns: string[]): string => {
+      if (patterns.length === 0) {
+        logger.warn(`No file patterns defined for ${platform}, falling back to .md`);
+        return FILE_PATTERNS.MD_FILES;
+      }
+
+      // Use the first pattern and extract extension
+      const firstPattern = patterns[0];
+      const extension = firstPattern.startsWith('.') ? firstPattern : `.${firstPattern}`;
+
+      if (patterns.length > 1) {
+        logger.debug(`Multiple file patterns for ${platform}: ${patterns.join(', ')}. Using primary: ${extension}`);
+      }
+
+      return extension;
+    };
+
+    const primaryExtension = getPrimaryExtension(filePatterns);
+
+    // Generate file names dynamically using the platform's preferred extension
+    const groundzeroFileName = `groundzero${primaryExtension}`;
+    const aiFileName = `ai${primaryExtension}`;
+
+    logger.debug(`Using file extension '${primaryExtension}' for ${platform} based on patterns: ${filePatterns.join(', ')}`);
+
+    // Install both groundzero and ai files
+    const ruleFiles = [
+      { name: groundzeroFileName, content: RESOURCES_RULES['groundzero.md'] },
+      { name: aiFileName, content: RESOURCES_RULES['ai.md'] }
+    ];
+
+    for (const ruleFile of ruleFiles) {
+      const ruleFilePath = join(rulesDir, ruleFile.name);
+      const fileExists = await exists(ruleFilePath);
+
+      if (fileExists && !options.force) {
+        provided.skipped.push(`${platformDefinition.rulesDir}/${ruleFile.name}`);
+        logger.debug(`Skipped existing ${ruleFile.name} in ${platform} rules directory`);
+      } else {
+        await writeTextFile(ruleFilePath, ruleFile.content);
+        provided.filesAdded.push(`${platformDefinition.rulesDir}/${ruleFile.name}`);
+        logger.debug(`Added ${ruleFile.name} to ${platform} rules directory: ${ruleFilePath}`);
+      }
     }
   });
-  
+
   await Promise.all(platformPromises);
-  
+
   return provided;
 }
 

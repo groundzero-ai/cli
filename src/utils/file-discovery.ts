@@ -190,7 +190,7 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
       rulesDir: platformPaths.rulesDir,
       commandsDir: platformPaths.commandsDir,
       agentsDir: platformPaths.agentsDir,
-      filePatterns: [...definition.filePatterns],
+      filePatterns: [...definition.rulesDirFilePatterns],
       registryPath: '' // Use empty registry path for universal storage
     });
   }
@@ -302,7 +302,7 @@ export async function discoverPlatformSubdirsInDirectory(
   platformName: PlatformName
 ): Promise<DiscoveredFile[]> {
   const platformDefinition = getPlatformDefinition(platformName);
-  return processPlatformSubdirectories(sourceDir, formulaName, platformName, [...platformDefinition.filePatterns]);
+  return processPlatformSubdirectories(sourceDir, formulaName, platformName, [...platformDefinition.rulesDirFilePatterns]);
 }
 
 /**
@@ -335,7 +335,7 @@ export async function discoverDirectMdFiles(
     const definition = getPlatformDefinition(platformInfo.platformName);
     const filePatterns = platformInfo.platformName === (PLATFORM_DIRS.AI as PlatformName)
       ? [FILE_PATTERNS.MD_FILES]
-      : [...getPlatformDefinition(platformInfo.platformName).filePatterns];
+      : [...getPlatformDefinition(platformInfo.platformName).rulesDirFilePatterns];
 
     // Determine which universal subdir this directory is under (rules/commands/agents)
     const relativeFromPlatformRoot = platformInfo.relativePath || '';
