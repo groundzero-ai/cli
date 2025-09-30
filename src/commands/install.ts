@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, Formula } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
@@ -18,18 +18,15 @@ import {
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
   CONFLICT_RESOLUTION,
-  GROUNDZERO_DIRS
+  UNIVERSAL_SUBDIRS,
+  type UniversalSubdir,
+  type Platform
 } from '../constants/index.js';
 import {
   createPlatformDirectories,
-  getPlatformDefinition,
-  getPlatformRulesDirFilePatterns,
-  type PlatformName
+  getPlatformDefinition
 } from '../core/platforms.js';
-import {
-  getPlatformSubdirForType,
-  adjustPathForPlatform
-} from '../utils/platform-utils.js';
+import { resolveInstallTargets } from '../utils/platform-mapper.js';
 import {
   getLocalFormulaYmlPath,
   getLocalFormulasDir,
@@ -78,7 +75,7 @@ async function createPlatformDirectoriesForInstall(
   targetDir: string,
   platforms: string[]
 ): Promise<string[]> {
-  return await createPlatformDirectories(targetDir, platforms as PlatformName[]);
+  return await createPlatformDirectories(targetDir, platforms as Platform[]);
 }
 
 /**
@@ -102,47 +99,36 @@ async function provideIdeTemplateFiles(
 
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
-    const platformDefinition = getPlatformDefinition(platform as PlatformName);
-    const rulesDir = join(targetDir, platformDefinition.rulesDir);
+    const platformDefinition = getPlatformDefinition(platform as Platform);
+    const rulesSubdir = platformDefinition.subdirs[UNIVERSAL_SUBDIRS.RULES];
+    const rulesDir = join(targetDir, platformDefinition.rootDir, rulesSubdir?.path || '');
 
     logger.info(`Adding rule files to ${platform} rules directory`);
 
     const rulesDirExists = await exists(rulesDir);
     if (!rulesDirExists) {
-      provided.directoriesCreated.push(platformDefinition.rulesDir);
+      provided.directoriesCreated.push(join(platformDefinition.rootDir, rulesSubdir?.path || ''));
     }
 
     // Create rules directory (ensureDir handles existing directories gracefully)
     await ensureDir(rulesDir);
 
-    // Determine file extensions based on platform's rulesDirFilePatterns
-    const filePatterns = getPlatformRulesDirFilePatterns(platform as PlatformName);
+    // Get platform definition and determine file extensions
+    const definition = platformDefinition;
+    const rulesSubdirFinal = definition.subdirs[UNIVERSAL_SUBDIRS.RULES];
 
-    // Derive the primary file extension from patterns (e.g., '.mdc' -> '.mdc', '.md' -> '.md')
-    const getPrimaryExtension = (patterns: string[]): string => {
-      if (patterns.length === 0) {
-        logger.warn(`No file patterns defined for ${platform}, falling back to .md`);
-        return FILE_PATTERNS.MD_FILES;
-      }
+    if (!rulesSubdirFinal) {
+      logger.warn(`Platform ${platform} does not have rules subdir defined, skipping template files`);
+      return; // Skip this platform
+    }
 
-      // Use the first pattern and extract extension
-      const firstPattern = patterns[0];
-      const extension = firstPattern.startsWith('.') ? firstPattern : `.${firstPattern}`;
+    const writeExt = rulesSubdirFinal!.writeExt;
 
-      if (patterns.length > 1) {
-        logger.debug(`Multiple file patterns for ${platform}: ${patterns.join(', ')}. Using primary: ${extension}`);
-      }
+    // Generate file names using the platform's preferred extension
+    const groundzeroFileName = `groundzero${writeExt}`;
+    const aiFileName = `ai${writeExt}`;
 
-      return extension;
-    };
-
-    const primaryExtension = getPrimaryExtension(filePatterns);
-
-    // Generate file names dynamically using the platform's preferred extension
-    const groundzeroFileName = `groundzero${primaryExtension}`;
-    const aiFileName = `ai${primaryExtension}`;
-
-    logger.debug(`Using file extension '${primaryExtension}' for ${platform} based on patterns: ${filePatterns.join(', ')}`);
+    logger.debug(`Using file extension '${writeExt}' for ${platform} rules subdir`);
 
     // Install both groundzero and ai files
     const ruleFiles = [
@@ -155,11 +141,11 @@ async function provideIdeTemplateFiles(
       const fileExists = await exists(ruleFilePath);
 
       if (fileExists && !options.force) {
-        provided.skipped.push(`${platformDefinition.rulesDir}/${ruleFile.name}`);
+        provided.skipped.push(`${join(platformDefinition.rootDir, rulesSubdir?.path || '')}/${ruleFile.name}`);
         logger.debug(`Skipped existing ${ruleFile.name} in ${platform} rules directory`);
       } else {
         await writeTextFile(ruleFilePath, ruleFile.content);
-        provided.filesAdded.push(`${platformDefinition.rulesDir}/${ruleFile.name}`);
+        provided.filesAdded.push(`${join(platformDefinition.rootDir, rulesSubdir?.path || '')}/${ruleFile.name}`);
         logger.debug(`Added ${ruleFile.name} to ${platform} rules directory: ${ruleFilePath}`);
       }
     }
@@ -174,23 +160,23 @@ async function provideIdeTemplateFiles(
 
 /**
  * Categorize formula files by installation target
- * Handles all 13 platforms with GROUNDZERO_DIRS (rules, commands, agents) mapping
+ * Uses universal subdirs (rules, commands, agents) mapping
  */
 function categorizeFormulaFiles(files: Array<{ path: string; content: string }>) {
   const categorized: {
     aiFiles: Array<{ path: string; content: string }>;
-    platformFiles: Array<{ path: string; content: string; platform: string; platformDir: string }>;
+    universalFiles: Array<{ path: string; content: string; universalSubdir: UniversalSubdir; relPath: string }>;
   } = {
     aiFiles: [],
-    platformFiles: []
+    universalFiles: []
   };
-  
+
   // AI files (files under /ai in the formula from local registry) - same as before
-  categorized.aiFiles = files.filter(file => 
+  categorized.aiFiles = files.filter(file =>
     file.path.startsWith('ai/') && (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path === `ai/${FILE_PATTERNS.FORMULA_YML}`)
   );
-  
-  // Platform files - files in universal subdirectories should be installed to all platforms
+
+  // Universal files - files in universal subdirectories should be installed to all platforms
   // that support that subdirectory type
   for (const file of files) {
     // Skip AI files (already handled above)
@@ -199,20 +185,20 @@ function categorizeFormulaFiles(files: Array<{ path: string; content: string }>)
     }
 
     // Check universal subdirectories (rules, commands, agents)
-    const universalSubdirs = Object.values(GROUNDZERO_DIRS) as string[];
-    for (const subdir of universalSubdirs) {
+    for (const subdir of Object.values(UNIVERSAL_SUBDIRS) as UniversalSubdir[]) {
       if (file.path.startsWith(`${subdir}/`)) {
-        // Universal files get installed to all platforms that support this subdirectory
-        categorized.platformFiles.push({
+        // Extract relative path within the subdir
+        const relPath = file.path.substring(subdir.length + 1); // +1 for the slash
+        categorized.universalFiles.push({
           ...file,
-          platform: 'universal', // Mark as universal - will be installed to all applicable platforms
-          platformDir: subdir
+          universalSubdir: subdir,
+          relPath
         });
         break;
       }
     }
   }
-  
+
   return categorized;
 }
 
@@ -376,58 +362,58 @@ async function installFormula(
   const installOptions = forceOverwrite ? { ...options, force: true } : options;
 
   // Categorize and install files
-  const { aiFiles, platformFiles } = categorizeFormulaFiles(formula.files);
+  const { aiFiles, universalFiles } = categorizeFormulaFiles(formula.files);
 
   // Install AI files directly to ai/ (not ai/formulaName/)
   const aiResult = await installFileType(aiFiles, aiGroundzeroPath, 'ai/', installOptions, options.dryRun, formulaName);
-  
-  // Install platform files to their respective directories
-  const platformResults = await Promise.all(
-    platformFiles.map(async (file) => {
-      // Universal files should be installed to all platforms that support the subdirectory type
-      const subdirType = file.platformDir; // 'rules', 'commands', or 'agents'
-      const supportedPlatforms = await detectPlatforms(cwd);
 
-      // Install to each supported platform
-      const universalResults = await Promise.all(
-        supportedPlatforms.map(async (platform) => {
-          const platformDefinition = getPlatformDefinition(platform as PlatformName);
+  // Install universal files to all detected platforms that support each subdir
+  const universalResults = await Promise.all(
+    universalFiles.map(async (file) => {
+      const targets = await resolveInstallTargets(cwd, {
+        universalSubdir: file.universalSubdir,
+        relPath: file.relPath,
+        sourceExt: file.path.endsWith('.toml') ? '.toml' : FILE_PATTERNS.MD_FILES
+      });
 
-          // Check if this platform supports the subdirectory type
-          const platformSubdir = getPlatformSubdirForType(platform as PlatformName, subdirType);
-          if (!platformSubdir) {
-            // Platform doesn't support this subdirectory type
-            return { installedCount: 0, files: [] };
-          }
+      // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
+      const filteredTargets = targets.filter(target => {
+        if (target.platform === PLATFORMS.GEMINICLI &&
+            file.universalSubdir === UNIVERSAL_SUBDIRS.COMMANDS &&
+            file.path.endsWith('.toml')) {
+          logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
+          return false;
+        }
+        return true;
+      });
 
-          const platformDir = PLATFORM_DIRS[(platform as PlatformName).toUpperCase() as keyof typeof PLATFORM_DIRS];
-          const targetDir = join(cwd, platformDir, platformSubdir);
-
-          // Special case: Skip GEMINICLI commands files (they are .toml files, not .md files)
-          if (platform === PLATFORMS.GEMINICLI && subdirType === GROUNDZERO_DIRS.COMMANDS && file.path.endsWith('.toml')) {
-            logger.debug(`Skipping GEMINICLI .toml commands file: ${file.path}`);
-            return { installedCount: 0, files: [] };
-          }
-
-          // Adjust file path for platform-specific requirements (extension conversion)
-          const platformAdjustedFile = {
+      // Install to each target
+      const targetResults = await Promise.all(
+        filteredTargets.map(async (target) => {
+          const adjustedFile = {
             ...file,
-            path: adjustPathForPlatform(platform as PlatformName, file.path)
+            path: basename(target.absFile) // Use just the filename for the target path
           };
-
-          return await installFileType([platformAdjustedFile], targetDir, `${subdirType}/`, installOptions, options.dryRun, formulaName);
+          return await installFileType(
+            [adjustedFile],
+            target.absDir,
+            `${file.universalSubdir}/`,
+            installOptions,
+            options.dryRun,
+            formulaName
+          );
         })
       );
 
-      // Combine results from all platforms
-      const totalInstalled = universalResults.reduce((sum, result) => sum + result.installedCount, 0);
-      const allFiles = universalResults.flatMap(result => result.files);
+      // Combine results from all targets
+      const totalInstalled = targetResults.reduce((sum, result) => sum + result.installedCount, 0);
+      const allFiles = targetResults.flatMap(result => result.files);
       return { installedCount: totalInstalled, files: allFiles };
     })
   );
   
-  const totalInstalled = aiResult.installedCount + platformResults.reduce((sum, result) => sum + result.installedCount, 0);
-  const allFiles = [...aiResult.files, ...platformResults.flatMap(result => result.files)];
+  const totalInstalled = aiResult.installedCount + universalResults.reduce((sum, result) => sum + result.installedCount, 0);
+  const allFiles = [...aiResult.files, ...universalResults.flatMap(result => result.files)];
   
   return {
     installedCount: totalInstalled,

@@ -25,7 +25,7 @@ import {
   PLATFORM_DIRS,
   PLATFORM_NAMES,
   FILE_PATTERNS,
-  PLATFORM_SUBDIRS,
+  UNIVERSAL_SUBDIRS,
   DEPENDENCY_ARRAYS
 } from '../constants/index.js';
 
@@ -150,7 +150,7 @@ async function detectPlatformStatus(cwd: string): Promise<PlatformStatus[]> {
     {
       name: PLATFORM_NAMES.CURSOR,
       dir: join(cwd, PLATFORM_DIRS.CURSOR),
-      templateFile: join(cwd, PLATFORM_DIRS.CURSOR, PLATFORM_SUBDIRS.RULES, FILE_PATTERNS.GROUNDZERO_MDC)
+      templateFile: join(cwd, PLATFORM_DIRS.CURSOR, UNIVERSAL_SUBDIRS.RULES, FILE_PATTERNS.GROUNDZERO_MDC)
     },
     {
       name: PLATFORM_NAMES.CLAUDECODE,

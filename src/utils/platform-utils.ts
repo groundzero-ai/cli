@@ -17,9 +17,10 @@ import {
 import { logger } from './logger.js';
 import { parseMarkdownFrontmatter } from './formula-yml.js';
 import {
-  ALL_PLATFORMS,
+  getAllPlatforms,
   PLATFORM_DEFINITIONS,
   PLATFORM_CATEGORIES,
+  type Platform,
   type PlatformName,
   type PlatformDetectionResult,
   detectAllPlatforms,
@@ -27,73 +28,32 @@ import {
   createPlatformDirectories,
   validatePlatformStructure,
   getPlatformRulesDirFilePatterns,
-  isPlatformCategory,
   getPlatformDescription
 } from '../core/platforms.js';
-import { PLATFORMS, PLATFORM_DIRS, PLATFORM_SUBDIRS, GROUNDZERO_DIRS, FILE_PATTERNS, GLOBAL_PLATFORM_FILES } from '../constants/index.js';
+import { PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS, FILE_PATTERNS, GLOBAL_PLATFORM_FILES } from '../constants/index.js';
 import { discoverFiles } from './file-discovery.js';
 
 /**
  * Enhanced platform detection with detailed information
  */
 export async function detectPlatformsWithDetails(cwd: string): Promise<{
-  detected: PlatformName[];
+  detected: Platform[];
   allResults: PlatformDetectionResult[];
-  byCategory: Record<string, PlatformName[]>;
+  byCategory: Record<string, Platform[]>;
 }> {
   const allResults = await detectAllPlatforms(cwd);
   const detected = allResults.filter(result => result.detected).map(result => result.name);
-  
-  // Group by category - get category from platform definitions
+
+  // Group by category - simplified since we removed categories
   const byCategory = allResults.reduce((acc, result) => {
     if (result.detected) {
-      const definition = PLATFORM_DEFINITIONS[result.name];
-      const category = definition.category;
-      acc[category] = acc[category] || [];
-      acc[category].push(result.name);
+      acc['detected'] = acc['detected'] || [];
+      acc['detected'].push(result.name);
     }
     return acc;
-  }, {} as Record<string, PlatformName[]>);
-  
-  return { detected, allResults, byCategory };
-}
+  }, {} as Record<string, Platform[]>);
 
-/**
- * Get platform-specific search directories for save command
- */
-export function getPlatformSearchDirectories(): Array<{
-  name: string;
-  basePath: string;
-  registryPath: string;
-  category: string;
-}> {
-  const searchDirs = [
-    { name: 'ai', basePath: 'ai', registryPath: 'ai', category: 'ai' }
-  ];
-  
-  // Add all platform directories - optimized with single loop
-  for (const platform of ALL_PLATFORMS) {
-    const definition = PLATFORM_DEFINITIONS[platform];
-    let basePath = '';
-    
-    if (isPlatformCategory(platform, PLATFORM_CATEGORIES.AGENTS_MEMORIES) || 
-        isPlatformCategory(platform, PLATFORM_CATEGORIES.ROOT_MEMORIES)) {
-      basePath = 'rootFile' in definition ? definition.rootFile! : '';
-    } else if (isPlatformCategory(platform, PLATFORM_CATEGORIES.RULES_DIRECTORY)) {
-      basePath = definition.rulesDir;
-    }
-    
-    if (basePath) {
-      searchDirs.push({
-        name: platform,
-        basePath,
-        registryPath: platform,
-        category: definition.category
-      });
-    }
-  }
-  
-  return searchDirs;
+  return { detected, allResults, byCategory };
 }
 
 /**
@@ -101,17 +61,17 @@ export function getPlatformSearchDirectories(): Array<{
  */
 export async function findPlatformFiles(
   cwd: string,
-  platform: PlatformName,
+  platform: Platform,
   formulaName?: string
 ): Promise<Array<{ fullPath: string; relativePath: string; mtime: number }>> {
   const paths = getPlatformDirectoryPaths(cwd);
   const platformPaths = paths[platform];
-  
+
   // Check if platform directory exists
   if (!(await exists(platformPaths.rulesDir))) {
     return [];
   }
-  
+
   const rulesDirFilePatterns = getPlatformRulesDirFilePatterns(platform);
   const allFiles = await listFiles(platformPaths.rulesDir);
   const files: Array<{ fullPath: string; relativePath: string; mtime: number }> = [];
@@ -153,66 +113,11 @@ export async function findPlatformFiles(
 }
 
 /**
- * Install platform-specific files
- */
-export async function installPlatformFiles(
-  sourceFiles: Array<{ path: string; content: string }>,
-  targetDir: string,
-  platform: PlatformName,
-  options: { force?: boolean; dryRun?: boolean } = {}
-): Promise<{ installedCount: number; files: string[]; conflicts: string[] }> {
-  const paths = getPlatformDirectoryPaths(targetDir);
-  const platformPaths = paths[platform];
-  const installedFiles: string[] = [];
-  const conflicts: string[] = [];
-  
-  // Ensure target directory exists
-  if (!options.dryRun) {
-    await ensureDir(platformPaths.rulesDir);
-  }
-  
-  // Process files in parallel for better performance
-  const filePromises = sourceFiles.map(async (file) => {
-    const targetPath = join(platformPaths.rulesDir, basename(file.path));
-    
-    // Check for conflicts
-    if (await exists(targetPath) && !options.force) {
-      conflicts.push(targetPath);
-      if (!options.dryRun) {
-        logger.debug(`Skipping existing file: ${targetPath}`);
-      }
-      return null;
-    }
-    
-    if (!options.dryRun) {
-      try {
-        await writeTextFile(targetPath, file.content);
-        logger.debug(`Installed platform file: ${targetPath}`);
-      } catch (error) {
-        logger.error(`Failed to install file ${targetPath}: ${error}`);
-        return null;
-      }
-    }
-    
-    return targetPath;
-  });
-  
-  const results = await Promise.all(filePromises);
-  const validFiles = results.filter((file): file is string => file !== null);
-  
-  return { 
-    installedCount: validFiles.length, 
-    files: validFiles, 
-    conflicts 
-  };
-}
-
-/**
  * Clean up platform-specific files
  */
 export async function cleanupPlatformFiles(
   targetDir: string,
-  platform: PlatformName,
+  platform: Platform,
   formulaName: string,
   options: { force?: boolean; dryRun?: boolean } = {}
 ): Promise<{ removedCount: number; files: string[]; errors: string[] }> {
@@ -231,9 +136,9 @@ export async function cleanupPlatformFiles(
   try {
     // Build subdir list: rules, commands, agents
     const subdirs: Array<{ dir: string; label: string; leaf: string }> = [];
-    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: PLATFORM_SUBDIRS.RULES, leaf: platformPaths.rulesDir.split('/').pop() || '' });
-    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: PLATFORM_SUBDIRS.COMMANDS, leaf: platformPaths.commandsDir.split('/').pop() || '' });
-    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: PLATFORM_SUBDIRS.AGENTS, leaf: platformPaths.agentsDir.split('/').pop() || '' });
+    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: UNIVERSAL_SUBDIRS.RULES, leaf: platformPaths.rulesDir.split('/').pop() || '' });
+    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: platformPaths.commandsDir.split('/').pop() || '' });
+    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: platformPaths.agentsDir.split('/').pop() || '' });
 
     const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
@@ -283,7 +188,7 @@ export async function cleanupPlatformFiles(
  */
 export async function getPlatformStatus(cwd: string): Promise<{
   platforms: Array<{
-    name: PlatformName;
+    name: Platform;
     detected: boolean;
     directoryExists: boolean;
     filesPresent: boolean;
@@ -308,7 +213,7 @@ export async function getPlatformStatus(cwd: string): Promise<{
   const platformPromises = results.map(async (result) => {
     let fileCount = 0;
     const definition = PLATFORM_DEFINITIONS[result.name];
-    
+
     if (result.detected) {
       try {
         const files = await findPlatformFiles(cwd, result.name);
@@ -317,14 +222,14 @@ export async function getPlatformStatus(cwd: string): Promise<{
         logger.debug(`Failed to count files for ${result.name}: ${error}`);
       }
     }
-    
+
     return {
       name: result.name,
       detected: result.detected,
       directoryExists: result.detected, // Since we only check rootDir existence now
       filesPresent: fileCount > 0,
       fileCount,
-      category: definition.category,
+      category: 'platform',
       description: getPlatformDescription(result.name)
     };
   });
@@ -350,7 +255,7 @@ export async function validateAllPlatforms(cwd: string): Promise<{
   invalid: Array<{ platform: PlatformName; issues: string[] }>;
 }> {
   // Process all platforms in parallel for better performance
-  const validationPromises = ALL_PLATFORMS.map(async (platform) => {
+  const validationPromises = getAllPlatforms().map(async (platform) => {
     const validation = await validatePlatformStructure(cwd, platform);
     return { platform, validation };
   });
@@ -418,7 +323,7 @@ export function getPlatformNameFromSource(sourceDir: string): string {
   }
 
   // Use platform definitions to find matching platform
-  for (const platform of ALL_PLATFORMS) {
+  for (const platform of getAllPlatforms()) {
     const definition = PLATFORM_DEFINITIONS[platform];
 
     // Check if sourceDir includes the platform's root directory
@@ -426,15 +331,12 @@ export function getPlatformNameFromSource(sourceDir: string): string {
       return platform;
     }
 
-    // Also check rules, commands, and agents directories if they exist
-    if (definition.rulesDir && sourceDir.includes(definition.rulesDir)) {
-      return platform;
-    }
-    if (definition.commandsDir && sourceDir.includes(definition.commandsDir)) {
-      return platform;
-    }
-    if (definition.agentsDir && sourceDir.includes(definition.agentsDir)) {
-      return platform;
+    // Also check subdirs if they exist
+    for (const [subdirName, subdirDef] of Object.entries(definition.subdirs)) {
+      const subdirPath = join(definition.rootDir, subdirDef.path);
+      if (sourceDir.includes(subdirPath)) {
+        return platform;
+      }
     }
   }
 
@@ -443,23 +345,22 @@ export function getPlatformNameFromSource(sourceDir: string): string {
   return parts[parts.length - 1] || 'unknown';
 }
 
+
 /**
  * Get the appropriate target directory for saving a file based on its registry path
- * Uses platform definitions for accurate directory mapping
+ * Legacy function for backward compatibility - simplified version
  */
 export function getTargetDirectory(targetPath: string, registryPath: string): string {
   const { join } = path;
-  const MARKDOWN_EXTENSION = '.md';
 
-  if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {
+  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
     return targetPath;
   }
 
-  // Split the registry path to understand the structure
+  // Check if the first part is a known platform directory
   const pathParts = registryPath.split('/');
   const firstPart = pathParts[0];
 
-  // Check if the first part is a known platform directory
   const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
   if (platformDirectories.includes(firstPart)) {
     // Special case: AI directory should not be prefixed again since it's already the base
@@ -469,35 +370,8 @@ export function getTargetDirectory(targetPath: string, registryPath: string): st
     return join(targetPath, firstPart);
   }
 
-  // Check for universal subdirectories (rules, commands, agents, etc.)
-  const universalSubdirs = Object.values(PLATFORM_SUBDIRS) as string[];
-  if (universalSubdirs.includes(firstPart)) {
-    // Universal file with subdirectory structure - save directly
-    return targetPath;
-  }
-
-  // Check for platform-specific subdirectories (commands, agents, etc.)
-  for (const platform of ALL_PLATFORMS) {
-    const definition = PLATFORM_DEFINITIONS[platform];
-
-    // Check commands directory
-    if (definition.commandsDir && registryPath.includes(definition.commandsDir)) {
-      return join(targetPath, definition.rootDir, PLATFORM_SUBDIRS.COMMANDS);
-    }
-
-    // Check agents directory
-    if (definition.agentsDir && registryPath.includes(definition.agentsDir)) {
-      return join(targetPath, definition.rootDir, PLATFORM_SUBDIRS.AGENTS);
-    }
-
-    // Check rules directory (main platform directory)
-    if (registryPath.includes(definition.rootDir)) {
-      return join(targetPath, definition.rootDir);
-    }
-  }
-
-  // Default to AI directory for markdown files
-  return join(targetPath, PLATFORM_DIRS.AI);
+  // For universal subdirs, return target path as-is
+  return targetPath;
 }
 
 /**
@@ -506,17 +380,17 @@ export function getTargetDirectory(targetPath: string, registryPath: string): st
  */
 export function getTargetFilePath(targetDir: string, registryPath: string): string {
   const { join, basename } = path;
-  const MARKDOWN_EXTENSION = '.md';
 
-  if (!registryPath.endsWith(MARKDOWN_EXTENSION)) {
+  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
     return join(targetDir, registryPath);
   }
 
   // Check if the file is in a platform-specific commands directory
   // If so, just use the basename (they already have the correct structure)
-  for (const platform of ALL_PLATFORMS) {
+  for (const platform of getAllPlatforms()) {
     const definition = PLATFORM_DEFINITIONS[platform];
-    if (definition.commandsDir && registryPath.includes(definition.commandsDir)) {
+    const commandsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS];
+    if (commandsSubdir && registryPath.includes(join(definition.rootDir, commandsSubdir.path))) {
       return join(targetDir, basename(registryPath));
     }
   }
@@ -525,38 +399,3 @@ export function getTargetFilePath(targetDir: string, registryPath: string): stri
   return join(targetDir, registryPath);
 }
 
-/**
- * Get the appropriate subdirectory name for a platform based on universal subdirectory type
- * Maps GROUNDZERO_DIRS (rules/commands/agents) to platform-specific subdirectory names
- */
-export function getPlatformSubdirForType(platform: PlatformName, subdirType: string): string | undefined {
-  const definition = PLATFORM_DEFINITIONS[platform];
-
-  if (subdirType === GROUNDZERO_DIRS.RULES) {
-    return definition.rulesDir.split('/').pop();
-  } else if (subdirType === GROUNDZERO_DIRS.COMMANDS) {
-    return definition.commandsDir?.split('/').pop();
-  } else if (subdirType === GROUNDZERO_DIRS.AGENTS) {
-    return definition.agentsDir?.split('/').pop();
-  }
-
-  return undefined;
-}
-
-/**
- * Adjust file path for platform-specific requirements, primarily handling extension conversion
- * Converts .md/.mdc extensions based on platform expectations while preserving the rest of the path
- */
-export function adjustPathForPlatform(platform: PlatformName, relativePath: string): string {
-  const expectedExt = platform === PLATFORMS.CURSOR ? FILE_PATTERNS.MDC_FILES : FILE_PATTERNS.MD_FILES;
-
-  // Convert extension if needed
-  if (relativePath.endsWith(FILE_PATTERNS.MD_FILES) && expectedExt === FILE_PATTERNS.MDC_FILES) {
-    return relativePath.replace(/\.md$/, FILE_PATTERNS.MDC_FILES);
-  } else if (relativePath.endsWith(FILE_PATTERNS.MDC_FILES) && expectedExt === FILE_PATTERNS.MD_FILES) {
-    return relativePath.replace(/\.mdc$/, FILE_PATTERNS.MD_FILES);
-  }
-
-  // Return unchanged if already correct or not a markdown file
-  return relativePath;
-}

@@ -5,6 +5,8 @@
  */
 
 export const PLATFORMS = {
+  // Special AI directory platform
+  AI: 'ai',
   // AGENTS.md + MEMORIES platforms
   CODEXCLI: 'codexcli',
   OPENCODE: 'opencode',
@@ -49,8 +51,6 @@ export const FILE_PATTERNS = {
   HIDDEN_FORMULA_YML: '.formula.yml',
   GROUNDZERO_MDC: 'groundzero.mdc',
   GROUNDZERO_MD: 'groundzero.md',
-  AI_MDC: 'ai.mdc',
-  AI_MD: 'ai.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',
   CLAUDE_MD: 'CLAUDE.md',
@@ -59,16 +59,9 @@ export const FILE_PATTERNS = {
   WARP_MD: 'WARP.md'
 } as const;
 
-export const GROUNDZERO_DIRS = {
+// Universal subdirectory names used across all platforms
+export const UNIVERSAL_SUBDIRS = {
   RULES: 'rules',
-  COMMANDS: 'commands',
-  AGENTS: 'agents'
-} as const;
-
-export const PLATFORM_SUBDIRS = {
-  RULES: 'rules',
-  MEMORIES: 'memories',
-  STEERING: 'steering',
   COMMANDS: 'commands',
   AGENTS: 'agents'
 } as const;
@@ -113,7 +106,7 @@ export const GLOBAL_PLATFORM_FILES = {
 export type Platform = typeof PLATFORMS[keyof typeof PLATFORMS];
 export type PlatformDir = typeof PLATFORM_DIRS[keyof typeof PLATFORM_DIRS];
 export type FilePattern = typeof FILE_PATTERNS[keyof typeof FILE_PATTERNS];
-export type PlatformSubdir = typeof PLATFORM_SUBDIRS[keyof typeof PLATFORM_SUBDIRS];
+export type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
 export type FormulaDir = typeof FORMULA_DIRS[keyof typeof FORMULA_DIRS];
 export type DependencyArray = typeof DEPENDENCY_ARRAYS[keyof typeof DEPENDENCY_ARRAYS];
 export type ConflictResolution = typeof CONFLICT_RESOLUTION[keyof typeof CONFLICT_RESOLUTION];
