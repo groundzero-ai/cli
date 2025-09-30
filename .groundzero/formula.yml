@@ -5,8 +5,6 @@ formulas:
   version: ^0.1.1
 - name: scalable-nestjs-mongodb
   version: ^0.1.0
-- name: formula-main
-  version: ^0.1.0
 - name: test-bug-check
   version: ^0.1.1
 - name: my-test-formula

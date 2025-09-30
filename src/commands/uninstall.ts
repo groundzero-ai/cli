@@ -153,18 +153,6 @@ async function displayDryRunInfo(
     }
   }
 
-  if (aiFilesToRemove.length > 0) {
-    console.log(`\n🗑️  AI files to remove (${aiFilesToRemove.length}):`);
-    const preview = aiFilesToRemove.slice(0, 10);
-    for (const f of preview) {
-      console.log(`├── ${f}`);
-    }
-    if (aiFilesToRemove.length > preview.length) {
-      console.log(`… and ${aiFilesToRemove.length - preview.length} more`);
-    }
-  } else {
-    console.log(`\n🗑️  AI files to remove: none`);
-  }
 
   // Check formula.yml files that would be removed
   const formulasDir = getLocalFormulasDir(targetDir);
@@ -204,7 +192,16 @@ async function displayDryRunInfo(
       platformCleanup[platform].push(...files);
     }
   }
-  displayPlatformCleanupInfo(platformCleanup);
+
+  // Display total files that would be removed
+  const allFilesToRemove = [...aiFilesToRemove];
+  for (const platformFiles of Object.values(platformCleanup)) {
+    allFilesToRemove.push(...platformFiles);
+  }
+  console.log(`🗑️  Files to remove: ${allFilesToRemove.length}`);
+  for (const file of allFilesToRemove) {
+    console.log(`   ├── ${file}`);
+  }
 
   // Check formula.yml updates
   const configPaths = [
@@ -225,29 +222,6 @@ async function displayDryRunInfo(
   console.log(`🧹 Would clean up any obsolete dependency resolution pins`);
 }
 
-/**
- * Display platform cleanup information
- */
-function displayPlatformCleanupInfo(platformCleanup: Record<string, string[]>): void {
-  const platforms = Object.keys(platformCleanup);
-  const any = platforms.some(p => (platformCleanup[p] || []).length > 0);
-  if (any) {
-    console.log('Platform files that would be cleaned up:');
-    for (const p of platforms) {
-      const files = platformCleanup[p];
-      if (files && files.length > 0) {
-        console.log(`├── ${p}: ${files.join(', ')}`);
-      }
-    }
-  } else {
-    console.log('Platform files: No formula-specific platform files to clean up');
-    const preserved = Object.values(GLOBAL_PLATFORM_FILES);
-    if (preserved.length > 0) {
-      console.log('├── Preserved global files:');
-      for (const f of preserved) console.log(`   ├── ${f}`);
-    }
-  }
-}
 
 /**
  * Display uninstall success information
@@ -264,20 +238,24 @@ function displayUninstallSuccess(
 ): void {
   console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
-  
-  const aiRemovalCount = removedAiFiles.length;
-  console.log(`🗑️  Removed AI files: ${aiRemovalCount}`);
-  if (aiRemovalCount > 0) {
-    // Show up to first 10 entries to keep output concise
-    const preview = removedAiFiles.slice(0, 10);
-    for (const f of preview) {
-      console.log(`   ├── ${f}`);
-    }
-    if (removedAiFiles.length > preview.length) {
-      console.log(`   … and ${removedAiFiles.length - preview.length} more`);
-    }
+
+  // Collect all removed files
+  const allRemovedFiles: string[] = [];
+
+  // Add AI files
+  allRemovedFiles.push(...removedAiFiles);
+
+  // Add platform files individually
+  for (const platformFiles of Object.values(platformCleanup)) {
+    allRemovedFiles.push(...platformFiles);
   }
-  
+
+  // Display removed files count and list
+  console.log(`🗑️  Removed files: ${allRemovedFiles.length}`);
+  for (const file of allRemovedFiles) {
+    console.log(`   ├── ${file}`);
+  }
+
   // Report formula.yml updates
   const successfulRemovals = Object.entries(ymlRemovalResults).filter(([, success]) => success);
   const failedRemovals = Object.entries(ymlRemovalResults).filter(([, success]) => !success);
@@ -300,25 +278,6 @@ function displayUninstallSuccess(
     console.log(`🧹 Cleaned up obsolete resolution pins: ${cleanedResolutions.length}`);
     for (const dep of cleanedResolutions) {
       console.log(`   ├── ${dep}`);
-    }
-  }
-
-  // Report platform cleanup
-  const platforms = Object.keys(platformCleanup);
-  const any = platforms.some(p => (platformCleanup[p] || []).length > 0);
-  if (any) {
-    console.log(`🧹 Cleaned up platform files:`);
-    for (const p of platforms) {
-      const files = platformCleanup[p];
-      if (files && files.length > 0) {
-        console.log(`   ├── ${p}: ${files.join(', ')}`);
-      }
-    }
-  } else {
-    console.log(`🧹 Platform files: No formula-specific files to clean up`);
-    const preserved = Object.values(GLOBAL_PLATFORM_FILES);
-    if (preserved.length > 0) {
-      for (const f of preserved) console.log(`   ├── Preserved: ${f}`);
     }
   }
 }
@@ -405,7 +364,7 @@ async function uninstallFormulaCommand(
 
   // Dry run mode
   if (options.dryRun) {
-    const relAiFiles = aiFilesToRemove.map(p => relative(groundzeroPath, p));
+    const relAiFiles = aiFilesToRemove.map(p => relative(cwd, p));
     await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, relAiFiles, formulasToRemove);
     
     const platformCleanup = await cleanupPlatformFiles(cwd, formulaName, { ...options, dryRun: true });
@@ -431,7 +390,7 @@ async function uninstallFormulaCommand(
     // Remove AI files (main + dangling dependencies)
     for (const filePath of aiFilesToRemove) {
       await remove(filePath);
-      removedAiFiles.push(relative(groundzeroPath, filePath));
+      removedAiFiles.push(relative(cwd, filePath));
       logger.debug(`Removed AI file: ${filePath}`);
     }
 
