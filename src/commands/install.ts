@@ -103,8 +103,6 @@ async function provideIdeTemplateFiles(
     const rulesSubdir = platformDefinition.subdirs[UNIVERSAL_SUBDIRS.RULES];
     const rulesDir = join(targetDir, platformDefinition.rootDir, rulesSubdir?.path || '');
 
-    logger.info(`Adding rule files to ${platform} rules directory`);
-
     const rulesDirExists = await exists(rulesDir);
     if (!rulesDirExists) {
       provided.directoriesCreated.push(join(platformDefinition.rootDir, rulesSubdir?.path || ''));
@@ -276,12 +274,12 @@ async function installFileType(
     if (dryRun) {
       if (!fileExists) {
         logger.debug(`Would install ${pathPrefix.slice(0, -1)} file: ${relativePath}`);
-        installedFiles.push(pathPrefix === 'ai/' ? relativePath : `${pathPrefix.slice(0, -1)}/${relativePath}`);
+        installedFiles.push(`${pathPrefix.slice(0, -1)}/${relativePath}`);
         installedCount++;
       } else if (options.force || autoOverwrite) {
         const reason = options.force ? 'force' : 'matching frontmatter';
         logger.debug(`Would overwrite ${pathPrefix.slice(0, -1)} file: ${relativePath} (${reason})`);
-        installedFiles.push(pathPrefix === 'ai/' ? relativePath : `${pathPrefix.slice(0, -1)}/${relativePath}`);
+        installedFiles.push(`${pathPrefix.slice(0, -1)}/${relativePath}`);
         installedCount++;
       } else if (needsPrompt) {
         logger.debug(`Would prompt before overwriting existing file: ${targetPath} (${promptReason})`);
@@ -394,10 +392,14 @@ async function installFormula(
             ...file,
             path: basename(target.absFile) // Use just the filename for the target path
           };
+          // Use platform-aware path prefix for proper reporting
+          const platformDef = getPlatformDefinition(target.platform);
+          const rulesSubdir = platformDef.subdirs[file.universalSubdir];
+          const platformPathPrefix = join(platformDef.rootDir, rulesSubdir?.path || file.universalSubdir) + '/';
           return await installFileType(
             [adjustedFile],
             target.absDir,
-            `${file.universalSubdir}/`,
+            platformPathPrefix,
             installOptions,
             options.dryRun,
             formulaName
@@ -707,10 +709,10 @@ async function processResolvedFormulas(
   targetDir: string,
   options: InstallOptions,
   forceOverwriteFormulas?: Set<string>
-): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; overwritten: boolean }> }> {
+): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> }> {
   let installedCount = 0;
   let skippedCount = 0;
-  const groundzeroResults: Array<{ name: string; filesInstalled: number; overwritten: boolean }> = [];
+  const groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> = [];
   
   for (const resolved of resolvedFormulas) {
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.SKIPPED) {
@@ -738,6 +740,7 @@ async function processResolvedFormulas(
     groundzeroResults.push({
       name: resolved.name,
       filesInstalled: groundzeroResult.installedCount,
+      files: groundzeroResult.files,
       overwritten: groundzeroResult.overwritten
     });
     
@@ -928,7 +931,7 @@ async function installFormulaCommand(
   version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  logger.info(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
+  logger.debug(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
   
   await ensureRegistryDirectories();
   
@@ -1036,7 +1039,7 @@ async function installFormulaCommand(
     console.log('✅ Dependency tree re-resolved with correct versions');
   }
     
-  displayDependencyTree(finalResolvedFormulas);
+  displayDependencyTree(finalResolvedFormulas, true);
   
   // Check if formula.yml exists (cache the result for later use)
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
@@ -1071,12 +1074,26 @@ async function installFormulaCommand(
 
   // Add formula to formula.yml if it exists and we have a main formula
   if (formulaYmlExists && mainFormula) {
-    await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version);
+    await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
   }
   
   // Provide IDE-specific template files
   const ideTemplateResult = await provideIdeTemplateFiles(cwd, finalPlatforms, options);
   
+  // Collect all added files
+  const allAddedFiles: string[] = [];
+
+  // Add AI files from groundzero results
+  groundzeroResults.forEach(result => {
+    allAddedFiles.push(...result.files);
+  });
+
+  // Add main formula files (if any were installed)
+  // Note: installMainFormulaFiles doesn't return file paths, so we'll skip this for now
+
+  // Add IDE template files
+  allAddedFiles.push(...ideTemplateResult.filesAdded);
+
   // Calculate total groundzero files
   const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled, 0);
   
@@ -1092,7 +1109,8 @@ async function installFormulaCommand(
     { platforms: finalPlatforms, created: createdDirs },
     ideTemplateResult,
     options,
-    mainFormula
+    mainFormula,
+    allAddedFiles
   );
   
   return {

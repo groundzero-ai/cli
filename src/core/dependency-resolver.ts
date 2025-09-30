@@ -329,7 +329,8 @@ export async function resolveDependencies(
 /**
  * Display dependency tree to user
  */
-export function displayDependencyTree(resolvedFormulas: ResolvedFormula[]): void {
+export function displayDependencyTree(resolvedFormulas: ResolvedFormula[], silent: boolean = false): void {
+  if (silent) return;
   const root = resolvedFormulas.find(f => f.isRoot);
   if (!root) return;
   

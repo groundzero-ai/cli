@@ -95,29 +95,32 @@ export function displayInstallationResults(
   platformResult: { platforms: string[]; created: string[] },
   ideTemplateResult: { filesAdded: string[]; skipped: string[]; directoriesCreated: string[] },
   options: any,
-  mainFormula?: any
+  mainFormula?: any,
+  allAddedFiles?: string[]
 ): void {
-  const cwd = process.cwd();
-
-  console.log(`\n✓ Formula '${formulaName}' and ${resolvedFormulas.length - 1} dependencies installed`);
-  console.log(`📁 Target directory: ${getAIDir(cwd)}`);
-  console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
-  console.log(`✅ Installed: ${installedCount}, ⏭️ Skipped: ${skippedCount}`);
-
-  if (mainFilesInstalled > 0) {
-    console.log(`📄 Main formula files installed: ${mainFilesInstalled}`);
-  }
-
-  console.log(`📝 Total files added to ai: ${totalGroundzeroFiles}`);
-
-  if (mainFileConflicts.length > 0) {
-    console.log(`⚠️  Overwrote ${mainFileConflicts.length} existing main files`);
-  }
-
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  // Build installation summary
+  let summaryText = `✓ Installed ${formulaName}`;
   if (mainFormula) {
-    const dependencyType = options.dev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
-    console.log(`📋 Added to ${dependencyType} in .groundzero/formula.yml: ${formulaName}@${mainFormula.version}`);
+    summaryText += `@${mainFormula.version}`;
+  }
+
+  const dependencyFormulas = resolvedFormulas.filter(f => !f.isRoot);
+  if (dependencyFormulas.length > 0) {
+    const dependencyVersions = dependencyFormulas.map(f => `${f.name}@${f.version}`).join(', ');
+    summaryText += ` and dependencies: ${dependencyVersions}`;
+  } else {
+    summaryText += ` and ${resolvedFormulas.length - 1} dependencies`;
+  }
+
+  console.log(`\n${summaryText}`);
+  console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
+
+  // Show detailed file list
+  if (allAddedFiles && allAddedFiles.length > 0) {
+    console.log(`📝 Added files: ${allAddedFiles.length}`);
+    for (const file of allAddedFiles) {
+      console.log(`   ├── ${file}`);
+    }
   }
 
   // Platform and IDE template output
@@ -127,17 +130,5 @@ export function displayInstallationResults(
 
   if (ideTemplateResult.directoriesCreated.length > 0) {
     console.log(`📁 Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
-  }
-
-  if (platformResult.platforms.length > 0) {
-    console.log(`🎯 Detected platforms: ${platformResult.platforms.join(', ')}`);
-  }
-
-  if (ideTemplateResult.filesAdded.length > 0) {
-    console.log(`📝 Added groundzero.md files: ${ideTemplateResult.filesAdded.join(', ')}`);
-  }
-
-  if (ideTemplateResult.skipped.length > 0) {
-    console.log(`⏭️  Skipped existing IDE files: ${ideTemplateResult.skipped.join(', ')}`);
   }
 }

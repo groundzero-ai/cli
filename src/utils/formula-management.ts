@@ -55,11 +55,12 @@ export async function createBasicFormulaYml(cwd: string): Promise<FormulaYml | n
  * Shared utility for both install and save commands
  */
 export async function addFormulaToYml(
-  cwd: string, 
-  formulaName: string, 
-  formulaVersion: string, 
+  cwd: string,
+  formulaName: string,
+  formulaVersion: string,
   isDev: boolean = false,
-  originalVersion?: string // The original version/range that was requested
+  originalVersion?: string, // The original version/range that was requested
+  silent: boolean = false
 ): Promise<void> {
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
@@ -119,12 +120,16 @@ export async function addFormulaToYml(
   
   if (existingIndex >= 0) {
     targetArrayRef[existingIndex] = dependency;
-    logger.info(`Updated existing formula dependency: ${formulaName}@${formulaVersion}`);
-    console.log(`✓ Updated ${formulaName}@${formulaVersion} in main formula.yml`);
+    if (!silent) {
+      logger.info(`Updated existing formula dependency: ${formulaName}@${formulaVersion}`);
+      console.log(`✓ Updated ${formulaName}@${formulaVersion} in main formula.yml`);
+    }
   } else {
     targetArrayRef.push(dependency);
-    logger.info(`Added new formula dependency: ${formulaName}@${formulaVersion}`);
-    console.log(`✓ Added ${formulaName}@${formulaVersion} to main formula.yml`);
+    if (!silent) {
+      logger.info(`Added new formula dependency: ${formulaName}@${formulaVersion}`);
+      console.log(`✓ Added ${formulaName}@${formulaVersion} to main formula.yml`);
+    }
   }
   
   await writeFormulaYml(formulaYmlPath, config);

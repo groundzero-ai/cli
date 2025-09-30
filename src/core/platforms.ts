@@ -4,7 +4,7 @@
  * for all 13 supported AI coding platforms
  */
 
-import { join } from 'path';
+import { join, relative } from 'path';
 import { exists, ensureDir, listFiles } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir, type PlatformDir } from '../constants/index.js';
@@ -373,9 +373,12 @@ export async function createPlatformDirectories(
     const platformPaths = paths[platform];
 
     try {
-      await ensureDir(platformPaths.rulesDir);
-      created.push(platformPaths.rulesDir);
-      logger.debug(`Created platform directory: ${platformPaths.rulesDir}`);
+      const dirExists = await exists(platformPaths.rulesDir);
+      if (!dirExists) {
+        await ensureDir(platformPaths.rulesDir);
+        created.push(relative(cwd, platformPaths.rulesDir));
+        logger.debug(`Created platform directory: ${platformPaths.rulesDir}`);
+      }
     } catch (error) {
       logger.error(`Failed to create platform directory ${platformPaths.rulesDir}: ${error}`);
     }
