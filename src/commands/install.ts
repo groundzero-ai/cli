@@ -388,9 +388,11 @@ async function installFormula(
       // Install to each target
       const targetResults = await Promise.all(
         filteredTargets.map(async (target) => {
+          // Calculate relative path from platform subdir root to preserve directory structure
+          const relativePath = target.absFile.substring(target.absDir.length + 1); // +1 for the slash
           const adjustedFile = {
             ...file,
-            path: basename(target.absFile) // Use just the filename for the target path
+            path: relativePath
           };
           // Use platform-aware path prefix for proper reporting
           const platformDef = getPlatformDefinition(target.platform);

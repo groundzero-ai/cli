@@ -26,8 +26,7 @@ export function mapUniversalToPlatform(
   const absDir = join(definition.rootDir, subdirDef.path);
 
   // Build the absolute file path with correct extension
-  const fileName = basename(relPath);
-  const baseName = fileName.replace(/\.[^.]+$/, ''); // Remove any existing extension
+  const baseName = relPath.replace(/\.[^.]+$/, ''); // Remove any existing extension from full relPath
   const targetFileName = baseName + subdirDef.writeExt;
   const absFile = join(absDir, targetFileName);
 
