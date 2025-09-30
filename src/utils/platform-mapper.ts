@@ -1,6 +1,6 @@
 import { join, basename } from 'path';
-import { getPlatformDefinition, getDetectedPlatforms, type Platform } from '../core/platforms.js';
-import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Platform } from '../core/platforms.js';
+import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir, PLATFORM_DIRS } from '../constants/index.js';
 
 /**
  * Platform Mapper Module
@@ -99,4 +99,85 @@ export async function resolveInstallTargets(
   }
 
   return targets;
+}
+
+/**
+ * Get all platform subdirectories for a given platform and working directory
+ */
+export function getAllPlatformSubdirs(
+  platform: Platform,
+  cwd: string
+): { rulesDir: string; commandsDir?: string; agentsDir?: string; rootDir: string } {
+  const definition = getPlatformDefinition(platform);
+  const rulesSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.RULES];
+
+  const result: any = {
+    rootDir: join(cwd, definition.rootDir),
+    rulesDir: join(cwd, definition.rootDir, rulesSubdir?.path || '')
+  };
+
+  if (definition.rootFile) {
+    result.rootFile = join(cwd, definition.rootFile);
+  }
+
+  const commandsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS];
+  if (commandsSubdir) {
+    result.commandsDir = join(cwd, definition.rootDir, commandsSubdir.path);
+  }
+
+  const agentsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.AGENTS];
+  if (agentsSubdir) {
+    result.agentsDir = join(cwd, definition.rootDir, agentsSubdir.path);
+  }
+
+  return result;
+}
+
+/**
+ * Get the appropriate target directory for saving a file based on its registry path
+ * Uses platform definitions for scalable platform detection
+ */
+export function resolveTargetDirectory(targetPath: string, registryPath: string): string {
+  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
+    return targetPath;
+  }
+
+  // Check if the first part is a known platform directory
+  const pathParts = registryPath.split('/');
+  const firstPart = pathParts[0];
+
+  const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
+  if (platformDirectories.includes(firstPart)) {
+    // Special case: AI directory should not be prefixed again since it's already the base
+    if (firstPart === PLATFORM_DIRS.AI) {
+      return targetPath;
+    }
+    return join(targetPath, firstPart);
+  }
+
+  // For universal subdirs, return target path as-is
+  return targetPath;
+}
+
+/**
+ * Get the appropriate target file path for saving
+ * Handles platform-specific file naming conventions using platform definitions
+ */
+export function resolveTargetFilePath(targetDir: string, registryPath: string): string {
+  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
+    return join(targetDir, registryPath);
+  }
+
+  // Check if the file is in a platform-specific commands directory
+  // If so, just use the basename (they already have the correct structure)
+  for (const platform of getAllPlatforms()) {
+    const definition = getPlatformDefinition(platform);
+    const commandsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS];
+    if (commandsSubdir && registryPath.includes(join(definition.rootDir, commandsSubdir.path))) {
+      return join(targetDir, basename(registryPath));
+    }
+  }
+
+  // For all other files, preserve the full relative path structure
+  return join(targetDir, registryPath);
 }

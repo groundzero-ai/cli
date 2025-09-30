@@ -26,7 +26,7 @@ import {
   createPlatformDirectories,
   getPlatformDefinition
 } from '../core/platforms.js';
-import { resolveInstallTargets } from '../utils/platform-mapper.js';
+import { resolveInstallTargets, mapUniversalToPlatform } from '../utils/platform-mapper.js';
 import {
   getLocalFormulaYmlPath,
   getLocalFormulasDir,
@@ -99,28 +99,28 @@ async function provideIdeTemplateFiles(
 
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
-    const platformDefinition = getPlatformDefinition(platform as Platform);
-    const rulesSubdir = platformDefinition.subdirs[UNIVERSAL_SUBDIRS.RULES];
-    const rulesDir = join(targetDir, platformDefinition.rootDir, rulesSubdir?.path || '');
+    // Use centralized platform mapping to get the rules directory path
+    const { absDir: rulesDirRelative } = mapUniversalToPlatform(platform as Platform, UNIVERSAL_SUBDIRS.RULES, '');
+    const rulesDir = join(targetDir, rulesDirRelative);
 
     const rulesDirExists = await exists(rulesDir);
     if (!rulesDirExists) {
-      provided.directoriesCreated.push(join(platformDefinition.rootDir, rulesSubdir?.path || ''));
+      provided.directoriesCreated.push(rulesDirRelative);
     }
 
     // Create rules directory (ensureDir handles existing directories gracefully)
     await ensureDir(rulesDir);
 
     // Get platform definition and determine file extensions
-    const definition = platformDefinition;
-    const rulesSubdirFinal = definition.subdirs[UNIVERSAL_SUBDIRS.RULES];
+    const platformDefinition = getPlatformDefinition(platform as Platform);
+    const rulesSubdirFinal = platformDefinition.subdirs[UNIVERSAL_SUBDIRS.RULES];
 
     if (!rulesSubdirFinal) {
       logger.warn(`Platform ${platform} does not have rules subdir defined, skipping template files`);
       return; // Skip this platform
     }
 
-    const writeExt = rulesSubdirFinal!.writeExt;
+    const writeExt = rulesSubdirFinal.writeExt;
 
     // Generate file names using the platform's preferred extension
     const groundzeroFileName = `groundzero${writeExt}`;
@@ -139,11 +139,11 @@ async function provideIdeTemplateFiles(
       const fileExists = await exists(ruleFilePath);
 
       if (fileExists && !options.force) {
-        provided.skipped.push(`${join(platformDefinition.rootDir, rulesSubdir?.path || '')}/${ruleFile.name}`);
+        provided.skipped.push(`${rulesDirRelative}/${ruleFile.name}`);
         logger.debug(`Skipped existing ${ruleFile.name} in ${platform} rules directory`);
       } else {
         await writeTextFile(ruleFilePath, ruleFile.content);
-        provided.filesAdded.push(`${join(platformDefinition.rootDir, rulesSubdir?.path || '')}/${ruleFile.name}`);
+        provided.filesAdded.push(`${rulesDirRelative}/${ruleFile.name}`);
         logger.debug(`Added ${ruleFile.name} to ${platform} rules directory: ${ruleFilePath}`);
       }
     }

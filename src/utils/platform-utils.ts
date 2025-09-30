@@ -32,6 +32,7 @@ import {
 } from '../core/platforms.js';
 import { PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS, FILE_PATTERNS, GLOBAL_PLATFORM_FILES } from '../constants/index.js';
 import { discoverFiles } from './file-discovery.js';
+import { resolveTargetDirectory, resolveTargetFilePath } from './platform-mapper.js';
 
 /**
  * Enhanced platform detection with detailed information
@@ -348,54 +349,17 @@ export function getPlatformNameFromSource(sourceDir: string): string {
 
 /**
  * Get the appropriate target directory for saving a file based on its registry path
- * Legacy function for backward compatibility - simplified version
+ * Delegates to centralized platform mapping for consistency
  */
 export function getTargetDirectory(targetPath: string, registryPath: string): string {
-  const { join } = path;
-
-  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
-    return targetPath;
-  }
-
-  // Check if the first part is a known platform directory
-  const pathParts = registryPath.split('/');
-  const firstPart = pathParts[0];
-
-  const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
-  if (platformDirectories.includes(firstPart)) {
-    // Special case: AI directory should not be prefixed again since it's already the base
-    if (firstPart === PLATFORM_DIRS.AI) {
-      return targetPath;
-    }
-    return join(targetPath, firstPart);
-  }
-
-  // For universal subdirs, return target path as-is
-  return targetPath;
+  return resolveTargetDirectory(targetPath, registryPath);
 }
 
 /**
  * Get the appropriate target file path for saving
- * Handles platform-specific file naming conventions using platform definitions
+ * Delegates to centralized platform mapping for consistency
  */
 export function getTargetFilePath(targetDir: string, registryPath: string): string {
-  const { join, basename } = path;
-
-  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
-    return join(targetDir, registryPath);
-  }
-
-  // Check if the file is in a platform-specific commands directory
-  // If so, just use the basename (they already have the correct structure)
-  for (const platform of getAllPlatforms()) {
-    const definition = PLATFORM_DEFINITIONS[platform];
-    const commandsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS];
-    if (commandsSubdir && registryPath.includes(join(definition.rootDir, commandsSubdir.path))) {
-      return join(targetDir, basename(registryPath));
-    }
-  }
-
-  // For all other files, preserve the full relative path structure
-  return join(targetDir, registryPath);
+  return resolveTargetFilePath(targetDir, registryPath);
 }
 
