@@ -17,6 +17,7 @@ import { resolveFileConflicts } from '../utils/conflict-resolution.js';
 import { discoverFilesForPattern } from '../utils/file-discovery.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
+import { postSavePlatformSync } from '../utils/platform-sync.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -314,9 +315,20 @@ async function saveFormulaCommand(
     return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
   }
 
+  // Sync files across detected platforms
+  const syncResult = await postSavePlatformSync(cwd, formulaFiles);
+
   // Finalize the save operation
   await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version);
   console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
+
+  // Display platform sync results
+  if (syncResult.created.length > 0) {
+    console.log(`🔄 Platform sync created ${syncResult.created.length} files:`);
+    for (const createdFile of syncResult.created) {
+      console.log(`   ├── ${createdFile}`);
+    }
+  }
 
   return { success: true, data: formulaConfig };
 }
