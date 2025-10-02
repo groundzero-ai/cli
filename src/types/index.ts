@@ -163,6 +163,9 @@ export interface SaveOptions {
   version?: string;        // Specify version explicitly
   setLatest?: boolean;     // Mark this version as latest (for display purposes)
   bump?: 'patch' | 'minor' | 'major';  // Auto-bump version type
+  include?: string[];
+  includeDev?: string[];
+  skipProjectLink?: boolean;
 }
 
 // Registry types

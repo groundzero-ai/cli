@@ -14,7 +14,10 @@ import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../uti
 import { promptConfirmation } from '../utils/prompts.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
-import { discoverFilesForPattern } from '../utils/file-discovery.js';
+import { discoverFilesForPattern, findFormulas } from '../utils/file-discovery.js';
+import { getInstalledFormulaVersion } from '../core/groundzero.js';
+import { createCaretRange } from '../utils/version-ranges.js';
+import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
@@ -263,6 +266,34 @@ async function saveFormulaCommand(
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
+  // Early include/dev-include validation and pre-save (only for top-level invocations)
+  const includeList = options?.include ?? [];
+  const includeDevList = options?.includeDev ?? [];
+  const hasIncludes = includeList.length > 0 || includeDevList.length > 0;
+
+  if (hasIncludes) {
+    // Validate existence first
+    const uniqueNames = new Set<string>([...includeList, ...includeDevList]);
+    for (const dep of uniqueNames) {
+      const matches = await findFormulas(dep);
+      if (!matches || matches.length === 0) {
+        throw new ValidationError(`${dep} not found, please create or install it first.`);
+      }
+    }
+
+    // Pre-save all included formulas first (skip linking to avoid premature writes)
+    for (const dep of uniqueNames) {
+      const res = await saveFormulaCommand(dep, undefined, undefined, {
+        force: options?.force,
+        bump: options?.bump,
+        skipProjectLink: true
+      });
+      if (!res.success) {
+        return res;
+      }
+    }
+  }
+
   // Parse inputs to determine the pattern being used
   const { name, version: explicitVersion, isDirectory, directoryPath, isExplicitPair } = parseFormulaInputs(formulaName, directory);
 
@@ -294,6 +325,47 @@ async function saveFormulaCommand(
   // Update formula config with new version
   formulaConfig = { ...formulaConfig, version: targetVersion };
 
+  // Inject includes into this formula's own formula.yml (dependencies)
+  if (hasIncludes) {
+    // Ensure arrays exist
+    if (!formulaConfig.formulas) formulaConfig.formulas = [];
+    if (!formulaConfig['dev-formulas']) formulaConfig['dev-formulas'] = [];
+
+    // Helper to upsert dependency into a target array
+    const upsertDependency = (arr: { name: string; version: string }[], name: string, versionRange: string) => {
+      const idx = arr.findIndex(d => d.name === name);
+      if (idx >= 0) {
+        arr[idx] = { name, version: versionRange };
+      } else {
+        arr.push({ name, version: versionRange });
+      }
+    };
+
+    // Build caret versions from installed or latest local registry
+    const computeCaretRange = async (dep: string): Promise<string> => {
+      const installed = await getInstalledFormulaVersion(dep, cwd);
+      let version = installed || await getLatestFormulaVersion(dep) || DEFAULT_VERSION;
+      const base = extractBaseVersion(version);
+      return createCaretRange(base);
+    };
+
+    // First: add normal includes to formulas
+    for (const dep of includeList) {
+      const range = await computeCaretRange(dep);
+      upsertDependency(formulaConfig.formulas!, dep, range);
+    }
+
+    // Then: add dev includes to dev-formulas and remove from formulas if present
+    for (const dep of includeDevList) {
+      const range = await computeCaretRange(dep);
+      upsertDependency((formulaConfig as any)['dev-formulas']!, dep, range);
+      const idx = formulaConfig.formulas!.findIndex(d => d.name === dep);
+      if (idx >= 0) {
+        formulaConfig.formulas!.splice(idx, 1);
+      }
+    }
+  }
+
   // Determine source directory for file discovery
   const sourceDir = (isExplicitPair || isDirectory) && directoryPath
     ? await resolveSourceDirectory(directoryPath, isExplicitPair, isDirectory)
@@ -322,7 +394,9 @@ async function saveFormulaCommand(
   const syncResult = await postSavePlatformSync(cwd, formulaFiles);
 
   // Finalize the save operation
-  await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
+  if (!options?.skipProjectLink) {
+    await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
+  }
   console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
   if (formulaFiles.length > 0) {
     const savedPaths = formulaFiles.map(f => f.path);
@@ -598,6 +672,8 @@ export function setupSaveCommand(program: Command): void {
       'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
+    .option('--include <names...>', 'Include formulas into main formula.yml')
+    .option('--include-dev <names...>', 'Include dev formulas into main formula.yml')
     .action(withErrorHandling(async (formulaName: string, directory?: string, versionType?: string, options?: SaveOptions) => {
       // Smart argument detection: 'stable' as second argument is treated as version type
       let actualDirectory = directory;
