@@ -54,7 +54,7 @@ const LOG_PREFIXES = {
   SAVED: '✅ Saved',
   UPDATED: '✓ Updated frontmatter in',
   EXPLICIT_VERSION: '🎯 Using explicit version:',
-  PRERELEASE: '🎯 No version found, setting to prerelease:',
+  PRERELEASE: '🎯 New formula, setting to prerelease:',
   BUMP_STABLE: '🎯 Bumping to stable version:',
   BUMP_PRERELEASE: '🎯 Bumping to prerelease version:',
   CONVERT_STABLE: '🎯 Converting to stable version:',
@@ -239,10 +239,7 @@ async function processDiscoveredFiles(
   console.log(`${LOG_PREFIXES.FILES} ${discoveredFiles.length} ${LOG_PREFIXES.FILES_SUFFIX}`);
 
   // Resolve file conflicts (keep latest mtime)
-  const resolvedFiles = await resolveFileConflicts(discoveredFiles, formulaConfig.version);
-  if (resolvedFiles.length !== discoveredFiles.length) {
-    console.log(`${LOG_PREFIXES.RESOLVED} ${resolvedFiles.length} files`);
-  }
+  const resolvedFiles = await resolveFileConflicts(discoveredFiles, formulaConfig.version, /* silent */ true);
 
   // Create formula files array
   return await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
@@ -309,7 +306,13 @@ async function saveFormulaCommand(
   const formulaFiles = await processDiscoveredFiles(formulaYmlPath, formulaConfig, discoveredFiles);
 
   // Save formula to local registry
-  const saveResult = await saveFormulaToRegistry(formulaConfig, formulaFiles, formulaYmlPath, options?.force);
+  const saveResult = await saveFormulaToRegistry(
+    formulaConfig,
+    formulaFiles,
+    formulaYmlPath,
+    options?.force,
+    /* silent */ true
+  );
 
   if (!saveResult.success) {
     return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
@@ -319,8 +322,16 @@ async function saveFormulaCommand(
   const syncResult = await postSavePlatformSync(cwd, formulaFiles);
 
   // Finalize the save operation
-  await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version);
+  await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
   console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
+  if (formulaFiles.length > 0) {
+    const savedPaths = formulaFiles.map(f => f.path);
+    const sortedSaved = [...savedPaths].sort((a, b) => a.localeCompare(b));
+    console.log(`📄 Saved ${sortedSaved.length} files:`);
+    for (const savedPath of sortedSaved) {
+      console.log(`   ├── ${savedPath}`);
+    }
+  }
 
   // Display platform sync results
   if (syncResult.created.length > 0) {
@@ -527,7 +538,8 @@ async function saveFormulaToRegistry(
   config: FormulaYml, 
   files: FormulaFile[], 
   formulaYmlPath: string,
-  force?: boolean
+  force?: boolean,
+  silent?: boolean
 ): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
   try {
     const targetPath = getFormulaVersionPath(config.name, config.version);
@@ -558,7 +570,9 @@ async function saveFormulaToRegistry(
     
     await Promise.all(savePromises);
     
-    logger.info(`Formula '${config.name}@${config.version}' saved to local registry`);
+    if (!silent) {
+      logger.info(`Formula '${config.name}@${config.version}' saved to local registry`);
+    }
     return { success: true, updatedConfig: config };
   } catch (error) {
     logger.error(`Failed to save formula: ${error}`);

@@ -31,7 +31,8 @@ interface FileSelectionOption {
  */
 export async function resolveFileConflicts(
   discoveredFiles: DiscoveredFile[],
-  targetVersion?: string
+  targetVersion?: string,
+  silent?: boolean
 ): Promise<DiscoveredFile[]> {
   // Group files by their target registry path
   const fileGroups = new Map<string, DiscoveredFile[]>();
@@ -69,8 +70,8 @@ export async function resolveFileConflicts(
         resolvedFiles.push(updatedFile);
       }
 
-      // Log resolution decisions
-      logConflictResolution(registryPath, files, analysisResult);
+      // Log resolution decisions (can be silenced)
+      logConflictResolution(registryPath, files, analysisResult, silent);
     }
   }
 
@@ -552,8 +553,12 @@ function analyzeNormalConflictsStandard(files: DiscoveredFile[]): ContentAnalysi
 export function logConflictResolution(
   registryPath: string,
   originalFiles: DiscoveredFile[],
-  analysisResult: ContentAnalysisResult
+  analysisResult: ContentAnalysisResult,
+  silent?: boolean
 ): void {
+  if (silent) {
+    return;
+  }
   const totalFiles = originalFiles.length;
   const universalCount = analysisResult.universalFiles.length;
   const platformSpecificCount = analysisResult.platformSpecificFiles.length;
