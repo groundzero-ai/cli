@@ -11,7 +11,7 @@ import { promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
 import { RESOURCES_RULES } from '../utils/embedded-resources.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, VersionConflictError, UserCancellationError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
   PLATFORM_DIRS,
   PLATFORMS,
@@ -954,6 +954,15 @@ async function installFormulaCommand(
         updatedConstraints
       );
       resolvedFormulas = overrideResolvedFormulas;
+    } else if (
+      error instanceof FormulaNotFoundError ||
+      (error instanceof Error && (
+        error.message.includes('not available in local registry') ||
+        (error.message.includes('Formula') && error.message.includes('not found'))
+      ))
+    ) {
+      console.log('❌ Formula not found');
+      return { success: false, error: 'Formula not found' };
     } else {
       throw error;
     }
@@ -1092,6 +1101,10 @@ export function setupInstallCommand(program: Command): void {
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
       const result = await installCommand(formulaName, targetDir, options);
       if (!result.success) {
+        if (result.error === 'Formula not found') {
+          // Handled case: already printed minimal message, do not bubble to global handler
+          return;
+        }
         throw new Error(result.error || 'Installation operation failed');
       }
     }));
