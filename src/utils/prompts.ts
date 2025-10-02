@@ -46,9 +46,10 @@ export async function promptConfirmation(message: string, initial: boolean = fal
 /**
  * Prompt for overwrite confirmation with specific formula context
  */
-export async function promptFormulaOverwrite(formulaName: string): Promise<boolean> {
+export async function promptFormulaOverwrite(formulaName: string, existingVersion?: string): Promise<boolean> {
+  const versionSuffix = existingVersion ? ` (${existingVersion})` : '';
   return await promptConfirmation(
-    `Formula '${formulaName}' already exists. Overwrite?`,
+    `Formula '${formulaName}' already exists${versionSuffix}. Overwrite all files?`,
     false
   );
 }

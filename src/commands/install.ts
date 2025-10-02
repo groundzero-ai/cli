@@ -46,6 +46,22 @@ import {
 } from '../utils/error-handling.js';
 
 /**
+ * Get currently installed version from .groundzero/formulas/<formula>/formula.yml
+ */
+async function getInstalledFormulaVersion(cwd: string, formulaName: string): Promise<string | undefined> {
+  try {
+    const formulaYmlPath = join(getLocalFormulasDir(cwd), formulaName, FILE_PATTERNS.FORMULA_YML);
+    if (await exists(formulaYmlPath)) {
+      const config = await parseFormulaYml(formulaYmlPath);
+      return config.version;
+    }
+  } catch {
+    // ignore parse errors; treat as unknown
+  }
+  return undefined;
+}
+
+/**
  * Copy registry formula.yml to local project structure
  * @param cwd - Current working directory
  * @param formulaName - Name of the formula to copy
@@ -864,9 +880,13 @@ async function checkAndHandleFormulaConflict(
   
   // Existing formula found, get version info from dependency tree
   const versionInfo = await getVersionInfoFromDependencyTree(formulaName, resolvedFormulas);
-  const existingVersion = existingCheck.version || 'unknown';
+  const existingVersion = existingCheck.version || await getInstalledFormulaVersion(cwd, formulaName);
   
-  logger.info(`Found existing formula '${formulaName}' v${existingVersion} in ${existingCheck.location}`);
+  if (existingVersion) {
+    logger.debug(`Found existing formula '${formulaName}' v${existingVersion} in ${existingCheck.location}`);
+  } else {
+    logger.debug(`Found existing formula '${formulaName}' in ${existingCheck.location}`);
+  }
   
   if (options.dryRun) {
     // In dry run mode, proceed without forcing; per-file logic will report decisions
@@ -902,9 +922,13 @@ async function checkAndHandleAllFormulaConflicts(
     
     if (existingCheck.found) {
       const versionInfo = await getVersionInfoFromDependencyTree(resolved.name, resolvedFormulas);
-      const existingVersion = existingCheck.version || 'unknown';
+      const existingVersion = existingCheck.version || await getInstalledFormulaVersion(cwd, resolved.name);
       
-      logger.info(`Found existing formula '${resolved.name}' v${existingVersion} in ${existingCheck.location}`);
+      if (existingVersion) {
+        logger.debug(`Found existing formula '${resolved.name}' v${existingVersion} in ${existingCheck.location}`);
+      } else {
+        logger.debug(`Found existing formula '${resolved.name}' in ${existingCheck.location}`);
+      }
       
       if (options.dryRun) {
         // In dry run mode, proceed; per-file logic will report decisions
@@ -918,7 +942,14 @@ async function checkAndHandleAllFormulaConflicts(
         continue;
       }
       
-      // Proceed without prompting; per-file frontmatter-aware logic will handle overwrites
+      // Prompt per formula overwrite confirmation when existing detected
+      const { promptFormulaOverwrite } = await import('../utils/prompts.js');
+      const confirmed = await promptFormulaOverwrite(resolved.name, existingVersion);
+      if (confirmed) {
+        forceOverwriteFormulas.add(resolved.name);
+      } else {
+        skippedFormulas.push(resolved.name);
+      }
       continue;
     }
   }
@@ -1069,7 +1100,12 @@ async function installFormulaCommand(
   let mainFileConflicts: string[] = [];
 
   if (mainFormula) {
-    const mainResult = await installMainFormulaFiles(mainFormula, cwd, options);
+    const shouldForceMain = conflictResult.forceOverwriteFormulas.has(mainFormula.name);
+    const mainResult = await installMainFormulaFiles(
+      mainFormula,
+      cwd,
+      shouldForceMain ? { ...options, force: true } : options
+    );
     mainFilesInstalled = mainResult.installedCount;
     mainFileConflicts = mainResult.conflicts;
   }

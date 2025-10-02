@@ -324,8 +324,9 @@ async function saveFormulaCommand(
 
   // Display platform sync results
   if (syncResult.created.length > 0) {
+    const sortedCreated = [...syncResult.created].sort((a, b) => a.localeCompare(b));
     console.log(`🔄 Platform sync created ${syncResult.created.length} files:`);
-    for (const createdFile of syncResult.created) {
+    for (const createdFile of sortedCreated) {
       console.log(`   ├── ${createdFile}`);
     }
   }

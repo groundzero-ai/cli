@@ -118,7 +118,8 @@ export function displayInstallationResults(
   // Show detailed file list
   if (allAddedFiles && allAddedFiles.length > 0) {
     console.log(`📝 Added files: ${allAddedFiles.length}`);
-    for (const file of allAddedFiles) {
+    const sortedFiles = [...allAddedFiles].sort((a, b) => a.localeCompare(b));
+    for (const file of sortedFiles) {
       console.log(`   ├── ${file}`);
     }
   }

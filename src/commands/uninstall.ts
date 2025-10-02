@@ -198,8 +198,9 @@ async function displayDryRunInfo(
   for (const platformFiles of Object.values(platformCleanup)) {
     allFilesToRemove.push(...platformFiles);
   }
+  const sortedAllFilesToRemove = allFilesToRemove.sort((a, b) => a.localeCompare(b));
   console.log(`🗑️  Files to remove: ${allFilesToRemove.length}`);
-  for (const file of allFilesToRemove) {
+  for (const file of sortedAllFilesToRemove) {
     console.log(`   ├── ${file}`);
   }
 
@@ -251,8 +252,9 @@ function displayUninstallSuccess(
   }
 
   // Display removed files count and list
+  const sortedRemovedFiles = allRemovedFiles.sort((a, b) => a.localeCompare(b));
   console.log(`🗑️  Removed files: ${allRemovedFiles.length}`);
-  for (const file of allRemovedFiles) {
+  for (const file of sortedRemovedFiles) {
     console.log(`   ├── ${file}`);
   }
 
