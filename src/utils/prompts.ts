@@ -55,16 +55,6 @@ export async function promptFormulaOverwrite(formulaName: string, existingVersio
 }
 
 /**
- * Prompt for directory overwrite confirmation
- */
-export async function promptDirectoryOverwrite(formulaName: string): Promise<boolean> {
-  return await promptConfirmation(
-    `Formula directory '${formulaName}' already exists in groundzero. Overwrite?`,
-    false
-  );
-}
-
-/**
  * Prompt for formula deletion confirmation
  */
 export async function promptFormulaDelete(formulaName: string): Promise<boolean> {

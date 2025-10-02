@@ -448,80 +448,6 @@ async function installFormula(
   };
 }
 
-/**
- * Install main formula files to target directory (non-MD, non-formula.yml files)
- * @param resolved - Resolved formula object containing files to install
- * @param targetDir - Target directory for file installation
- * @param options - Installation options including force flag
- * @returns Object containing count of installed files and array of conflict paths
- */
-async function installMainFormulaFiles(
-  resolved: ResolvedFormula,
-  targetDir: string,
-  options: InstallOptions
-): Promise<{ installedCount: number; conflicts: string[] }> {
-  const { formula } = resolved;
-  
-  // Filter and prepare installation plan
-  const filesToInstall = formula.files.filter(file => 
-    file.path !== FILE_PATTERNS.FORMULA_YML && !file.path.endsWith(FILE_PATTERNS.MD_FILES)
-  );
-  
-  if (filesToInstall.length === 0) {
-    return { installedCount: 0, conflicts: [] };
-  }
-  
-  // Check for existing files in parallel
-  const existenceChecks = await Promise.all(
-    filesToInstall.map(async (file) => {
-      const targetPath = join(targetDir, file.path);
-      const fileExists = await exists(targetPath);
-      return { file, targetPath, exists: fileExists };
-    })
-  );
-  
-  const conflicts = existenceChecks.filter(item => item.exists);
-  
-  // Handle conflicts
-  if (conflicts.length > 0 && !options.force) {
-    console.log(`⚠️  The following files already exist and would be overwritten:`);
-    conflicts.forEach(conflict => console.log(`   • ${conflict.targetPath}`));
-    console.log('\n   Use --force to overwrite existing files.');
-    
-    throw new ValidationError('Files would be overwritten - use --force to continue');
-  }
-  
-  // Pre-create all necessary directories to avoid redundant ensureDir calls
-  if (existenceChecks.length > 0) {
-    const directories = new Set<string>();
-    for (const { targetPath } of existenceChecks) {
-      directories.add(dirname(targetPath));
-    }
-
-    // Create all directories in parallel
-    await Promise.all(Array.from(directories).map(dir => ensureDir(dir)));
-  }
-
-  // Install files in parallel
-  const installPromises = existenceChecks.map(async ({ file, targetPath }) =>
-    withFileOperationErrorHandling(
-      async () => {
-        await writeTextFile(targetPath, file.content);
-        logger.debug(`Installed file: ${targetPath}`);
-        return true;
-      },
-      targetPath,
-      'install file'
-    )
-  );
-
-  await Promise.all(installPromises);
-  
-  return {
-    installedCount: filesToInstall.length,
-    conflicts: conflicts.map(c => c.targetPath)
-  };
-}
 
 /**
  * Extract formulas from formula.yml configuration
@@ -1047,9 +973,7 @@ async function installFormulaCommand(
         totalFormulas: 0,
         installed: 0,
         skipped: 1,
-        mainFilesInstalled: 0,
-        totalGroundzeroFiles: 0,
-        conflictsOverwritten: 0
+        totalGroundzeroFiles: 0
       }
     };
   }
@@ -1094,21 +1018,8 @@ async function installFormulaCommand(
   // Process resolved formulas
   const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(finalResolvedFormulas, targetDir, options, conflictResult.forceOverwriteFormulas);
 
-  // Install main formula files
+  // Get main formula for formula.yml updates and display
   const mainFormula = finalResolvedFormulas.find(f => f.isRoot);
-  let mainFilesInstalled = 0;
-  let mainFileConflicts: string[] = [];
-
-  if (mainFormula) {
-    const shouldForceMain = conflictResult.forceOverwriteFormulas.has(mainFormula.name);
-    const mainResult = await installMainFormulaFiles(
-      mainFormula,
-      cwd,
-      shouldForceMain ? { ...options, force: true } : options
-    );
-    mainFilesInstalled = mainResult.installedCount;
-    mainFileConflicts = mainResult.conflicts;
-  }
 
   // Detect platforms and create directories
   const detectedPlatforms = await detectPlatforms(cwd);
@@ -1134,9 +1045,6 @@ async function installFormulaCommand(
     allAddedFiles.push(...result.files);
   });
 
-  // Add main formula files (if any were installed)
-  // Note: installMainFormulaFiles doesn't return file paths, so we'll skip this for now
-
   // Add IDE template files
   allAddedFiles.push(...ideTemplateResult.filesAdded);
 
@@ -1147,11 +1055,6 @@ async function installFormulaCommand(
   displayInstallationResults(
     formulaName,
     finalResolvedFormulas,
-    installedCount,
-    skippedCount,
-    mainFilesInstalled,
-    totalGroundzeroFiles,
-    mainFileConflicts,
     { platforms: finalPlatforms, created: createdDirs },
     ideTemplateResult,
     options,
@@ -1168,9 +1071,7 @@ async function installFormulaCommand(
       totalFormulas: finalResolvedFormulas.length,
       installed: installedCount,
       skipped: skippedCount,
-      mainFilesInstalled,
-      totalGroundzeroFiles,
-      conflictsOverwritten: mainFileConflicts.length
+      totalGroundzeroFiles
     }
   };
 }

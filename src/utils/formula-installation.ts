@@ -87,11 +87,6 @@ export function displayInstallationSummary(
 export function displayInstallationResults(
   formulaName: string,
   resolvedFormulas: any[],
-  installedCount: number,
-  skippedCount: number,
-  mainFilesInstalled: number,
-  totalGroundzeroFiles: number,
-  mainFileConflicts: string[],
   platformResult: { platforms: string[]; created: string[] },
   ideTemplateResult: { filesAdded: string[]; skipped: string[]; directoriesCreated: string[] },
   options: any,
