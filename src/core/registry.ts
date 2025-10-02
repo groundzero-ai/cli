@@ -1,6 +1,6 @@
 import { join } from 'path';
 import * as semver from 'semver';
-import { FormulaYml, RegistryEntry, SearchResult, CommandResult } from '../types/index.js';
+import { FormulaYml, RegistryEntry, CommandResult } from '../types/index.js';
 import { 
   listDirectories, 
   exists 
@@ -184,59 +184,7 @@ export class RegistryManager {
       throw new RegistryError(`Failed to get formula metadata: ${error}`);
     }
   }
-  
-  /**
-   * Search formulas by term
-   */
-  async searchFormulas(
-    term: string, 
-    limit: number = 10
-  ): Promise<SearchResult> {
-    logger.debug(`Searching formulas with term: ${term}`, { limit });
-    
-    try {
-      const allFormulas = await this.listFormulas();
-      const searchTerm = term.toLowerCase();
-      
-      // Simple search implementation - matches name, description, or keywords
-      const matchedEntries = allFormulas.filter(entry => {
-        const nameMatch = entry.name.toLowerCase().includes(searchTerm);
-        const descMatch = entry.description?.toLowerCase().includes(searchTerm);
-        
-        return nameMatch || descMatch;
-      });
-      
-      // Sort by relevance (name matches first)
-      matchedEntries.sort((a, b) => {
-        const aNameMatch = a.name.toLowerCase().includes(searchTerm);
-        const bNameMatch = b.name.toLowerCase().includes(searchTerm);
-        
-        if (aNameMatch && !bNameMatch) return -1;
-        if (!aNameMatch && bNameMatch) return 1;
-        
-        return a.name.localeCompare(b.name);
-      });
-      
-      // Apply limit
-      const limitedEntries = matchedEntries.slice(0, limit);
-      
-      return {
-        entries: limitedEntries,
-        total: matchedEntries.length,
-        page: 1,
-        limit
-      };
-    } catch (error) {
-      logger.error('Failed to search formulas', { 
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        term, 
-        limit 
-      });
-      throw new RegistryError(`Failed to search formulas: ${error}`);
-    }
-  }
-  
+
   /**
    * List all versions of a formula
    */

@@ -17,7 +17,6 @@ import { setupUninstallCommand } from './commands/uninstall.js';
 import { setupStatusCommand } from './commands/status.js';
 import { setupPushCommand } from './commands/push.js';
 import { setupPullCommand } from './commands/pull.js';
-import { setupSearchCommand } from './commands/search.js';
 import { setupConfigureCommand } from './commands/configure.js';
 import { setupAddCommand } from './commands/add.js';
 
@@ -35,7 +34,10 @@ const program = new Command();
 program
   .name('g0')
   .description('G0 Formula Manager - Create, manage, and share code templates')
-  .version(getVersion());
+  .version(getVersion())
+  .configureHelp({
+    sortSubcommands: true,
+  });
 
 // === FORMULA APPLICATION COMMANDS ===
 setupInitCommand(program);
@@ -54,7 +56,6 @@ setupShowCommand(program);
 // === REMOTE REGISTRY OPERATIONS ===
 setupPushCommand(program);
 setupPullCommand(program);
-setupSearchCommand(program);
 
 // === CONFIGURATION ===
 setupConfigureCommand(program);

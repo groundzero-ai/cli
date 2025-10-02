@@ -158,11 +158,6 @@ export interface PullOptions {
   apiKey?: string;
 }
 
-export interface SearchOptions {
-  limit: string;
-  registry?: string;
-}
-
 export interface SaveOptions {
   force?: boolean;
   version?: string;        // Specify version explicitly
@@ -178,13 +173,6 @@ export interface RegistryEntry {
   author?: string;
   downloadCount?: number;
   lastUpdated: string;
-}
-
-export interface SearchResult {
-  entries: RegistryEntry[];
-  total: number;
-  page: number;
-  limit: number;
 }
 
 // Status and error types

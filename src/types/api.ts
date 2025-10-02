@@ -33,19 +33,6 @@ export interface PullFormulaResponse {
   downloadUrl: string;
 }
 
-export interface SearchFormulasResponse {
-  formulas: Array<ApiFormula & {
-    latestVersion: string;
-    versionCount: number;
-  }>;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
 export interface ApiError {
   error: string;
   message: string;
