@@ -99,6 +99,11 @@ async function provideIdeTemplateFiles(
 
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
+    // Skip template files for the special AI platform (should not add ai/groundzero.md or ai/ai.md)
+    if (platform === PLATFORMS.AI) {
+      logger.debug('Skipping IDE template files for AI platform');
+      return;
+    }
     // Use centralized platform mapping to get the rules directory path
     const { absDir: rulesDirRelative } = mapUniversalToPlatform(platform as Platform, UNIVERSAL_SUBDIRS.RULES, '');
     const rulesDir = join(targetDir, rulesDirRelative);
