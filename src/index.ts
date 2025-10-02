@@ -37,21 +37,21 @@ program
   .description('G0 Formula Manager - Create, manage, and share code templates')
   .version(getVersion());
 
-// === FORMULA LIFECYCLE COMMANDS ===
+// === FORMULA APPLICATION COMMANDS ===
 setupInitCommand(program);
+setupAddCommand(program);
 setupSaveCommand(program);
+setupInstallCommand(program);
+setupUninstallCommand(program);
+setupStatusCommand(program);
+
+// === LOCAL REGISTRY OPERATIONS ===
 setupListCommand(program);
 setupDeleteCommand(program);
 setupPruneCommand(program);
 setupShowCommand(program);
 
-// === FORMULA APPLICATION COMMANDS ===
-setupInstallCommand(program);
-setupUninstallCommand(program);
-setupAddCommand(program);
-setupStatusCommand(program);
-
-// === REGISTRY OPERATIONS ===
+// === REMOTE REGISTRY OPERATIONS ===
 setupPushCommand(program);
 setupPullCommand(program);
 setupSearchCommand(program);
