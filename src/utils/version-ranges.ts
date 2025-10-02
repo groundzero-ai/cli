@@ -96,7 +96,8 @@ export function parseVersionRange(version: string): VersionRange {
  */
 export function satisfiesVersion(version: string, range: string): boolean {
   try {
-    return semver.satisfies(version, range);
+    // Always include prerelease versions in satisfaction checks
+    return semver.satisfies(version, range, { includePrerelease: true });
   } catch (error) {
     return false;
   }
@@ -112,8 +113,8 @@ export function findBestVersion(availableVersions: string[], range: string): str
       .filter(v => semver.valid(v))
       .sort((a, b) => semver.compare(b, a));
     
-    // Find the highest version that satisfies the range
-    return semver.maxSatisfying(sortedVersions, range);
+    // Find the highest version that satisfies the range (including prereleases)
+    return semver.maxSatisfying(sortedVersions, range, { includePrerelease: true });
   } catch (error) {
     return null;
   }
@@ -212,6 +213,7 @@ export function resolveVersionRange(version: string, availableVersions: string[]
       case 'wildcard':
         return getLatestVersion(availableVersions);
       default:
+        // Resolve to best satisfying version including prereleases
         return findBestVersion(availableVersions, parsed.range);
     }
   } catch {

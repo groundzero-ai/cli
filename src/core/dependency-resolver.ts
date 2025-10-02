@@ -102,7 +102,8 @@ export async function resolveDependencies(
     const satisfying = availableVersions.filter(versionCandidate => {
       return allRanges.every(range => {
         try {
-          return semver.satisfies(versionCandidate, range);
+          // Always include prerelease versions when evaluating satisfaction
+          return semver.satisfies(versionCandidate, range, { includePrerelease: true });
         } catch (error) {
           logger.debug(`Failed to evaluate semver for ${formulaName}@${versionCandidate} against range '${range}': ${error}`);
           return false;

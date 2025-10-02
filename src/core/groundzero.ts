@@ -289,7 +289,7 @@ export async function cleanupObsoleteResolutions(cwd: string): Promise<{ removed
       }
 
       const satisfying = available.filter(v => ranges.every(r => {
-        try { return semver.satisfies(v, r); } catch { return false; }
+        try { return semver.satisfies(v, r, { includePrerelease: true }); } catch { return false; }
       }));
 
       if (satisfying.length > 0) {
