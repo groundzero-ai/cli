@@ -7,10 +7,9 @@ import { join, basename, dirname } from 'path';
 import { logger } from './logger.js';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
-import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, isCancelled } from './prompts.js';
+import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
 import { addPlatformSpecificFlag } from './formula-yml.js';
 import { readTextFile, writeTextFile } from './fs.js';
-import prompts from 'prompts';
 import { UserCancellationError } from './errors.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
@@ -237,17 +236,13 @@ async function handleUniversalFileSelectionWithMarkAll(
     value: MARK_ALL_AS_PLATFORM_SPECIFIC // Special value to indicate mark all
   });
 
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'selectedValue',
     message: 'Select universal file or mark all as platform-specific:',
     choices,
     hint: 'In the next step, you can select files to mark as platform-specific'
   });
-
-  if (isCancelled(response) || response.selectedValue === undefined) {
-    throw new UserCancellationError('Universal file selection cancelled');
-  }
 
   if (response.selectedValue === MARK_ALL_AS_PLATFORM_SPECIFIC) {
     return { markAllAsPlatformSpecific: true };

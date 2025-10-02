@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { basename, extname } from 'path';
-import prompts from 'prompts';
+import { safePrompts } from '../utils/prompts.js';
 import { CommandResult } from '../types/index.js';
 import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../utils/fs.js';
@@ -23,12 +23,6 @@ interface AddCommandResult extends CommandResult {
   filesSkipped?: number;
 }
 
-/**
- * Check if response was cancelled (user pressed ESC or Ctrl+C)
- */
-function isCancelled(response: any): boolean {
-  return response === undefined || Object.keys(response).length === 0;
-}
 
 /**
  * Prompt user for formula override decision
@@ -40,28 +34,24 @@ async function promptFormulaOverride(
 ): Promise<'skip' | 'overwrite'> {
   const fileName = basename(filePath);
   
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'choice',
     message: `File '${fileName}' already has formula '${existingFormula}'. How would you like to proceed?`,
     choices: [
-      { 
-        title: 'Skip - Keep existing formula', 
+      {
+        title: 'Skip - Keep existing formula',
         value: 'skip',
         description: `Keep existing formula '${existingFormula}'`
       },
-      { 
-        title: `Overwrite - Replace with '${newFormula}'`, 
+      {
+        title: `Overwrite - Replace with '${newFormula}'`,
         value: 'overwrite',
         description: `Replace with formula '${newFormula}'`
       }
     ],
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response) || !response.choice) {
-    throw new UserCancellationError('Formula override decision cancelled');
-  }
 
   return response.choice;
 }

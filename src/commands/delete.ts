@@ -97,7 +97,7 @@ async function determineDeletionScope(
       return { type: 'specific', version: versions[0], versions };
     }
     
-    const selectedVersion = await promptVersionSelection(formulaName, versions);
+    const selectedVersion = await promptVersionSelection(formulaName, versions, 'to delete');
     return { type: 'specific', version: selectedVersion, versions };
   }
   

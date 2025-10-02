@@ -11,7 +11,7 @@ import { promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
 import { RESOURCES_RULES } from '../utils/embedded-resources.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, VersionConflictError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError, VersionConflictError, UserCancellationError } from '../utils/errors.js';
 import {
   PLATFORM_DIRS,
   PLATFORMS,
@@ -593,6 +593,9 @@ async function installAllFormulasCommand(
         console.log(`❌ Failed to install ${formula.name}: ${result.error}`);
       }
     } catch (error) {
+      if (error instanceof UserCancellationError) {
+        throw error; // Re-throw to allow clean exit
+      }
       totalSkipped++;
       results.push({ name: formula.name, success: false, error: String(error) });
       console.log(`❌ Failed to install ${formula.name}: ${error}`);
@@ -969,7 +972,7 @@ async function installFormulaCommand(
       } else {
         // ask user to pick a version from available
         const { promptVersionSelection } = await import('../utils/prompts.js');
-        chosenVersion = await promptVersionSelection(details?.formulaName || name, available);
+        chosenVersion = await promptVersionSelection(details?.formulaName || name, available, 'to install');
       }
 
       if (!chosenVersion) {

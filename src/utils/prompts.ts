@@ -90,7 +90,7 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
   const cwd = process.cwd();
   const suggestedName = defaultName || basename(cwd);
   
-  const response = await prompts([
+  const response = await safePrompts([
     {
       type: 'text',
       name: 'name',
@@ -135,11 +135,6 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     }
   ]);
   
-  // Handle user cancellation
-  if (isCancelled(response) || !response.name) {
-    throw new UserCancellationError('Formula creation cancelled');
-  }
-  
   // Process keywords from space-separated string to array
   const keywordsArray = response.keywords 
     ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
@@ -171,7 +166,7 @@ export async function promptNewVersion(formulaName: string, versionContext: stri
   const currentVersionMatch = versionContext.match(/current: ([^,)]+)/);
   const currentVersion = currentVersionMatch ? currentVersionMatch[1] : versionContext;
   
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'text',
     name: 'version',
     message: `Enter a new version for '${formulaName}' (${versionContext}):`,
@@ -187,10 +182,6 @@ export async function promptNewVersion(formulaName: string, versionContext: stri
       return true;
     }
   });
-
-  if (isCancelled(response) || !response.version) {
-    throw new UserCancellationError('Version update cancelled');
-  }
 
   return response.version;
 }
@@ -209,7 +200,7 @@ export async function promptVersionOverwrite(formulaName: string, oldVersion: st
  * Prompt user to select platform they're using
  */
 export async function promptPlatformSelection(): Promise<string[]> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'platform',
     message: 'Which platform are you using for AI-assisted development?',
@@ -220,10 +211,6 @@ export async function promptPlatformSelection(): Promise<string[]> {
     ],
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response)) {
-    throw new UserCancellationError();
-  }
 
   // If user selected "other", return empty array
   if (response.platform === 'other') {
@@ -238,23 +225,20 @@ export async function promptPlatformSelection(): Promise<string[]> {
  * Prompt for version selection from available versions
  */
 export async function promptVersionSelection(
-  formulaName: string, 
-  versions: string[]
+  formulaName: string,
+  versions: string[],
+  action: string = ''
 ): Promise<string> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'version',
-    message: `Select version of '${formulaName}' to delete:`,
+    message: `Select version of '${formulaName}' ${action}:`,
     choices: versions.map(version => ({
       title: version,
       value: version
     })),
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response) || !response.version) {
-    throw new UserCancellationError('Version selection cancelled');
-  }
 
   return response.version;
 }
@@ -320,33 +304,29 @@ export async function promptFormulaInstallConflict(
     ? `Install version ${exactVersion} as required by dependency tree`
     : `Install version ${exactVersion}, may be older than current`;
 
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'choice',
     message: `Formula '${formulaName}' already installed. How would you like to proceed?`,
     choices: [
-      { 
-        title: `Keep installed - Skip installation`, 
+      {
+        title: `Keep installed - Skip installation`,
         value: 'keep',
         description: 'Keep the currently installed version'
       },
-      { 
-        title: `Install latest - Overwrite`, 
+      {
+        title: `Install latest - Overwrite`,
         value: 'latest',
         description: 'Install the latest version, overwriting existing'
       },
-      { 
-        title: `Install exact (v${exactVersion}) - Overwrite with specific version`, 
+      {
+        title: `Install exact (v${exactVersion}) - Overwrite with specific version`,
         value: 'exact',
         description: exactDescription
       }
     ],
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response) || !response.choice) {
-    throw new UserCancellationError('Formula installation cancelled');
-  }
 
   return response.choice;
 }
@@ -358,33 +338,29 @@ export async function promptVersionConflictResolution(
   formulaName: string,
   existingVersion: string
 ): Promise<'bump-patch' | 'bump-minor' | 'overwrite'> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'choice',
     message: `Version '${existingVersion}' of formula '${formulaName}' already exists. How would you like to proceed?`,
     choices: [
-      { 
-        title: `Bump patch - Increment patch version (${existingVersion} → ${bumpPatchVersion(existingVersion)})`, 
+      {
+        title: `Bump patch - Increment patch version (${existingVersion} → ${bumpPatchVersion(existingVersion)})`,
         value: 'bump-patch',
         description: 'Increment the patch version for bug fixes'
       },
-      { 
-        title: `Bump minor - Increment minor version (${existingVersion} → ${bumpMinorVersion(existingVersion)})`, 
+      {
+        title: `Bump minor - Increment minor version (${existingVersion} → ${bumpMinorVersion(existingVersion)})`,
         value: 'bump-minor',
         description: 'Increment the minor version for new features'
       },
-      { 
-        title: `Overwrite existing - Replace existing version`, 
+      {
+        title: `Overwrite existing - Replace existing version`,
         value: 'overwrite',
         description: 'Replace the existing version (requires confirmation)'
       }
     ],
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response) || !response.choice) {
-    throw new UserCancellationError('Version conflict resolution cancelled');
-  }
 
   return response.choice;
 }
@@ -396,16 +372,12 @@ export async function promptOverwriteConfirmation(
   formulaName: string,
   version: string
 ): Promise<boolean> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'confirm',
     name: 'confirmed',
     message: `Are you sure you want to overwrite version '${version}' of formula '${formulaName}'? This action cannot be undone.`,
     initial: false
   });
-
-  if (isCancelled(response)) {
-    throw new UserCancellationError('Overwrite confirmation cancelled');
-  }
 
   return response.confirmed || false;
 }
@@ -465,17 +437,13 @@ export async function promptFileSelection(
     description: option.preview.substring(0, 60) + (option.preview.length > 60 ? '...' : '')
   }));
 
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'select',
     name: 'selectedIndex',
     message,
     choices,
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  if (isCancelled(response) || response.selectedIndex === undefined) {
-    throw new UserCancellationError('File selection cancelled');
-  }
 
   return response.selectedIndex;
 }
@@ -488,7 +456,7 @@ export async function promptPlatformSpecificSelection(
   message: string = 'Select files to mark as platform-specific (they will keep their platform prefixes):',
   hint?: string
 ): Promise<number[]> {
-  const response = await prompts({
+  const response = await safePrompts({
     type: 'multiselect',
     name: 'platformSpecificIndices',
     message,
@@ -499,10 +467,6 @@ export async function promptPlatformSpecificSelection(
     })),
     hint: hint || 'Use space to select, Enter to confirm'
   });
-
-  if (isCancelled(response)) {
-    throw new UserCancellationError('Platform-specific selection cancelled');
-  }
 
   return response.platformSpecificIndices || [];
 }
