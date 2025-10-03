@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, dirname, basename } from 'path';
+import { join, dirname } from 'path';
 import * as semver from 'semver';
 import { InstallOptions, CommandResult, FormulaYml, Formula } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
@@ -11,9 +11,8 @@ import { promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
 import { RESOURCES_RULES } from '../utils/embedded-resources.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
+import { withErrorHandling, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
-  PLATFORM_DIRS,
   PLATFORMS,
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
@@ -41,7 +40,6 @@ import {
   displayInstallationResults
 } from '../utils/formula-installation.js';
 import {
-  withFileOperationErrorHandling,
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
 

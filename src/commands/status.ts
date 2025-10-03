@@ -1,13 +1,13 @@
 import { Command } from 'commander';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
-import { parseFormulaYml } from '../utils/formula-yml.js';
+import { parseFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
-import { scanGroundzeroFormulas, GroundzeroFormula, gatherGlobalVersionConstraints } from '../core/groundzero.js';
+import { GroundzeroFormula, gatherGlobalVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
-import { exists, listDirectories } from '../utils/fs.js';
+import { exists, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import { 
@@ -21,18 +21,19 @@ import {
   isExactVersion, 
   describeVersionRange
 } from '../utils/version-ranges.js';
-import {
+import { 
+  FILE_PATTERNS, 
+  UNIVERSAL_SUBDIRS, 
+  DEPENDENCY_ARRAYS,
   PLATFORM_DIRS,
-  PLATFORM_NAMES,
-  FILE_PATTERNS,
-  UNIVERSAL_SUBDIRS,
-  DEPENDENCY_ARRAYS
+  FORMULA_DIRS
 } from '../constants/index.js';
+import { getPlatformDefinition, detectAllPlatforms } from '../core/platforms.js';
 
 /**
  * Formula status types
  */
-type FormulaStatus = 'installed' | 'outdated' | 'missing' | 'dependency-mismatch' | 'registry-unavailable' | 'structure-invalid' | 'platform-mismatch' | 'update-available';
+type FormulaStatus = 'installed' | 'outdated' | 'missing' | 'dependency-mismatch' | 'registry-unavailable' | 'structure-invalid' | 'platform-mismatch' | 'update-available' | 'files-missing' | 'orphaned-files' | 'frontmatter-mismatch';
 type FormulaType = 'formula' | 'dev-formula' | 'dependency';
 
 /**
@@ -49,6 +50,14 @@ interface FormulaStatusInfo {
   path?: string;
   issues?: string[];
   conflictResolution?: string;
+  fileSummary?: {
+    aiFiles: { found: number; paths: string[] };
+    platformFiles: Record<string, {
+      rules?: { found: number };
+      commands?: { found: number };
+      agents?: { found: number };
+    }>;
+  };
 }
 
 /**
@@ -92,6 +101,7 @@ interface CommandOptions {
   registry?: boolean;
   platforms?: boolean;
   repair?: boolean;
+  verbose?: boolean;
 }
 
 
@@ -145,37 +155,31 @@ async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, Formul
  * Detect platform status and configuration
  */
 async function detectPlatformStatus(cwd: string): Promise<PlatformStatus[]> {
-  // Define platform configurations
-  const platformConfigs = [
-    {
-      name: PLATFORM_NAMES.CURSOR,
-      dir: join(cwd, PLATFORM_DIRS.CURSOR),
-      templateFile: join(cwd, PLATFORM_DIRS.CURSOR, UNIVERSAL_SUBDIRS.RULES, FILE_PATTERNS.GROUNDZERO_MDC)
-    },
-    {
-      name: PLATFORM_NAMES.CLAUDECODE,
-      dir: join(cwd, PLATFORM_DIRS.CLAUDECODE),
-      templateFile: join(cwd, PLATFORM_DIRS.CLAUDECODE, FILE_PATTERNS.GROUNDZERO_MD)
-    }
-  ];
-  
-  // Check all platforms in parallel
-  const platformChecks = platformConfigs.map(async (config) => {
-    const [dirExists, templateExists] = await Promise.all([
-      exists(config.dir),
-      exists(config.templateFile)
+  const detections = await detectAllPlatforms(cwd);
+  const checks = detections.map(async ({ name, detected }) => {
+    const def = getPlatformDefinition(name as any);
+    const rootAbs = join(cwd, def.rootDir);
+    const rulesDef = def.subdirs[UNIVERSAL_SUBDIRS.RULES];
+    const rulesAbs = rulesDef ? join(rootAbs, rulesDef.path) : undefined;
+    const writeExt = rulesDef?.writeExt || '.md';
+    const gzTemplate = rulesAbs ? join(rulesAbs, `groundzero${writeExt}`) : undefined;
+    const aiTemplate = rulesAbs ? join(rulesAbs, `ai${writeExt}`) : undefined;
+
+    const [dirExists, gzExists, aiExists] = await Promise.all([
+      exists(rootAbs),
+      gzTemplate ? exists(gzTemplate) : Promise.resolve(false),
+      aiTemplate ? exists(aiTemplate) : Promise.resolve(false)
     ]);
-    
+
     return {
-      name: config.name,
-      detected: dirExists,
-      configured: dirExists,
+      name,
+      detected: detected && dirExists,
+      configured: detected && dirExists,
       directoryExists: dirExists,
-      templatesPresent: templateExists
+      templatesPresent: Boolean(gzExists || aiExists)
     };
   });
-  
-  return Promise.all(platformChecks);
+  return Promise.all(checks);
 }
 
 /**
@@ -232,14 +236,14 @@ async function analyzeFormulaStatus(
     }
   }
 
-  // Case 1: Formula not found in ai directory
+  // Case 1: Formula not found by scanner
   if (!availableFormula) {
     if (localMetadata) {
-      status.status = 'structure-invalid';
-      status.issues = [`Formula '${requiredFormula.name}' has local metadata but no files in ai directory`];
+      status.status = 'files-missing';
+      status.issues = [`Formula '${requiredFormula.name}' has local metadata but no files detected in ai or platforms`];
     } else {
       status.status = 'missing';
-      status.issues = [`Formula '${requiredFormula.name}' not found in ai directory`];
+      status.issues = [`Formula '${requiredFormula.name}' not found in ai or platforms`];
     }
     
     // Check for registry updates if available
@@ -252,15 +256,34 @@ async function analyzeFormulaStatus(
   }
 
   // Case 2: Formula exists - compare versions  
-  status.availableVersion = availableFormula.version;
+  status.availableVersion = localMetadata?.version || availableFormula.version;
   status.path = availableFormula.path;
 
   const requiredVersion = requiredFormula.version;
   const installedVersion = availableFormula.version;
+  // Ensure displayed version reflects the actual installed/detected version
+  status.installedVersion = installedVersion;
+
+  // If local metadata is missing, likely .groundzero/formulas/<name>/formula.yml is missing or misnamed
+  if (!localMetadata) {
+    const projectRoot = dirname(dirname(availableFormula.path));
+    const metaDir = join(projectRoot, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, requiredFormula.name);
+    status.status = 'files-missing';
+    status.issues = [`'${FILE_PATTERNS.FORMULA_YML}' is missing or misnamed`];
+    // Avoid confusing 0.0.0 display when metadata is missing
+    status.installedVersion = requiredVersion;
+    return status;
+  }
   
+  // Support multiple constraints joined by ' & ' (logical AND)
+  const requiredRanges = requiredVersion.includes('&')
+    ? requiredVersion.split('&').map(s => s.trim()).filter(Boolean)
+    : [requiredVersion];
+
   // Check version compatibility
   try {
-    if (satisfiesVersion(installedVersion, requiredVersion)) {
+    const satisfiesAll = requiredRanges.every(range => satisfiesVersion(installedVersion, range));
+    if (satisfiesAll) {
       status.status = 'installed';
       
       // Check for registry updates if requested
@@ -270,13 +293,15 @@ async function analyzeFormulaStatus(
       }
     } else {
       // Determine version mismatch type
-      if (isExactVersion(requiredVersion)) {
-        status.status = semver.gt(installedVersion, requiredVersion) ? 'outdated' : 'dependency-mismatch';
-        const comparison = semver.gt(installedVersion, requiredVersion) ? 'newer than' : 'older than';
-        status.issues = [`Installed version ${installedVersion} is ${comparison} required ${requiredVersion}`];
+      if (requiredRanges.length === 1 && isExactVersion(requiredRanges[0])) {
+        status.status = semver.gt(installedVersion, requiredRanges[0]) ? 'outdated' : 'dependency-mismatch';
+        const comparison = semver.gt(installedVersion, requiredRanges[0]) ? 'newer than' : 'older than';
+        status.issues = [`Installed version ${installedVersion} is ${comparison} required ${requiredRanges[0]}`];
       } else {
         status.status = 'dependency-mismatch';
-        status.issues = [`Installed version ${installedVersion} does not satisfy range ${requiredVersion} (${describeVersionRange(requiredVersion)})`];
+        status.issues = [
+          `Installed version ${installedVersion} does not satisfy range ${requiredVersion} (${requiredRanges.map(describeVersionRange).join(' & ')})`
+        ];
       }
     }
   } catch (error) {
@@ -284,8 +309,8 @@ async function analyzeFormulaStatus(
     status.issues = [`Version analysis failed: ${error}`];
   }
   
-  // Validate local metadata consistency
-  if (localMetadata && localMetadata.version !== installedVersion) {
+  // Validate local metadata consistency (only flag when exact version is required)
+  if (localMetadata && localMetadata.version !== installedVersion && isExactVersion(requiredVersion)) {
     status.issues = status.issues || [];
     status.issues.push(`Local metadata version ${localMetadata.version} differs from ai version ${installedVersion}`);
     if (status.status === 'installed') {
@@ -410,11 +435,22 @@ async function performStatusAnalysis(
     options.platforms ? detectPlatformStatus(cwd) : Promise.resolve([])
   ]);
   
-  // 3. Scan various formula sources in parallel
-  const [availableFormulas, localMetadata] = await Promise.all([
-    scanGroundzeroFormulas(aiDir),
+  // 3. Scan installed files by frontmatter and read local metadata in parallel
+  const [detectedByFrontmatter, localMetadata] = await Promise.all([
+    scanInstalledFormulasByFrontmatter(cwd),
     scanLocalFormulaMetadata(cwd)
   ]);
+
+  // Build availability map using detection results, preferring metadata versions when present
+  const availableFormulas = new Map<string, GroundzeroFormula>();
+  for (const [name, det] of detectedByFrontmatter) {
+    const meta = localMetadata.get(name);
+    availableFormulas.set(name, {
+      name,
+      version: meta?.version || '0.0.0',
+      path: det.anyPath || join(aiDir, name)
+    } as GroundzeroFormula);
+  }
   
   // 4. Analyze all formulas in parallel
   const allFormulas = [
@@ -426,6 +462,13 @@ async function performStatusAnalysis(
     const available = availableFormulas.get(formula.name) || null;
     const localMeta = localMetadata.get(formula.name) || null;
     const status = await analyzeFormulaStatus(formula, available, localMeta, formula.type, options.registry);
+    const detected = detectedByFrontmatter.get(formula.name);
+    if (detected) {
+      status.fileSummary = {
+        aiFiles: { found: detected.aiFiles.length, paths: detected.aiFiles },
+        platformFiles: detected.platforms
+      };
+    }
     
     // Build dependency tree if installed
     if (status.status === 'installed') {
@@ -518,7 +561,10 @@ const STATUS_ICONS: Record<FormulaStatus, string> = {
   'update-available': '🔄',
   'registry-unavailable': '⚠️',
   'structure-invalid': '⚠️',
-  'platform-mismatch': '⚠️'
+  'platform-mismatch': '⚠️',
+  'files-missing': '⚠️',
+  'orphaned-files': '⚠️',
+  'frontmatter-mismatch': '⚠️'
 };
 
 /**
@@ -540,6 +586,12 @@ function getStatusSuffix(formula: FormulaStatusInfo): string {
       return ' (structure issue)';
     case 'platform-mismatch':
       return ' (platform issue)';
+    case 'files-missing':
+      return ' (files missing)';
+    case 'orphaned-files':
+      return ' (orphaned files)';
+    case 'frontmatter-mismatch':
+      return ' (frontmatter mismatch)';
     default:
       return '';
   }
@@ -569,6 +621,25 @@ function renderFormulaTree(
     formula.issues.forEach(issue => {
       console.log(`${issuePrefix}⚠️  ${issue}`);
     });
+  }
+
+  // Optional file-level summary (verbose)
+  if ((formula as any).fileSummary && (globalThis as any).__statusVerbose) {
+    const fsPrefix = prefix + (isLast ? '    ' : '│   ');
+    const fs = (formula as any).fileSummary as NonNullable<FormulaStatusInfo['fileSummary']>;
+    console.log(`${fsPrefix}📄 ai files: ${fs.aiFiles.found}`);
+    const platforms = Object.keys(fs.platformFiles || {});
+    if (platforms.length > 0) {
+      console.log(`${fsPrefix}🖥️ platform files:`);
+      for (const p of platforms) {
+        const pf = (fs.platformFiles as any)[p] || {};
+        const parts: string[] = [];
+        if (pf.rules?.found) parts.push(`rules:${pf.rules.found}`);
+        if (pf.commands?.found) parts.push(`commands:${pf.commands.found}`);
+        if (pf.agents?.found) parts.push(`agents:${pf.agents.found}`);
+        console.log(`${fsPrefix}   - ${p} ${parts.length ? `(${parts.join(', ')})` : ''}`);
+      }
+    }
   }
   
   // Show dependencies if within depth limit
@@ -761,6 +832,8 @@ function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: Retur
 async function statusCommand(options: CommandOptions = {}): Promise<CommandResult> {
   const cwd = process.cwd();
   logger.info(`Checking formula status for directory: ${cwd}`, { options });
+  // Set a global verbose flag for renderer (avoids threading through many calls)
+  (globalThis as any).__statusVerbose = Boolean(options.verbose);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
@@ -815,13 +888,83 @@ async function statusCommand(options: CommandOptions = {}): Promise<CommandResul
 export function setupStatusCommand(program: Command): void {
   program
     .command('status')
-    .description('Show comprehensive formula status for the current project')
+    .description('Show comprehensive formula status for the current project (ai files, platform templates, and dependencies)')
     .option('--flat', 'show flat table view instead of tree view')
     .option('--depth <number>', 'limit tree depth (default: unlimited)', parseInt)
     .option('--registry', 'check registry for available updates')
     .option('--platforms', 'show platform-specific status information')
     .option('--repair', 'show repair suggestions without applying them')
+    .option('--verbose', 'show file-level details')
     .action(withErrorHandling(async (options: CommandOptions) => {
       await statusCommand(options);
     }));
+}
+
+/**
+ * Scan installed formulas by parsing frontmatter across ai and platform directories
+ */
+async function scanInstalledFormulasByFrontmatter(cwd: string): Promise<Map<string, { aiFiles: string[]; platforms: Record<string, { rules?: { found: number }; commands?: { found: number }; agents?: { found: number } }>; anyPath?: string }>> {
+  const result = new Map<string, { aiFiles: string[]; platforms: Record<string, { rules?: { found: number }; commands?: { found: number }; agents?: { found: number } }>; anyPath?: string }>();
+
+  const aiDir = getAIDir(cwd);
+  if (await exists(aiDir)) {
+    for await (const filePath of walkFiles(aiDir)) {
+      if (!filePath.endsWith(FILE_PATTERNS.MD_FILES) && !filePath.endsWith(FILE_PATTERNS.MDC_FILES)) {
+        continue;
+      }
+      try {
+        const content = await readTextFile(filePath);
+        const fm = parseMarkdownFrontmatter(content);
+        const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
+        if (formulaName) {
+          if (!result.has(formulaName)) {
+            result.set(formulaName, { aiFiles: [], platforms: {}, anyPath: dirname(filePath) });
+          }
+          const entry = result.get(formulaName)!;
+          entry.aiFiles.push(filePath);
+          if (!entry.anyPath) entry.anyPath = dirname(filePath);
+        }
+      } catch {}
+    }
+  }
+
+  const detections = await detectAllPlatforms(cwd);
+  for (const { name: platform, detected } of detections) {
+    if (!detected) continue;
+    const def = getPlatformDefinition(platform as any);
+    const platformRoot = join(cwd, def.rootDir);
+
+    for (const [subKey, subDef] of Object.entries(def.subdirs)) {
+      const targetDir = join(platformRoot, (subDef as any).path || '');
+      if (!(await exists(targetDir))) continue;
+      for await (const fp of walkFiles(targetDir)) {
+        const allowedExts: string[] = ((subDef as any).readExts) || [FILE_PATTERNS.MD_FILES];
+        if (!allowedExts.some((ext) => fp.endsWith(ext))) continue;
+        try {
+          const content = await readTextFile(fp);
+          const fm = parseMarkdownFrontmatter(content);
+          const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
+          if (!formulaName) continue;
+          if (!result.has(formulaName)) {
+            result.set(formulaName, { aiFiles: [], platforms: {}, anyPath: dirname(fp) });
+          }
+          const entry = result.get(formulaName)!;
+          entry.platforms[platform] = entry.platforms[platform] || {};
+          if (subKey === UNIVERSAL_SUBDIRS.RULES) {
+            entry.platforms[platform].rules = entry.platforms[platform].rules || { found: 0 };
+            entry.platforms[platform].rules!.found++;
+          } else if (subKey === UNIVERSAL_SUBDIRS.COMMANDS) {
+            entry.platforms[platform].commands = entry.platforms[platform].commands || { found: 0 };
+            entry.platforms[platform].commands!.found++;
+          } else if (subKey === UNIVERSAL_SUBDIRS.AGENTS) {
+            entry.platforms[platform].agents = entry.platforms[platform].agents || { found: 0 };
+            entry.platforms[platform].agents!.found++;
+          }
+          if (!entry.anyPath) entry.anyPath = dirname(fp);
+        } catch {}
+      }
+    }
+  }
+
+  return result;
 }

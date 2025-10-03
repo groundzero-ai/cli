@@ -119,8 +119,9 @@ export async function resolveDependencies(
     }
 
     resolvedVersion = satisfying[0];
-    versionRange = allRanges.join(' & ');
-    logger.debug(`Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for formula '${formulaName}'`);
+    const deduped = Array.from(new Set(allRanges));
+    versionRange = deduped.join(' & ');
+    logger.debug(`Resolved constraints [${deduped.join(', ')}] to '${resolvedVersion}' for formula '${formulaName}'`);
   }
 
   // 3. Attempt to repair dependency from local registry
