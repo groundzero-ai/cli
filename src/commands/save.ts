@@ -5,7 +5,7 @@ import { parseFormulaYml, writeFormulaYml, updateMarkdownWithFormulaFrontmatter 
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
 import { FILE_PATTERNS } from '../constants/index.js';
@@ -49,21 +49,21 @@ const ERROR_MESSAGES = {
 const LOG_PREFIXES = {
   CREATED: '✓ Created formula.yml in',
   FOUND: '✓ Found existing formula.yml',
-  NAME: '📦 Name:',
-  VERSION: '📦 Version:',
-  FILES: '📄 Found',
+  NAME: '✓ Name:',
+  VERSION: '✓ Version:',
+  FILES: '✓ Found',
   FILES_SUFFIX: 'markdown files',
-  RESOLVED: '📄 Conflicts resolved, processed',
-  SAVED: '✅ Saved',
+  RESOLVED: '✓ Conflicts resolved, processed',
+  SAVED: '✓ Saved',
   UPDATED: '✓ Updated frontmatter in',
-  EXPLICIT_VERSION: '🎯 Using explicit version:',
-  PRERELEASE: '🎯 New formula, setting to prerelease:',
-  BUMP_STABLE: '🎯 Bumping to stable version:',
-  BUMP_PRERELEASE: '🎯 Bumping to prerelease version:',
-  CONVERT_STABLE: '🎯 Converting to stable version:',
-  OVERWRITE_STABLE: '🎯 Overwriting stable version:',
-  INCREMENT_PRERELEASE: '🎯 Incrementing prerelease version:',
-  AUTO_INCREMENT: '🎯 Auto-incrementing to patch prerelease:',
+  EXPLICIT_VERSION: '✓ Using explicit version:',
+  PRERELEASE: '✓ New formula, setting to prerelease:',
+  BUMP_STABLE: '✓ Bumping to stable version:',
+  BUMP_PRERELEASE: '✓ Bumping to prerelease version:',
+  CONVERT_STABLE: '✓ Converting to stable version:',
+  OVERWRITE_STABLE: '✓ Overwriting stable version:',
+  INCREMENT_PRERELEASE: '✓ Incrementing prerelease version:',
+  AUTO_INCREMENT: '✓ Auto-incrementing to patch prerelease:',
   WARNING: '⚠️  Version',
   WARNING_SUFFIX: 'is already stable.',
   ARROW_SEPARATOR: ' → '
@@ -182,9 +182,7 @@ async function getOrCreateFormulaConfig(formulaDir: string, formulaName: string)
     logger.debug('Found existing formula.yml, parsing...');
     try {
       const formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(LOG_PREFIXES.FOUND);
-      console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
-      console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
+      console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
 
       return {
         fullPath: formulaYmlPath,
@@ -239,8 +237,6 @@ async function processDiscoveredFiles(
   formulaConfig: FormulaYml,
   discoveredFiles: DiscoveredFile[]
 ): Promise<FormulaFile[]> {
-  console.log(`${LOG_PREFIXES.FILES} ${discoveredFiles.length} ${LOG_PREFIXES.FILES_SUFFIX}`);
-
   // Resolve file conflicts (keep latest mtime)
   const resolvedFiles = await resolveFileConflicts(discoveredFiles, formulaConfig.version, /* silent */ true);
 
@@ -397,11 +393,10 @@ async function saveFormulaCommand(
   if (!options?.skipProjectLink) {
     await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
   }
-  console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files)`);
+  console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files):`);
   if (formulaFiles.length > 0) {
     const savedPaths = formulaFiles.map(f => f.path);
     const sortedSaved = [...savedPaths].sort((a, b) => a.localeCompare(b));
-    console.log(`📄 Saved ${sortedSaved.length} files:`);
     for (const savedPath of sortedSaved) {
       console.log(`   ├── ${savedPath}`);
     }
@@ -530,7 +525,7 @@ async function determineTargetVersion(
           false
         );
         if (!shouldOverwrite) {
-          throw new Error(ERROR_MESSAGES.OPERATION_CANCELLED);
+          throw new UserCancellationError();
         }
       }
       console.log(`${LOG_PREFIXES.OVERWRITE_STABLE} ${currentVersion}`);
