@@ -139,6 +139,7 @@ export interface InstallOptions {
   force?: boolean;
   variables?: Record<string, any>;
   dev?: boolean;
+  platforms?: string[];
 }
 
 export interface UninstallOptions {

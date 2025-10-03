@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { join, dirname } from 'path';
 import * as semver from 'semver';
-import { InstallOptions, CommandResult, FormulaYml, Formula } from '../types/index.js';
+import { InstallOptions, CommandResult, FormulaYml, Formula, G0Error, ErrorCodes } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -14,6 +14,7 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
   PLATFORMS,
+  PLATFORM_ALIASES,
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
   CONFLICT_RESOLUTION,
@@ -90,6 +91,20 @@ async function createPlatformDirectoriesForInstall(
   platforms: string[]
 ): Promise<string[]> {
   return await createPlatformDirectories(targetDir, platforms as Platform[]);
+}
+
+/**
+ * Normalize platform inputs: accepts variadic and comma-separated values
+ */
+function normalizePlatforms(input: string[] | undefined): string[] | undefined {
+  if (!input || input.length === 0) return undefined;
+  const flattened = input
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const aliasMap = PLATFORM_ALIASES as Record<string, string>;
+  const mapped = flattened.map((name) => aliasMap[name] || name);
+  return Array.from(new Set(mapped));
 }
 
 /**
@@ -902,6 +917,22 @@ async function installFormulaCommand(
   
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
+
+  // If platforms are specified, validate and prepare directories ahead of detection
+  const specifiedPlatforms = normalizePlatforms(options.platforms);
+  if (specifiedPlatforms && specifiedPlatforms.length > 0) {
+    // Validate against known platforms
+    const knownPlatforms = new Set<string>(Object.values(PLATFORMS));
+    for (const p of specifiedPlatforms) {
+      if (!knownPlatforms.has(p)) {
+        return { success: false, error: `platform ${p} not found` };
+      }
+    }
+    // Create platform directories unless dry-run
+    if (!options.dryRun) {
+      await createPlatformDirectoriesForInstall(cwd, specifiedPlatforms);
+    }
+  }
   
   // Resolve complete dependency tree first, with conflict handling and persistence
   const globalConstraints = await gatherGlobalVersionConstraints(cwd);
@@ -1028,11 +1059,13 @@ async function installFormulaCommand(
   // Get main formula for formula.yml updates and display
   const mainFormula = finalResolvedFormulas.find(f => f.isRoot);
 
-  // Detect platforms and create directories
-  const detectedPlatforms = await detectPlatforms(cwd);
-  const finalPlatforms = detectedPlatforms.length > 0
-    ? detectedPlatforms
-    : await promptForPlatformSelection();
+  // Detect platforms and create directories (prefer specified if provided)
+  let finalPlatforms = await detectPlatforms(cwd);
+  if (specifiedPlatforms && specifiedPlatforms.length > 0) {
+    finalPlatforms = specifiedPlatforms;
+  } else if (finalPlatforms.length === 0) {
+    finalPlatforms = await promptForPlatformSelection();
+  }
 
   const createdDirs = await createPlatformDirectoriesForInstall(cwd, finalPlatforms);
 
@@ -1041,7 +1074,7 @@ async function installFormulaCommand(
     await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
   }
   
-  // Provide IDE-specific template files
+  // Provide IDE-specific template files (use specified/detected platforms)
   const ideTemplateResult = await provideIdeTemplateFiles(cwd, finalPlatforms, options);
   
   // Collect all added files
@@ -1096,7 +1129,10 @@ export function setupInstallCommand(program: Command): void {
     .option('--dry-run', 'preview changes without applying them')
     .option('--force', 'overwrite existing files')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
+    .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
+      // Normalize platforms option early for downstream logic
+      options.platforms = normalizePlatforms(options.platforms);
       const result = await installCommand(formulaName, targetDir, options);
       if (!result.success) {
         if (result.error === 'Formula not found') {

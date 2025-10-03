@@ -5,9 +5,9 @@
  */
 
 import { join, relative } from 'path';
-import { exists, ensureDir, listFiles } from '../utils/fs.js';
+import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir, type PlatformDir } from '../constants/index.js';
+import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir } from '../constants/index.js';
 
 // Platform Categories
 export const PLATFORM_CATEGORIES = {

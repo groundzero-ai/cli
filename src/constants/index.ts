@@ -24,6 +24,18 @@ export const PLATFORMS = {
   KIRO: 'kiro'
 } as const;
 
+// Human-friendly aliases mapped to platform ids
+export const PLATFORM_ALIASES = {
+  // CODEXCLI
+  codex: PLATFORMS.CODEXCLI,
+  // CLAUDECODE
+  claude: PLATFORMS.CLAUDECODE,
+  // GEMINICLI
+  gemini: PLATFORMS.GEMINICLI,
+  // QWENCODE
+  qwen: PLATFORMS.QWENCODE
+} as const;
+
 export const PLATFORM_DIRS = {
   GROUNDZERO: '.groundzero',
   AI: 'ai',
