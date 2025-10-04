@@ -101,7 +101,7 @@ export class HttpClient {
         throw new Error(`Download timeout after ${this.timeout}ms`);
       }
       
-      logger.error('Download failed', { error, url });
+      logger.debug('Download failed', { error, url });
       throw error;
     }
   }
@@ -158,7 +158,7 @@ export class HttpClient {
         throw new Error(`Request timeout after ${this.timeout}ms`);
       }
       
-      logger.error(`${method} ${url} failed`, { error });
+      logger.debug(`${method} ${url} failed`, { error });
       throw error;
     }
   }
@@ -199,7 +199,7 @@ export class HttpClient {
       details: errorData.details
     };
     
-    logger.error('API request failed', { 
+    logger.debug('API request failed', { 
       status: response.status, 
       statusText: response.statusText,
       error: apiError 

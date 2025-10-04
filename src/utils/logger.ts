@@ -77,7 +77,11 @@ class ConsoleLogger implements Logger {
 
 // Create and export a default logger instance
 export const logger = new ConsoleLogger(
-  process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.INFO
+  process.env.G0_VERBOSE === '1'
+    ? LogLevel.DEBUG
+    : process.env.NODE_ENV === 'development'
+      ? LogLevel.INFO
+      : LogLevel.ERROR
 );
 
 // Export the logger class for custom instances

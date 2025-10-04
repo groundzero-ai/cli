@@ -76,7 +76,7 @@ export class ValidationError extends G0Error {
 
 export class ConfigError extends G0Error {
   constructor(message: string, details?: any) {
-    super(`Configuration error: ${message}`, ErrorCodes.CONFIG_ERROR, details);
+    super(message, ErrorCodes.CONFIG_ERROR, details);
   }
 }
 
@@ -92,22 +92,22 @@ export class UserCancellationError extends Error {
  */
 export function handleError(error: unknown): CommandResult {
   if (error instanceof G0Error) {
-    // Don't log version-specific errors as they're already formatted nicely
+    // For CLI UX, avoid noisy error logs by default; surface details only in verbose mode
     if (!(error instanceof FormulaVersionNotFoundError)) {
-      logger.error(error.message, { code: error.code, details: error.details });
+      logger.debug(error.message, { code: error.code, details: error.details });
     }
     return {
       success: false,
       error: error.message
     };
   } else if (error instanceof Error) {
-    logger.error('Unexpected error occurred', { message: error.message, stack: error.stack });
+    logger.debug('Unexpected error occurred', { message: error.message, stack: error.stack });
     return {
       success: false,
-      error: `Unexpected error: ${error.message}`
+      error: error.message
     };
   } else {
-    logger.error('Unknown error occurred', { error });
+    logger.debug('Unknown error occurred', { error });
     return {
       success: false,
       error: 'An unknown error occurred'
@@ -132,7 +132,7 @@ export function withErrorHandling<T extends any[]>(
       }
       
       const result = handleError(error);
-      console.error(`❌ ${result.error}`);
+      console.error(result.error);
       process.exit(1);
     }
   };

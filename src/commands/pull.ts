@@ -134,7 +134,7 @@ async function pullFormulaCommand(
     };
     
   } catch (error) {
-    logger.error('Pull command failed', { error, formulaName });
+    logger.debug('Pull command failed', { error, formulaName });
     
     // Handle specific error cases
     if (error instanceof Error) {
@@ -156,7 +156,7 @@ async function pullFormulaCommand(
       }
       
       if (apiError?.statusCode === 401 || apiError?.statusCode === 403) {
-        console.error(`❌ Access denied: ${error.message}`);
+        console.error(error.message);
         console.log('');
         if (apiError?.statusCode === 403) {
           console.log('💡 This may be a private formula. Ensure you have VIEWER permissions.');
@@ -164,12 +164,11 @@ async function pullFormulaCommand(
         console.log('💡 To configure authentication:');
         console.log('  g0 configure');
         console.log('  g0 configure --profile <name>');
-        console.log('  export G0_REGISTRY_URL=https://your-registry.com');
         return { success: false, error: 'Access denied' };
       }
       
       if (error.message.includes('Download') || error.message.includes('timeout')) {
-        console.error(`❌ Download failed: ${error.message}`);
+        // Let global handler print the message
         console.log('');
         console.log('💡 Try one of these options:');
         console.log('  • Check your internet connection');
@@ -185,8 +184,7 @@ async function pullFormulaCommand(
         return { success: false, error: 'Integrity verification failed' };
       }
       
-      // Generic error handling
-      console.error(`❌ Pull failed: ${error.message}`);
+      // Generic error handling (no direct print; global handler will print once)
       return { success: false, error: error.message };
     }
     

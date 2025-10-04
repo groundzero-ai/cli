@@ -100,7 +100,7 @@ async function pushFormulaCommand(
     };
     
   } catch (error) {
-    logger.error('Push command failed', { error, formulaName });
+    logger.debug('Push command failed', { error, formulaName });
     
     // Handle specific error cases
     if (error instanceof Error) {
@@ -122,7 +122,6 @@ async function pushFormulaCommand(
         console.log('💡 To configure authentication:');
         console.log('  g0 configure');
         console.log('  g0 configure --profile <name>');
-        console.log('  export G0_REGISTRY_URL=https://your-registry.com');
         return { success: false, error: 'Authentication failed' };
       }
       
@@ -142,8 +141,7 @@ async function pushFormulaCommand(
         return { success: false, error: 'Validation failed' };
       }
       
-      // Generic error handling
-      console.error(`❌ Push failed: ${error.message}`);
+      // Generic error handling (do not print here; global handler will print once)
       
       if (error.message.includes('timeout')) {
         console.log('');

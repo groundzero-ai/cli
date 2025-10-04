@@ -55,13 +55,8 @@ class AuthManager {
   /**
    * Get registry URL from environment variable
    */
-  getRegistryUrl(): string | null {
-    const registryUrl = process.env.G0_REGISTRY_URL;
-    if (!registryUrl) {
-      logger.warn('G0_REGISTRY_URL environment variable not set');
-      return null;
-    }
-    
+  getRegistryUrl(): string {
+    const registryUrl = "https://g0backend.enulus.com";
     logger.debug(`Using registry URL: ${registryUrl}`);
     return registryUrl;
   }
@@ -76,13 +71,6 @@ class AuthManager {
     if (!apiKey) {
       throw new ConfigError(
         'No API key found. Please configure a profile with "g0 configure" or use --api-key option.'
-      );
-    }
-
-    if (!registryUrl) {
-      throw new ConfigError(
-        'G0_REGISTRY_URL environment variable is required. ' +
-        'Please set it to your registry URL.'
       );
     }
 
