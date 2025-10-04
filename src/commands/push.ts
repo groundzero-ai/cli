@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
+import * as semver from 'semver';
 
 /**
  * Push formula command implementation
@@ -32,6 +33,15 @@ async function pushFormulaCommand(
     // Load formula and determine version
     const formula = await formulaManager.loadFormula(formulaName, options.version);
     const versionToPush = options.version || formula.metadata.version;
+
+    // Reject prerelease versions (e.g., -alpha, -beta, -rc, -dev)
+    if (semver.prerelease(versionToPush)) {
+      console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
+      console.log('');
+      console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
+      console.log('💡 Please create a stable formula using the command "g0 save <formula> stable".');
+      return { success: false, error: 'Only stable versions can be pushed' };
+    }
     
     // Authenticate and create HTTP client
     const httpClient = await createHttpClient({
@@ -44,7 +54,6 @@ async function pushFormulaCommand(
     
     console.log(`📤 Pushing formula '${formulaName}' to remote registry...`);
     console.log(`📦 Version: ${versionToPush}`);
-    console.log(`🌐 Registry: ${registryUrl}`);
     console.log(`🔑 Profile: ${profile}`);
     console.log('');
     
@@ -72,7 +81,7 @@ async function pushFormulaCommand(
     );
     
     // Step 5: Success!
-    console.log('✅ Formula pushed successfully!');
+    console.log('✅ Formula pushed successfully');
     console.log('');
     console.log('📊 Formula Details:');
     console.log(`  • Name: ${response.formula.name}`);

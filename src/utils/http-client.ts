@@ -146,11 +146,17 @@ export class HttpClient {
         await this.handleErrorResponse(response);
       }
       
-      // Parse JSON response
-      const result = await response.json();
+      // Parse response based on content type
+      const responseContentType = response.headers.get('content-type') || '';
+      let parsedBody: any;
+      if (responseContentType.includes('application/json')) {
+        parsedBody = await response.json();
+      } else {
+        parsedBody = await response.text();
+      }
       logger.debug(`${method} ${url} - Success`);
       
-      return result as T;
+      return parsedBody as T;
     } catch (error) {
       clearTimeout(timeoutId);
       

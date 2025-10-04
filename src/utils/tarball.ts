@@ -181,7 +181,7 @@ export function createFormDataForUpload(
   
   // Add tarball file
   const blob = new Blob([tarballInfo.buffer], { type: 'application/gzip' });
-  formData.append('file', blob, `${formulaName}-${version}.tar.gz`);
+  formData.append('file', blob, `${formulaName}-${version}.tgz`);
   
   return formData;
 }

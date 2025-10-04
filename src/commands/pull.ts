@@ -34,7 +34,6 @@ async function pullFormulaCommand(
     
     console.log(`📥 Pulling formula '${formulaName}' from remote registry...`);
     console.log(`📦 Version: ${versionToPull}`);
-    console.log(`🌐 Registry: ${registryUrl}`);
     console.log(`🔑 Profile: ${profile}`);
     console.log('');
     

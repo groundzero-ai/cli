@@ -56,7 +56,8 @@ class AuthManager {
    * Get registry URL from environment variable
    */
   getRegistryUrl(): string {
-    const registryUrl = "https://g0backend.enulus.com";
+    // const registryUrl = "https://g0backend.enulus.com/v1";
+    const registryUrl = "http://localhost:3000/v1";
     logger.debug(`Using registry URL: ${registryUrl}`);
     return registryUrl;
   }
@@ -106,7 +107,6 @@ class AuthManager {
     
     return {
       'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
       'User-Agent': `g0-cli/${getVersion()}`
     };
   }
