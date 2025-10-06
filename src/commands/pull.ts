@@ -57,7 +57,10 @@ async function pullFormulaCommand(
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Description: ${response.formula.description || '(no description)'}`);
     console.log(`  • Size: ${(response.version.tarballSize / (1024 * 1024)).toFixed(2)}MB`);
-    console.log(`  • Tags: ${response.formula.tags.join(', ') || 'none'}`);
+    const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
+    if (keywords.length > 0) {
+      console.log(`  • Keywords: ${keywords.join(', ')}`);
+    }
     console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
     console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
     

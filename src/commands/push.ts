@@ -89,7 +89,10 @@ async function pushFormulaCommand(
     console.log(`  • Size: ${sizeInMB}MB`);
     console.log(`  • Formula ID: ${response.formula._id}`);
     console.log(`  • Version ID: ${response.version._id}`);
-    console.log(`  • Tags: ${response.formula.tags.join(', ') || 'none'}`);
+    const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
+    if (keywords.length > 0) {
+      console.log(`  • Keywords: ${keywords.join(', ')}`);
+    }
     console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
     console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
     

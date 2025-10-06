@@ -6,7 +6,7 @@ export interface ApiFormula {
   _id: string;
   name: string;
   description: string;
-  tags: string[];
+  keywords: string[];
   isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
