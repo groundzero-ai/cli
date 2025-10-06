@@ -529,19 +529,10 @@ async function determineTargetVersion(
       console.log(`${LOG_PREFIXES.CONVERT_STABLE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${stableVersion}`);
       return stableVersion;
     } else {
-      // Already stable - prompt for confirmation
-      console.log(`${LOG_PREFIXES.WARNING} ${currentVersion} ${LOG_PREFIXES.WARNING_SUFFIX}`);
-      if (!options?.force) {
-        const shouldOverwrite = await promptConfirmation(
-          `Overwrite existing stable version ${currentVersion}?`,
-          false
-        );
-        if (!shouldOverwrite) {
-          throw new UserCancellationError();
-        }
-      }
-      console.log(`${LOG_PREFIXES.OVERWRITE_STABLE} ${currentVersion}`);
-      return currentVersion;
+      // Already stable - auto bump to next patch version
+      const nextStable = calculateBumpedVersion(currentVersion, 'patch');
+      console.log(`${LOG_PREFIXES.BUMP_STABLE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${nextStable}`);
+      return nextStable;
     }
   }
 
