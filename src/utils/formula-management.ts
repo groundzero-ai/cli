@@ -1,10 +1,10 @@
-import { basename } from 'path';
+import { basename, join } from 'path';
 import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from './formula-yml.js';
-import { exists, ensureDir } from './fs.js';
+import { exists, ensureDir, writeTextFile } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } from './paths.js';
-import { DEPENDENCY_ARRAYS } from '../constants/index.js';
+import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
 
@@ -133,6 +133,25 @@ export async function addFormulaToYml(
   }
   
   await writeFormulaYml(formulaYmlPath, config);
+}
+
+/**
+ * Write formula metadata and optional README.md to local project structure
+ * Shared utility for install command
+ */
+export async function writeLocalFormulaMetadata(
+  cwd: string,
+  formulaName: string,
+  metadata: FormulaYml,
+  readmeContent?: string
+): Promise<void> {
+  const localFormulaDir = join(getLocalFormulasDir(cwd), formulaName);
+  const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
+  await ensureDir(localFormulaDir);
+  await writeFormulaYml(localFormulaYmlPath, metadata);
+  if (readmeContent) {
+    await writeTextFile(join(localFormulaDir, FILE_PATTERNS.README_MD), readmeContent);
+  }
 }
 
 /**

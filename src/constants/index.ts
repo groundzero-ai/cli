@@ -60,7 +60,7 @@ export const FILE_PATTERNS = {
   MD_FILES: '.md',
   MDC_FILES: '.mdc',
   FORMULA_YML: 'formula.yml',
-  HIDDEN_FORMULA_YML: '.formula.yml',
+  README_MD: 'README.md',
   GROUNDZERO_MDC: 'groundzero.mdc',
   GROUNDZERO_MD: 'groundzero.md',
   // Platform-specific root files

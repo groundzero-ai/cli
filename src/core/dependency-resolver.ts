@@ -291,7 +291,7 @@ export async function resolveDependencies(
     requiredRange: versionRange // Track the original range
   });
   
-  // 5. Parse dependencies from formula's .formula.yml
+  // 5. Parse dependencies from formula's formula.yml
   const formulaYmlFile = formula.files.find(f => f.path === 'formula.yml');
   if (formulaYmlFile) {
     const config = yaml.load(formulaYmlFile.content) as FormulaYml;

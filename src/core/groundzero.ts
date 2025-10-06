@@ -21,17 +21,14 @@ export interface GroundzeroFormula {
 }
 
 /**
- * Find formula config file (.groundzero/formula.yml, formula.yml, or .formula.yml) in a directory
+ * Find formula config file (.groundzero/formula.yml or formula.yml) in a directory
  */
 async function findFormulaConfigFile(directoryPath: string): Promise<string | null> {
   const groundzeroFormulaYmlPath = getLocalFormulaYmlPath(directoryPath);
   const formulaYmlPath = join(directoryPath, FILE_PATTERNS.FORMULA_YML);
-  const hiddenFormulaYmlPath = join(directoryPath, FILE_PATTERNS.HIDDEN_FORMULA_YML);
   
   if (await exists(groundzeroFormulaYmlPath)) {
     return groundzeroFormulaYmlPath;
-  } else if (await exists(hiddenFormulaYmlPath)) {
-    return hiddenFormulaYmlPath;
   } else if (await exists(formulaYmlPath)) {
     return formulaYmlPath;
   }

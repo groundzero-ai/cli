@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, basename } from 'path';
+import { join, basename, dirname } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
 import { detectTemplateFile } from '../utils/template.js';
@@ -469,6 +469,18 @@ async function createFormulaFilesUnified(
   // Add formula.yml as the first file
   const formulaYmlFile = await createFormulaYmlFile(formulaYmlPath, formulaConfig);
   formulaFiles.push(formulaYmlFile);
+
+  // Add README.md if it exists in the formula directory
+  const readmePath = join(dirname(formulaYmlPath), FILE_PATTERNS.README_MD);
+  if (await exists(readmePath)) {
+    const readmeContent = await readTextFile(readmePath);
+    formulaFiles.push({
+      path: FILE_PATTERNS.README_MD,
+      content: readmeContent,
+      isTemplate: false,
+      encoding: UTF8_ENCODING
+    });
+  }
 
   // Process discovered MD files
   const processedMdFiles = await processMarkdownFiles(formulaConfig, discoveredFiles);

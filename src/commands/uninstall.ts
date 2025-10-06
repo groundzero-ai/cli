@@ -79,13 +79,12 @@ async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
 }
 
 /**
- * Remove formula from formula.yml or .formula.yml file
+ * Remove formula from formula.yml file
  */
 async function removeFormulaFromYml(targetDir: string, formulaName: string): Promise<boolean> {
-  // Check for .groundzero/formula.yml first, then .formula.yml (legacy)
+  // Check for .groundzero/formula.yml
   const configPaths = [
-    getLocalFormulaYmlPath(targetDir),
-    join(targetDir, FILE_PATTERNS.HIDDEN_FORMULA_YML)
+    getLocalFormulaYmlPath(targetDir)
   ];
   
   let configPath: string | null = null;
@@ -97,7 +96,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
   }
   
   if (!configPath) {
-    logger.warn('No formula.yml or .formula.yml file found to update');
+    logger.warn('No formula.yml file found to update');
     return false;
   }
   
@@ -154,21 +153,30 @@ async function displayDryRunInfo(
   }
 
 
-  // Check formula.yml files that would be removed
+  // Check formula.yml files and README.md files that would be removed
   const formulasDir = getLocalFormulasDir(targetDir);
   const formulaYmlFilesToRemove: string[] = [];
+  const readmeFilesToRemove: string[] = [];
   for (const formula of formulasToRemove) {
     const formulaDir = getLocalFormulaDir(targetDir, formula);
     const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+    const readmePath = join(formulaDir, FILE_PATTERNS.README_MD);
     if (await exists(formulaYmlPath)) {
       formulaYmlFilesToRemove.push(formula);
     }
+    if (await exists(readmePath)) {
+      readmeFilesToRemove.push(formula);
+    }
   }
 
-  if (formulaYmlFilesToRemove.length > 0) {
-    console.log(`\n📄 Formula metadata to remove (${formulaYmlFilesToRemove.length}):`);
+  const totalMetadataFiles = formulaYmlFilesToRemove.length + readmeFilesToRemove.length;
+  if (totalMetadataFiles > 0) {
+    console.log(`\n📄 Formula metadata to remove (${totalMetadataFiles}):`);
     for (const formula of formulaYmlFilesToRemove) {
-      console.log(`├── ${formula}`);
+      console.log(`├── ${formula}/formula.yml`);
+    }
+    for (const formula of readmeFilesToRemove) {
+      console.log(`├── ${formula}/README.md`);
     }
   } else {
     console.log(`\n📄 Formula metadata to remove: none`);
@@ -206,8 +214,7 @@ async function displayDryRunInfo(
 
   // Check formula.yml updates
   const configPaths = [
-    getLocalFormulaYmlPath(targetDir),
-    join(targetDir, FILE_PATTERNS.HIDDEN_FORMULA_YML)
+    getLocalFormulaYmlPath(targetDir)
   ];
 
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
@@ -440,7 +447,7 @@ async function uninstallFormulaCommand(
       }
     }
     
-    // Remove all formulas being uninstalled from formula.yml or .formula.yml
+    // Remove all formulas being uninstalled from formula.yml
     const ymlRemovalResults: Record<string, boolean> = {};
     for (const formula of formulasToRemove) {
       ymlRemovalResults[formula] = await removeFormulaFromYml(cwd, formula);

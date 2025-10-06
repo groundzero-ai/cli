@@ -32,7 +32,7 @@ import {
   getLocalFormulasDir,
   getAIDir
 } from '../utils/paths.js';
-import { createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
+import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } from '../utils/formula-management.js';
 import {
   parseFormulaInput,
   detectPlatforms,
@@ -60,25 +60,6 @@ async function getInstalledFormulaVersion(cwd: string, formulaName: string): Pro
   return undefined;
 }
 
-/**
- * Copy registry formula.yml to local project structure
- * @param cwd - Current working directory
- * @param formulaName - Name of the formula to copy
- * @param registryFormula - Formula object from registry containing metadata
- */
-async function copyRegistryFormulaYml(
-  cwd: string,
-  formulaName: string,
-  registryFormula: Formula
-): Promise<void> {
-  const localFormulaDir = join(getLocalFormulasDir(cwd), formulaName);
-  const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
-  
-  await ensureDir(localFormulaDir);
-  await writeFormulaYml(localFormulaYmlPath, registryFormula.metadata);
-  
-  logger.debug(`Copied registry formula.yml for ${formulaName} to local project`);
-}
 
 /**
  * Create platform directories for detected or selected platforms
@@ -387,8 +368,14 @@ async function installFormula(
   // Load formula
   const formula = await formulaManager.loadFormula(formulaName, version);
 
-  // Copy registry formula.yml to local project structure
-  await copyRegistryFormulaYml(cwd, formulaName, formula);
+  // Copy registry formula.yml and README.md to local project structure
+  const readmeFile = formula.files.find(f => f.path === FILE_PATTERNS.README_MD);
+  await writeLocalFormulaMetadata(cwd, formulaName, formula.metadata, readmeFile?.content);
+  
+  logger.debug(`Copied registry formula.yml for ${formulaName} to local project`);
+  if (readmeFile) {
+    logger.debug(`Copied README.md for ${formulaName} to local project`);
+  }
 
   // Create modified options with force flag if needed
   const installOptions = forceOverwrite ? { ...options, force: true } : options;
