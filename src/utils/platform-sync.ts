@@ -150,13 +150,8 @@ export async function postSavePlatformSync(
         sourceExt: FILE_PATTERNS.MD_FILES
       });
 
-      // Check each target platform, excluding AI directory
+      // Check each target platform
       for (const target of targets) {
-        // Skip AI directory platform - we don't sync to ai/
-        if (target.platform === PLATFORMS.AI) {
-          continue;
-        }
-
         // Skip if file already exists
         if (await exists(target.absFile)) {
           continue;

@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import { join, dirname } from 'path';
 import * as semver from 'semver';
-import { InstallOptions, CommandResult, FormulaYml, Formula, G0Error, ErrorCodes } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
+import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
+import { parseFormulaYml, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, writeResolutions, cleanupObsoleteResolutions } from '../core/groundzero.js';
@@ -109,11 +109,6 @@ async function provideIdeTemplateFiles(
 
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
-    // Skip template files for the special AI platform (should not add ai/groundzero.md or ai/ai.md)
-    if (platform === PLATFORMS.AI) {
-      logger.debug('Skipping IDE template files for AI platform');
-      return;
-    }
     // Use centralized platform mapping to get the rules directory path
     const { absDir: rulesDirRelative } = mapUniversalToPlatform(platform as Platform, UNIVERSAL_SUBDIRS.RULES, '');
     const rulesDir = join(targetDir, rulesDirRelative);
@@ -331,7 +326,7 @@ Reason: ${reasonText}`);
       } else {
         logger.debug(`Installed ${pathPrefix.slice(0, -1)} file: ${relativePath}`);
       }
-      installedFiles.push(pathPrefix === 'ai/' ? relativePath : `${pathPrefix.slice(0, -1)}/${relativePath}`);
+      installedFiles.push(`${pathPrefix.slice(0, -1)}/${relativePath}`);
       installedCount++;
     }
   }

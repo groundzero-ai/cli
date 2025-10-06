@@ -40,19 +40,6 @@ export interface PlatformDefinition {
 
 // Unified platform definitions using the new structure
 export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
-  // Special AI directory platform
-  [PLATFORMS.AI]: {
-    id: PLATFORMS.AI,
-    rootDir: PLATFORM_DIRS.AI,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: '',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'AI directory - ai/ (*.md files)'
-  },
   // AGENTS.md + MEMORIES platforms
   [PLATFORMS.CODEXCLI]: {
     id: PLATFORMS.CODEXCLI,

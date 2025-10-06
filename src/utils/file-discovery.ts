@@ -18,6 +18,9 @@ import {
   type Platform,
   type PlatformName
 } from '../core/platforms.js';
+
+// Union type for modules that need to handle AI directory alongside platforms
+type Platformish = Platform | typeof PLATFORM_DIRS.AI;
 import { mapPlatformFileToUniversal } from './platform-mapper.js';
 import type { DiscoveredFile } from '../types/index.js';
 
@@ -27,7 +30,7 @@ import type { DiscoveredFile } from '../types/index.js';
 async function processFileForDiscovery(
   file: { fullPath: string; relativePath: string },
   formulaName: string,
-  platformName: Platform,
+  platformName: Platformish,
   registryPathPrefix: string,
   inclusionMode: 'directory' | 'platform',
   formulaDir?: string
@@ -59,7 +62,7 @@ async function processFileForDiscovery(
 
         // Compute registry path using new universal mapping
         let registryPath: string;
-        if (inclusionMode === 'platform' && platformName !== (PLATFORM_DIRS.AI as Platform) && frontmatter?.formula?.name === formulaName) {
+        if (inclusionMode === 'platform' && platformName !== PLATFORM_DIRS.AI && frontmatter?.formula?.name === formulaName) {
           // Universal file from platform directory - use the mapper to get universal path
           const mapping = mapPlatformFileToUniversal(file.fullPath);
           if (mapping) {
@@ -100,7 +103,7 @@ async function processFileForDiscovery(
 /**
  * Check if a path matches a platform pattern and extract platform info
  */
-function checkPlatformMatch(normalizedPath: string, platform: PlatformName, platformDir: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
+function checkPlatformMatch(normalizedPath: string, platform: Platformish, platformDir: string): { platform: string; relativePath: string; platformName: Platformish } | null {
   // Check for absolute paths
   const absPlatformPattern = `/${platformDir}/`;
   let platformIndex = normalizedPath.indexOf(absPlatformPattern);
@@ -130,11 +133,11 @@ function checkPlatformMatch(normalizedPath: string, platform: PlatformName, plat
 /**
  * Parse a directory path to determine if it's a platform-specific directory
  */
-function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
+function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: Platformish } | null {
   const normalizedPath = directoryPath.replace(/\\/g, '/'); // Normalize for cross-platform
 
   // Check for AI directory first (special case)
-  const aiMatch = checkPlatformMatch(normalizedPath, PLATFORM_DIRS.AI as PlatformName, PLATFORM_DIRS.AI);
+  const aiMatch = checkPlatformMatch(normalizedPath, PLATFORM_DIRS.AI, PLATFORM_DIRS.AI);
   if (aiMatch) {
     return aiMatch;
   }
@@ -142,8 +145,6 @@ function parsePlatformDirectory(directoryPath: string): { platform: string; rela
   // Check for other platforms
   const platforms = Object.values(PLATFORMS) as PlatformName[];
   for (const platform of platforms) {
-    if (platform === (PLATFORM_DIRS.AI as PlatformName)) continue; // Already handled above
-
     // Map platform name to platform directory using the correct key format
     const platformKey = platform.toUpperCase() as keyof typeof PLATFORM_DIRS;
     const platformDir = PLATFORM_DIRS[platformKey];
@@ -166,7 +167,7 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
   // Add AI directory as required feature
   config.push({
     name: PLATFORM_DIRS.AI,
-    platform: PLATFORM_DIRS.AI as Platform,
+    platform: PLATFORM_DIRS.AI as Platformish,
     rootDir: PLATFORM_DIRS.AI,
     rulesDir: join(cwd, PLATFORM_DIRS.AI),
     filePatterns: [FILE_PATTERNS.MD_FILES],
@@ -195,7 +196,7 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
 // Platform search configuration interface
 interface PlatformSearchConfig {
   name: string;
-  platform: Platform;
+  platform: Platformish;
   rootDir: string;
   rulesDir: string;
   commandsDir?: string;
@@ -257,10 +258,10 @@ async function getFileMtime(filePath: string): Promise<number> {
 async function processPlatformSubdirectories(
   baseDir: string,
   formulaName: string,
-  platformName: Platform,
+  platformName: Platformish,
   formulaDir?: string
 ): Promise<DiscoveredFile[]> {
-  const definition = getPlatformDefinition(platformName);
+  const definition = getPlatformDefinition(platformName as Platform);
   const allFiles: DiscoveredFile[] = [];
 
   // Process each universal subdir that this platform supports
@@ -303,7 +304,7 @@ export async function discoverPlatformSubdirsInDirectory(
 export async function discoverFilesShallow(
   directoryPath: string,
   formulaName: string,
-  platformName: Platform,
+  platformName: Platformish,
   registryPathPrefix: string = '',
   filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
   inclusionMode: 'directory' | 'platform' = 'directory'
@@ -317,17 +318,19 @@ export async function discoverFilesShallow(
 export async function discoverDirectMdFiles(
   directoryPath: string,
   formulaName: string,
-  platformInfo?: { platform: string; relativePath: string; platformName: Platform } | null
+  platformInfo?: { platform: string; relativePath: string; platformName: Platformish } | null
 ): Promise<DiscoveredFile[]> {
   if (!platformInfo) {
     // Non-platform directory - search for .md files directly
-    return discoverFiles(directoryPath, formulaName, PLATFORM_DIRS.AI as Platform, '', [FILE_PATTERNS.MD_FILES], 'directory');
+    return discoverFiles(directoryPath, formulaName, PLATFORM_DIRS.AI, '', [FILE_PATTERNS.MD_FILES], 'directory');
   } else {
     // Platform-specific directory - search for .md files directly (shallow) and map to universal subdirs
-    const definition = getPlatformDefinition(platformInfo.platformName);
-    const filePatterns = platformInfo.platformName === (PLATFORM_DIRS.AI as Platform)
+    const filePatterns = platformInfo.platformName === PLATFORM_DIRS.AI
       ? [FILE_PATTERNS.MD_FILES]
-      : definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
+      : (() => {
+          const definition = getPlatformDefinition(platformInfo.platformName as Platform);
+          return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
+        })();
 
     // Use the mapper to determine the universal path
     const mapping = mapPlatformFileToUniversal(directoryPath + '/dummy.md'); // Use dummy file to get path mapping
@@ -413,7 +416,7 @@ export async function discoverFilesForPattern(
 export async function discoverFiles(
   directoryPath: string,
   formulaName: string,
-  platformName: Platform,
+  platformName: Platformish,
   registryPathPrefix: string = '',
   filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
   inclusionMode: 'directory' | 'platform' = 'directory',
@@ -501,7 +504,7 @@ async function processPlatformFiles(
   isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
   // Handle AI directory separately - it's not a platform subdirectory structure
-  if (config.name === (PLATFORM_DIRS.AI as Platform)) {
+  if (config.name === PLATFORM_DIRS.AI) {
     return discoverFiles(
       config.rulesDir,
       formulaName,
@@ -523,7 +526,7 @@ async function processPlatformFiles(
 function shouldIncludeMarkdownFile(
   mdFile: { relativePath: string },
   frontmatter: any,
-  sourceDir: Platform,
+  sourceDir: Platformish,
   formulaName: string,
   formulaDirRelativeToAi?: string,
   isDirectoryMode?: boolean
@@ -660,12 +663,12 @@ export async function findFormulas(formulaName: string): Promise<Array<{ fullPat
 
   for (const config of platformConfigs) {
     // Skip AI directory since it's handled above
-    if (config.name === (PLATFORM_DIRS.AI as Platform)) {
+    if (config.name === PLATFORM_DIRS.AI) {
       continue;
     }
 
     // Process all subdirs for this platform
-    const definition = getPlatformDefinition(config.platform);
+    const definition = getPlatformDefinition(config.platform as Platform);
     for (const [subdirName, subdirDef] of Object.entries(definition.subdirs)) {
       const subdir = subdirName as UniversalSubdir;
       const subdirPath = join(config.rootDir, subdirDef.path);

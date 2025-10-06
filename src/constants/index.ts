@@ -5,8 +5,6 @@
  */
 
 export const PLATFORMS = {
-  // Special AI directory platform
-  AI: 'ai',
   // AGENTS.md + MEMORIES platforms
   CODEXCLI: 'codexcli',
   OPENCODE: 'opencode',
