@@ -19,6 +19,7 @@ import { setupPushCommand } from './commands/push.js';
 import { setupPullCommand } from './commands/pull.js';
 import { setupConfigureCommand } from './commands/configure.js';
 import { setupAddCommand } from './commands/add.js';
+import { setupDuplicateCommand } from './commands/duplicate.js';
 
 /**
  * G0 Formula Manager CLI - Main entry point
@@ -49,9 +50,10 @@ setupStatusCommand(program);
 
 // === LOCAL REGISTRY OPERATIONS ===
 setupListCommand(program);
+setupShowCommand(program);
+setupDuplicateCommand(program);
 setupDeleteCommand(program);
 setupPruneCommand(program);
-setupShowCommand(program);
 
 // === REMOTE REGISTRY OPERATIONS ===
 setupPushCommand(program);
