@@ -5,13 +5,12 @@ import { parseFormulaYml, writeFormulaYml, updateMarkdownWithFormulaFrontmatter 
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
+import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import { getLocalFormulaDir } from '../utils/paths.js';
 import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
-import { promptConfirmation } from '../utils/prompts.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
 import { discoverFilesForPattern, findFormulas } from '../utils/file-discovery.js';

@@ -245,6 +245,20 @@ export async function writeJsonFile(path: string, data: any, indent: number = 2)
 }
 
 /**
+ * Rename a directory (or file) from source path to destination path.
+ * Ensures the destination parent directory exists and wraps errors consistently.
+ */
+export async function renameDirectory(srcPath: string, destPath: string): Promise<void> {
+  try {
+    await ensureDir(dirname(destPath));
+    await fs.rename(srcPath, destPath);
+    logger.debug(`Renamed: ${srcPath} -> ${destPath}`);
+  } catch (error) {
+    throw new FileSystemError(`Failed to rename: ${srcPath} -> ${destPath}`, { srcPath, destPath, error });
+  }
+}
+
+/**
  * Get the total size of a directory recursively
  */
 export async function getDirectorySize(dirPath: string): Promise<number> {

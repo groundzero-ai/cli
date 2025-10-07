@@ -19,6 +19,7 @@ import { setupPushCommand } from './commands/push.js';
 import { setupPullCommand } from './commands/pull.js';
 import { setupConfigureCommand } from './commands/configure.js';
 import { setupAddCommand } from './commands/add.js';
+import { setupRenameCommand } from './commands/rename.js';
 
 /**
  * G0 Formula Manager CLI - Main entry point
@@ -43,6 +44,7 @@ program
 setupInitCommand(program);
 setupAddCommand(program);
 setupSaveCommand(program);
+setupRenameCommand(program);
 setupInstallCommand(program);
 setupUninstallCommand(program);
 setupStatusCommand(program);
