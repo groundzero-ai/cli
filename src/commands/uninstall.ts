@@ -310,15 +310,6 @@ async function uninstallFormulaCommand(
     ? join(aiRootPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
     : aiRootPath;
   
-  // Check if ai directory exists
-  if (!(await exists(groundzeroPath))) {
-    console.log(`❌ Formula '${formulaName}' not found`);
-    console.log(`AI directory not found in: ${targetDir}`);
-    return {
-      success: false,
-      error: 'Formula not found'
-    };
-  }
 
   // Helper now available in fs utils: removeEmptyDirectories
   
@@ -359,18 +350,6 @@ async function uninstallFormulaCommand(
   }));
   const aiFilesToRemove = Array.from(new Set(aiFilesToRemoveSets.flat()));
 
-  // If no ai files found for main formula and not recursive, treat as not found
-  if (!options.recursive) {
-    if (aiFilesToRemove.length === 0) {
-      console.log(`❌ Formula '${formulaName}' not found`);
-      console.log(`No matching AI files found in ai directory`);
-      return {
-        success: false,
-        error: 'Formula not found'
-      };
-    }
-  }
-
   // Dry run mode
   if (options.dryRun) {
     const relAiFiles = aiFilesToRemove.map(p => relative(cwd, p));
@@ -403,8 +382,10 @@ async function uninstallFormulaCommand(
       logger.debug(`Removed AI file: ${filePath}`);
     }
 
-    // Remove empty directories under ai target path
-    await removeEmptyDirectories(groundzeroPath);
+    // Remove empty directories under ai target path (if it exists)
+    if (await exists(groundzeroPath)) {
+      await removeEmptyDirectories(groundzeroPath);
+    }
 
     // Remove formula.yml files and directories for all formulas being removed
     const formulasDir = getLocalFormulasDir(cwd);
