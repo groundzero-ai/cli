@@ -9,30 +9,34 @@ import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
+import { parseFormulaRefExact } from '../utils/formula-ref.js';
 
 /**
  * Push formula command implementation
  */
 async function pushFormulaCommand(
-  formulaName: string,
+  formulaInput: string,
   options: PushOptions
 ): Promise<CommandResult> {
-  logger.info(`Pushing formula '${formulaName}' to remote registry`, { options });
+  logger.info(`Pushing formula '${formulaInput}' to remote registry`, { options });
+  const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
+  let attemptedVersion: string | undefined;
   
   try {
     // Ensure registry directories exist
     await ensureRegistryDirectories();
     
     // Verify formula exists locally
-    const exists = await formulaManager.formulaExists(formulaName);
+    const exists = await formulaManager.formulaExists(parsedName);
     if (!exists) {
-      console.error(`❌ Formula '${formulaName}' not found in local registry`);
+      console.error(`❌ Formula '${parsedName}' not found in local registry`);
       return { success: false, error: 'Formula not found' };
     }
     
     // Load formula and determine version
-    const formula = await formulaManager.loadFormula(formulaName, options.version);
-    const versionToPush = options.version || formula.metadata.version;
+    const formula = await formulaManager.loadFormula(parsedName, parsedVersion);
+    const versionToPush = parsedVersion || formula.metadata.version;
+    attemptedVersion = versionToPush;
 
     // Reject prerelease versions (e.g., -alpha, -beta, -rc, -dev)
     if (semver.prerelease(versionToPush)) {
@@ -52,7 +56,7 @@ async function pushFormulaCommand(
     const registryUrl = authManager.getRegistryUrl();
     const profile = authManager.getCurrentProfile({ profile: options.profile });
     
-    console.log(`📤 Pushing formula '${formulaName}' to remote registry...`);
+    console.log(`📤 Pushing formula '${parsedName}' to remote registry...`);
     console.log(`📦 Version: ${versionToPush}`);
     console.log(`🔑 Profile: ${profile}`);
     console.log('');
@@ -71,7 +75,7 @@ async function pushFormulaCommand(
     console.log(`✓ Created tarball (${formula.files.length} files, ${sizeInMB}MB)`);
     
     // Step 3: Prepare upload data
-    const formData = createFormDataForUpload(formulaName, versionToPush, tarballInfo);
+    const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);
     
     // Step 4: Upload to registry
     console.log('🚀 Uploading to registry...');
@@ -112,18 +116,18 @@ async function pushFormulaCommand(
     };
     
   } catch (error) {
-    logger.debug('Push command failed', { error, formulaName });
+    logger.debug('Push command failed', { error, formulaName: parsedName });
     
     // Handle specific error cases
     if (error instanceof Error) {
       const apiError = (error as any).apiError;
       
       if (apiError?.statusCode === 409) {
-        console.error(`❌ Version ${options.version || 'latest'} already exists for formula '${formulaName}'`);
+        console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for formula '${parsedName}'`);
         console.log('');
         console.log('💡 Try one of these options:');
         console.log('  • Increment the version in your formula.yml');
-        console.log('  • Use --version to specify a new version');
+        console.log('  • Specify a version explicitly using formula@<version>');
         console.log('  • Contact the registry administrator if you need to replace this version');
         return { success: false, error: 'Version already exists' };
       }
@@ -176,9 +180,8 @@ async function pushFormulaCommand(
 export function setupPushCommand(program: Command): void {
   program
     .command('push')
-    .description('Push a formula to remote registry')
-    .argument('<formula-name>', 'name of the formula to push')
-    .option('--version <version>', 'specific version to push')
+    .description('Push a formula to remote registry. Supports formula@version syntax.')
+    .argument('<formula-name>', 'name of the formula to push. Supports formula@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (formulaName: string, options: PushOptions) => {

@@ -8,15 +8,17 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { extractFormulaFromTarball, verifyTarballIntegrity } from '../utils/tarball.js';
+import { parseFormulaRefExact } from '../utils/formula-ref.js';
 
 /**
  * Pull formula command implementation
  */
 async function pullFormulaCommand(
-  formulaName: string,
+  formulaInput: string,
   options: PullOptions
 ): Promise<CommandResult> {
-  logger.info(`Pulling formula '${formulaName}' from remote registry`, { options });
+  const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
+  logger.info(`Pulling formula '${parsedName}' from remote registry`, { options });
   
   try {
     // Ensure registry directories exist
@@ -30,26 +32,26 @@ async function pullFormulaCommand(
     
     const registryUrl = authManager.getRegistryUrl();
     const profile = authManager.getCurrentProfile({ profile: options.profile });
-    const versionToPull = options.version || 'latest';
+    const versionToPull = parsedVersion || 'latest';
     
-    console.log(`📥 Pulling formula '${formulaName}' from remote registry...`);
+    console.log(`📥 Pulling formula '${parsedName}' from remote registry...`);
     console.log(`📦 Version: ${versionToPull}`);
     console.log(`🔑 Profile: ${profile}`);
     console.log('');
     
     // Check if formula already exists locally
-    const localExists = await formulaManager.formulaExists(formulaName);
-    if (localExists && !options.version) {
+    const localExists = await formulaManager.formulaExists(parsedName);
+    if (localExists && !parsedVersion) {
       // For specific version requests, we'll allow overwrites
       // For 'latest', we should warn the user
-      console.log(`⚠️  Formula '${formulaName}' already exists locally`);
+      console.log(`⚠️  Formula '${parsedName}' already exists locally`);
       console.log('Pulling will overwrite the local version.');
       console.log('');
     }
     
     // Step 1: Query the registry for the formula
     console.log('🔍 Querying registry for formula...');
-    const endpoint = `/formulas/pull/${encodeURIComponent(formulaName)}/${encodeURIComponent(versionToPull)}`;
+    const endpoint = `/formulas/pull/${encodeURIComponent(parsedName)}/${encodeURIComponent(versionToPull)}`;
     const response = await httpClient.get<PullFormulaResponse>(endpoint);
     
     console.log('✓ Formula found in registry');
@@ -136,16 +138,16 @@ async function pullFormulaCommand(
     };
     
   } catch (error) {
-    logger.debug('Pull command failed', { error, formulaName });
+    logger.debug('Pull command failed', { error, formulaName: parsedName });
     
     // Handle specific error cases
     if (error instanceof Error) {
       const apiError = (error as any).apiError;
       
       if (apiError?.statusCode === 404) {
-        console.error(`❌ Formula '${formulaName}' not found in registry`);
-        if (options.version) {
-          console.log(`Version '${options.version}' does not exist.`);
+        console.error(`❌ Formula '${parsedName}' not found in registry`);
+        if (parsedVersion) {
+          console.log(`Version '${parsedVersion}' does not exist.`);
         } else {
           console.log('Formula does not exist in the registry.');
         }
@@ -200,9 +202,8 @@ async function pullFormulaCommand(
 export function setupPullCommand(program: Command): void {
   program
     .command('pull')
-    .description('Pull a formula from remote registry')
-    .argument('<formula-name>', 'name of the formula to pull')
-    .option('--version <version>', 'specific version to pull')
+    .description('Pull a formula from remote registry. Supports formula@version syntax.')
+    .argument('<formula-name>', 'name of the formula to pull. Supports formula@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (formulaName: string, options: PullOptions) => {

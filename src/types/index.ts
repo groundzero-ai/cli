@@ -148,13 +148,11 @@ export interface UninstallOptions {
 }
 
 export interface PushOptions {
-  version?: string;
   profile?: string;
   apiKey?: string;
 }
 
 export interface PullOptions {
-  version?: string;
   profile?: string;
   apiKey?: string;
 }
