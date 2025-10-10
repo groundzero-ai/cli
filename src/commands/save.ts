@@ -436,7 +436,7 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
   // Process discovered MD files in parallel
   const mdFilePromises = discoveredFiles.map(async (mdFile) => {
     const originalContent = await readTextFile(mdFile.fullPath);
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, formulaConfig.name);
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name });
 
     // Update source file if content changed
     if (updatedContent !== originalContent) {

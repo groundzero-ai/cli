@@ -14,25 +14,6 @@ export interface MarkdownFrontmatter {
 }
 
 /**
- * Add or update platformSpecific flag in frontmatter
- */
-export function addPlatformSpecificFlag(content: string): string {
-  const frontmatter = parseMarkdownFrontmatter(content);
-
-  // Update frontmatter with platformSpecific flag
-  const updatedFrontmatter = {
-    ...frontmatter,
-    formula: {
-      ...frontmatter?.formula,
-      platformSpecific: true
-    }
-  };
-
-  // Reconstruct content with updated frontmatter
-  return updateMarkdownWithFormulaFrontmatter(content, updatedFrontmatter.formula?.name || '');
-}
-
-/**
  * Parse formula.yml file with validation
  */
 export async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYml> {
@@ -122,60 +103,141 @@ export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter |
 /**
  * Update markdown content with formula frontmatter, preserving existing non-formula frontmatter and comments
  */
-export function updateMarkdownWithFormulaFrontmatter(content: string, formulaName: string): string {
-  // Check if content starts with frontmatter delimiter
-  if (!content.startsWith('---\n')) {
-    // No existing frontmatter, add new one
-    const newFrontmatter = `---
-# GroundZero formula
-formula:
-  name: ${formulaName}
----
+export function updateMarkdownWithFormulaFrontmatter(
+  content: string,
+  formulaUpdate: { name?: string; platformSpecific?: boolean }
+): string {
+  const updateObject = formulaUpdate || {};
+  const shouldUpdateName = typeof updateObject.name === 'string' && updateObject.name.length > 0;
+  const shouldUpdatePlatform = updateObject.platformSpecific === true;
 
-${content}`;
-    return newFrontmatter;
+  if (!shouldUpdateName && !shouldUpdatePlatform) {
+    return content;
   }
-  
-  // Find the closing delimiter
-  const endIndex = content.indexOf('\n---\n', 4);
+
+  const nl = detectNewline(content);
+
+  const bounds = findFrontmatterBounds(content, nl);
+  if (!bounds.has) {
+    return buildNewFrontmatter(content, updateObject, nl);
+  }
+
+  const frontmatterContent = content.slice(bounds.start, bounds.end);
+  const markdownContentStart = bounds.end + (nl + '---' + nl).length;
+  const markdownContent = content.slice(markdownContentStart);
+
+  const updatedFrontmatter = updateFormulaBlockInText(frontmatterContent, updateObject, nl);
+
+  return content.slice(0, bounds.start - ('---'.length + nl.length)) + '---' + nl + updatedFrontmatter + nl + '---' + nl + markdownContent;
+}
+
+function detectNewline(text: string): '\n' | '\r\n' {
+  return text.includes('\r\n') ? '\r\n' : '\n';
+}
+
+function findFrontmatterBounds(content: string, nl: string): { has: boolean; start: number; end: number } {
+  const startDelim = '---' + nl;
+  if (!content.startsWith(startDelim)) {
+    return { has: false, start: -1, end: -1 };
+  }
+  const endToken = nl + '---' + nl;
+  const endIndex = content.indexOf(endToken, startDelim.length);
   if (endIndex === -1) {
-    // Malformed frontmatter, treat as no frontmatter
-    const newFrontmatter = `---
-# GroundZero formula
-formula:
-  name: ${formulaName}
----
+    return { has: false, start: -1, end: -1 };
+  }
+  const start = startDelim.length; // index right after opening delimiter
+  const end = endIndex; // index at the char before endToken
+  return { has: true, start, end };
+}
 
-${content}`;
-    return newFrontmatter;
+function buildNewFrontmatter(
+  content: string,
+  updateObject: { name?: string; platformSpecific?: boolean },
+  nl: string
+): string {
+  const lines: string[] = [];
+  if (typeof updateObject.name === 'string' && updateObject.name.length > 0) {
+    lines.push(`  name: ${updateObject.name}`);
   }
-  
-  // Extract existing frontmatter content and markdown content
-  const frontmatterContent = content.substring(4, endIndex);
-  const markdownContent = content.substring(endIndex + 5); // Skip the closing ---\n
-  
-  // Check if formula section already exists in the frontmatter
-  const hasFormulaSection = frontmatterContent.includes('formula:');
-  
-  if (hasFormulaSection) {
-    // Update existing formula section using regex to preserve comments and formatting
-    const formulaRegex = /^(\s*)formula:\s*$/m;
-    const formulaNameRegex = /^(\s*)name:\s*.*$/m;
-    
-    let updatedFrontmatter = frontmatterContent;
-    
-    // Update the formula name if it exists
-    if (formulaNameRegex.test(updatedFrontmatter)) {
-      updatedFrontmatter = updatedFrontmatter.replace(formulaNameRegex, `$1name: ${formulaName}`);
-    } else {
-      // Add name field if formula section exists but no name
-      updatedFrontmatter = updatedFrontmatter.replace(formulaRegex, `$1formula:\n$1  name: ${formulaName}`);
+  if (updateObject.platformSpecific === true) {
+    lines.push(`  platformSpecific: true`);
+  }
+  const formulaBlock = lines.length > 0 ? `formula:${nl}${lines.join(nl)}` : 'formula:';
+  return `---${nl}# GroundZero formula${nl}${formulaBlock}${nl}---${nl}${nl}${content}`;
+}
+
+function updateFormulaBlockInText(
+  frontmatterContent: string,
+  updateObject: { name?: string; platformSpecific?: boolean },
+  nl: string
+): string {
+  const lines = frontmatterContent.split(nl);
+  const shouldUpdateName = typeof updateObject.name === 'string' && updateObject.name.length > 0;
+  const shouldUpdatePlatform = updateObject.platformSpecific === true;
+
+  // Find formula line
+  let formulaIndex = -1;
+  let formulaIndent = '';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed === 'formula:') {
+      formulaIndex = i;
+      formulaIndent = line.slice(0, line.indexOf('f'));
+      break;
     }
-    
-    return `---\n${updatedFrontmatter}\n---\n${markdownContent}`;
-  } else {
-    // No formula section exists, add it at the end of frontmatter
-    const updatedFrontmatter = frontmatterContent.trim() + `\nformula:\n  name: ${formulaName}`;
-    return `---\n${updatedFrontmatter}\n---\n${markdownContent}`;
   }
+
+  const childIndent = formulaIndent + '  ';
+
+  if (formulaIndex === -1) {
+    // Append new formula block at the end of frontmatter
+    const insert: string[] = ['formula:'];
+    if (shouldUpdateName) insert.push(`${childIndent}name: ${updateObject.name}`);
+    if (shouldUpdatePlatform) insert.push(`${childIndent}platformSpecific: true`);
+    // Ensure we keep original frontmatter content as-is and append
+    const base = lines.join(nl).trimEnd();
+    return (base.length ? base + nl : '') + insert.join(nl);
+  }
+
+  // Identify bounds of the formula block: contiguous lines starting with childIndent
+  let blockStart = formulaIndex + 1;
+  let blockEnd = blockStart;
+  while (blockEnd < lines.length && lines[blockEnd].startsWith(childIndent)) {
+    blockEnd++;
+  }
+
+  // Scan existing child lines for name/platform
+  let nameFoundAt = -1;
+  let platformFoundAt = -1;
+  for (let i = blockStart; i < blockEnd; i++) {
+    const childLine = lines[i];
+    const trimmed = childLine.trim();
+    if (trimmed.startsWith('name:')) {
+      nameFoundAt = i;
+    } else if (trimmed.startsWith('platformSpecific:')) {
+      platformFoundAt = i;
+    }
+  }
+
+  // Apply updates in-place
+  if (shouldUpdateName) {
+    if (nameFoundAt !== -1) {
+      lines[nameFoundAt] = `${childIndent}name: ${updateObject.name}`;
+    } else {
+      lines.splice(blockEnd, 0, `${childIndent}name: ${updateObject.name}`);
+      blockEnd++;
+    }
+  }
+
+  if (shouldUpdatePlatform) {
+    if (platformFoundAt !== -1) {
+      lines[platformFoundAt] = `${childIndent}platformSpecific: true`;
+    } else {
+      lines.splice(blockEnd, 0, `${childIndent}platformSpecific: true`);
+      blockEnd++;
+    }
+  }
+
+  return lines.join(nl);
 }

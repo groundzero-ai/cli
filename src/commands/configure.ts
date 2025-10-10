@@ -13,7 +13,7 @@ import { safePrompts } from '../utils/prompts.js';
 interface ConfigureOptions {
   profile?: string;
   list?: boolean;
-  delete?: boolean;
+  delete?: string | boolean;
 }
 
 /**
@@ -186,8 +186,15 @@ async function configureCommand(options: ConfigureOptions): Promise<CommandResul
   }
 
   // Delete profile
+  if (typeof options.delete === 'string') {
+    return await deleteProfile(options.delete);
+  }
   if (options.delete && options.profile) {
+    // Backward compatibility: allow --delete with --profile <name>
     return await deleteProfile(options.profile);
+  }
+  if (options.delete) {
+    return { success: false, error: 'Please provide a profile name via --delete <name> or --profile <name>.' };
   }
 
   // Setup default profile (default behavior)
@@ -208,7 +215,7 @@ export function setupConfigureCommand(program: Command): void {
     .description('Configure default profile and authentication')
     .option('--profile <name>', 'profile name to configure')
     .option('--list', 'list all configured profiles')
-    .option('--delete', 'delete the specified profile')
+    .option('--delete <name>', 'delete the specified profile')
     .action(withErrorHandling(async (options: ConfigureOptions) => {
       const result = await configureCommand(options);
       if (!result.success) {

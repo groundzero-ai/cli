@@ -8,7 +8,7 @@ import { logger } from './logger.js';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
 import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
-import { addPlatformSpecificFlag } from './formula-yml.js';
+import { updateMarkdownWithFormulaFrontmatter } from './formula-yml.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import { UserCancellationError } from './errors.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
@@ -295,7 +295,7 @@ async function handlePlatformSpecificMarking(
   for (const index of platformSpecificIndices) {
     const file = filteredFiles[index];
     const content = await readTextFile(file.fullPath);
-    const updatedContent = addPlatformSpecificFlag(content);
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { platformSpecific: true });
     await writeTextFile(file.fullPath, updatedContent);
 
     // Update the file object to reflect the change
@@ -343,7 +343,7 @@ async function markAllFilesAsPlatformSpecific(files: DiscoveredFile[]): Promise<
   for (const file of files) {
     // Mark file as platform-specific in frontmatter
     const content = await readTextFile(file.fullPath);
-    const updatedContent = addPlatformSpecificFlag(content);
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { platformSpecific: true });
     await writeTextFile(file.fullPath, updatedContent);
 
     // Update the file object to reflect the change
