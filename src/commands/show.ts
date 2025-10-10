@@ -1,61 +1,29 @@
 import { Command } from 'commander';
-import { join, basename } from 'path';
-import { isNotJunk } from 'junk';
 import { CommandResult } from '../types/index.js';
-import { ensureRegistryDirectories, getLatestFormulaVersion, getFormulaVersionPath } from '../core/directory.js';
+import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
-import { readTextFile, walkFiles } from '../utils/fs.js';
-import { detectTemplateFile } from '../utils/template.js';
-import { parseFormulaYml } from '../utils/formula-yml.js';
 import { describeVersionRange, isExactVersion } from '../utils/version-ranges.js';
+import { parseFormulaInput } from '../utils/formula-installation.js';
+import { formulaManager } from '../core/formula.js';
 
 /**
- * Show formula details command implementation
+ * Show formula details command implementation (supports formula@version)
  */
-async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
-  logger.debug(`Showing details for formula: ${formulaName}`);
+async function showFormulaCommand(formulaInput: string): Promise<CommandResult> {
+  logger.debug(`Showing details for formula input: ${formulaInput}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Check if formula exists and get the latest version
-  const latestVersion = await getLatestFormulaVersion(formulaName);
-  
-  if (!latestVersion) {
-    console.log(`❌ Formula '${formulaName}' not found`);
-    return { success: false, error: 'Formula not found' };
-  }
-  
-  const formulaVersionPath = getFormulaVersionPath(formulaName, latestVersion);
-  const formulaYmlPath = join(formulaVersionPath, 'formula.yml');
-  
   try {
-    // Load metadata from formula.yml
-    const metadata = await parseFormulaYml(formulaYmlPath);
+    // Parse input (supports name@version or name@range)
+    const { name, version } = parseFormulaInput(formulaInput);
     
-    // Discover all files in the formula directory
-    const files: Array<{
-      path: string;
-      content: string;
-      isTemplate: boolean;
-    }> = [];
-    
-    for await (const fullPath of walkFiles(formulaVersionPath)) {
-      const fileName = basename(fullPath);
-      if (!isNotJunk(fileName)) {
-        continue;
-      }
-      const relativePath = fullPath.replace(formulaVersionPath + '/', '');
-      const content = await readTextFile(fullPath);
-      const isTemplate = detectTemplateFile(content);
-      
-      files.push({
-        path: relativePath,
-        content,
-        isTemplate
-      });
-    }
+    // Load formula (resolves ranges to a specific version)
+    const formula = await formulaManager.loadFormula(name, version);
+    const metadata = formula.metadata;
+    const files = formula.files;
     
     // Display formula details
     console.log(`🍺 Formula: ${metadata.name}`);
@@ -103,7 +71,12 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
       data: metadata
     };
   } catch (error) {
-    logger.error(`Failed to show formula: ${formulaName}`, { error });
+    logger.error(`Failed to show formula: ${formulaInput}`, { error });
+    // Align with other commands' UX for not found
+    if (error instanceof Error && error.message && error.message.includes('not found')) {
+      console.log(`❌ Formula '${formulaInput}' not found`);
+      return { success: false, error: 'Formula not found' };
+    }
     throw new Error(`Failed to show formula: ${error}`);
   }
 }
@@ -115,9 +88,9 @@ async function showFormulaCommand(formulaName: string): Promise<CommandResult> {
 export function setupShowCommand(program: Command): void {
   program
     .command('show')
-    .description('Show details of a formula')
-    .argument('<formula-name>', 'name of the formula to show')
-    .action(withErrorHandling(async (formulaName: string) => {
-      await showFormulaCommand(formulaName);
+    .description('Show details of a formula. Supports versioning with formula@version syntax.')
+    .argument('<formula-name>', 'name of the formula to show. Supports formula@version syntax.')
+    .action(withErrorHandling(async (formulaInput: string) => {
+      await showFormulaCommand(formulaInput);
     }));
 }
