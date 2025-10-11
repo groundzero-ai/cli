@@ -14,8 +14,9 @@ import { FILE_PATTERNS } from '../constants/index.js';
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
-import { discoverFilesForPattern, discoverAgentsMdFile, findFormulas } from '../utils/file-discovery.js';
+import { discoverFilesForPattern, discoverAllRootFiles, findFormulas } from '../utils/file-discovery.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
+import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
@@ -371,10 +372,10 @@ async function saveFormulaCommand(
   // Discover and include MD files using appropriate logic
   let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
 
-  // Discover root AGENTS.md for this formula and include if present
-  const agentsDiscovered = await discoverAgentsMdFile(cwd, formulaConfig.name);
-  if (agentsDiscovered) {
-    discoveredFiles.push(agentsDiscovered);
+  // Discover all platform root files (AGENTS.md, CLAUDE.md, GEMINI.md, etc.) at project root
+  const rootFilesDiscovered = await discoverAllRootFiles(cwd, formulaConfig.name);
+  if (rootFilesDiscovered.length > 0) {
+    discoveredFiles.push(...rootFilesDiscovered);
   }
 
   // Process discovered files and create formula files array
@@ -442,18 +443,28 @@ async function createFormulaYmlFile(formulaYmlPath: string, formulaConfig: Formu
  */
 async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: DiscoveredFile[]): Promise<FormulaFile[]> {
   // Process discovered MD files in parallel
+  // Build dynamic set of platform root filenames from platform definitions
+  const rootFilenamesSet = (() => {
+    const set = new Set<string>();
+    for (const platform of getAllPlatforms()) {
+      const def = getPlatformDefinition(platform);
+      if (def.rootFile) set.add(def.rootFile);
+    }
+    return set;
+  })();
+
   const mdFilePromises = discoveredFiles.map(async (mdFile) => {
     const originalContent = await readTextFile(mdFile.fullPath);
 
-    // Special handling for AGENTS.md: use designated content only, skip frontmatter
-    if (mdFile.registryPath === FILE_PATTERNS.AGENTS_MD) {
+    // Special handling for root files: always extract formula-specific content by markers
+    // This applies to AGENTS.md and platform-native root files regardless of final registryPath
+    if (rootFilenamesSet.has(basename(mdFile.fullPath))) {
       const agentsContent = extractFormulaContentFromAgentsMd(originalContent, formulaConfig.name);
       if (!agentsContent) {
-        // If somehow missing (race), skip including
         return null as any;
       }
       return {
-        path: FILE_PATTERNS.AGENTS_MD,
+        path: mdFile.registryPath,
         content: agentsContent,
         isTemplate: false,
         encoding: UTF8_ENCODING

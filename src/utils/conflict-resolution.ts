@@ -4,15 +4,14 @@
  */
 
 import { join, basename, dirname } from 'path';
-import { logger } from './logger.js';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
-import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
+import { promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
 import { updateMarkdownWithFormulaFrontmatter } from './md-frontmatter.js';
 import { readTextFile, writeTextFile } from './fs.js';
-import { UserCancellationError } from './errors.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
+import { getPlatformDefinition } from '../core/platforms.js';
 
 // Constants for conflict resolution
 const MARK_ALL_AS_PLATFORM_SPECIFIC = -1;
@@ -304,14 +303,14 @@ async function handlePlatformSpecificMarking(
 
     // Add to platform-specific results
     const platformName = getPlatformNameFromSource(file.sourceDir);
-    const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
-    const platformSpecificPath = join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
-
-    platformSpecificFiles.push({
-      file,
-      platformName,
-      finalRegistryPath: platformSpecificPath
-    });
+    const platformSpecificPath = createPlatformSpecificPath(file, platformName);
+    if (platformSpecificPath) {
+      platformSpecificFiles.push({
+        file,
+        platformName,
+        finalRegistryPath: platformSpecificPath
+      });
+    }
   }
 
   // Get remaining files (not marked as platform-specific, including the excluded universal file)
@@ -379,52 +378,6 @@ async function syncFilesWithUniversalContent(universalFile: DiscoveredFile, file
 }
 
 /**
- * Handle universal file selection and content synchronization
- */
-async function handleUniversalFileSelection(
-  files: DiscoveredFile[]
-): Promise<ContentAnalysisResult> {
-  const result: ContentAnalysisResult = {
-    universalFiles: [],
-    platformSpecificFiles: []
-  };
-
-  if (files.length === 0) {
-    console.log('No files selected for universal file consideration');
-    return result;
-  }
-
-  if (files.length === 1) {
-    // Only one file left, make it universal
-    const universalFile = files[0];
-    result.universalFiles.push({
-      file: universalFile,
-      finalRegistryPath: universalFile.registryPath
-    });
-
-    await syncFilesWithUniversalContent(universalFile, files);
-  } else {
-    // Multiple files to choose from
-    const remainingOptions = await prepareFileOptions(files);
-
-    const selectedIndex = await promptFileSelection(
-      remainingOptions,
-      'Select which file should become the universal file (others will be overwritten):'
-    );
-
-    const selectedFile = files[selectedIndex];
-    result.universalFiles.push({
-      file: selectedFile,
-      finalRegistryPath: selectedFile.registryPath
-    });
-
-    await syncFilesWithUniversalContent(selectedFile, files);
-  }
-
-  return result;
-}
-
-/**
  * Find the latest file in a group based on modification time
  */
 function findLatestFile(files: DiscoveredFile[]): DiscoveredFile {
@@ -436,7 +389,17 @@ function findLatestFile(files: DiscoveredFile[]): DiscoveredFile {
 /**
  * Create platform-specific registry path for a file
  */
-function createPlatformSpecificPath(file: DiscoveredFile, platformName: string): string {
+function createPlatformSpecificPath(file: DiscoveredFile, platformName: string): string | null {
+  // Special handling for root-files group that target AGENTS.md: emit platform-native root filenames
+  if (file.registryPath === FILE_PATTERNS.AGENTS_MD && dirname(file.registryPath) === '') {
+    const def = getPlatformDefinition(platformName as any);
+    // If platform has a native rootFile, use that name; otherwise AGENTS.md is irrelevant for this platform
+    if (def && def.rootFile) {
+      return def.rootFile;
+    }
+    return null;
+  }
+
   const originalBase = basename(file.registryPath, FILE_PATTERNS.MD_FILES);
   return join(dirname(file.registryPath) || '', `${originalBase}.${platformName}${FILE_PATTERNS.MD_FILES}`);
 }
@@ -448,6 +411,11 @@ function addFilesAsPlatformSpecific(files: DiscoveredFile[], result: ContentAnal
   for (const file of files) {
     const platformName = getPlatformNameFromSource(file.sourceDir);
     const platformSpecificPath = createPlatformSpecificPath(file, platformName);
+
+    // Skip if AGENTS.md is irrelevant for this platform (no native rootFile)
+    if (!platformSpecificPath) {
+      continue;
+    }
 
     result.platformSpecificFiles.push({
       file,

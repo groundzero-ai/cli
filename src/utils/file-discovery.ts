@@ -15,6 +15,7 @@ import { calculateFileHash } from './hash-utils.js';
 import {
   getDetectedPlatforms,
   getPlatformDefinition,
+  getAllPlatforms,
   type Platform,
   type PlatformName
 } from '../core/platforms.js';
@@ -532,6 +533,70 @@ export async function discoverAgentsMdFile(
     logger.warn(`Failed to process root ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
     return null;
   }
+}
+
+/**
+ * Discover all platform root files at project root and extract formula-specific content.
+ * Merges CLAUDE.md, GEMINI.md, QWEN.md, WARP.md, and platform AGENTS.md into a single
+ * universal AGENTS.md registry path via conflict resolution.
+ */
+export async function discoverAllRootFiles(
+  cwd: string,
+  formulaName: string
+): Promise<DiscoveredFile[]> {
+  const results: DiscoveredFile[] = [];
+
+  // Collect unique root filenames from platform definitions
+  const uniqueRootFiles = new Set<string>();
+  for (const platform of getAllPlatforms()) {
+    const def = getPlatformDefinition(platform);
+    if (def.rootFile) {
+      uniqueRootFiles.add(def.rootFile);
+    }
+  }
+
+  // Iterate unique root files and extract content
+  for (const rootFile of uniqueRootFiles) {
+    const absPath = join(cwd, rootFile);
+    if (!(await exists(absPath))) {
+      continue;
+    }
+
+    try {
+      const content = await readTextFile(absPath);
+      const extracted = extractFormulaContentFromAgentsMd(content, formulaName);
+      if (!extracted) {
+        continue; // No matching section in this root file
+      }
+
+      const mtime = await getFileMtime(absPath);
+      const contentHash = await calculateFileHash(extracted);
+
+      // Derive a representative platform for this root file (e.g., 'claude' for CLAUDE.md)
+      const representativePlatform = (() => {
+        for (const p of getAllPlatforms()) {
+          const def = getPlatformDefinition(p);
+          if (def.rootFile === rootFile) return p;
+        }
+        return 'root';
+      })();
+
+      results.push({
+        fullPath: absPath,
+        relativePath: rootFile,
+        // Use representative platform id so conflict resolution can map to native root filenames
+        sourceDir: representativePlatform,
+        // Map all root files to universal AGENTS.md target for conflict resolution
+        registryPath: FILE_PATTERNS.AGENTS_MD,
+        mtime,
+        contentHash
+      });
+    } catch (error) {
+      logger.warn(`Failed to process root file ${rootFile}: ${error}`);
+    }
+  }
+
+  return results;
 }
 
 /**

@@ -408,38 +408,6 @@ interface FileSelectionOption {
 }
 
 /**
- * Prompt user to select one file from multiple options
- */
-export async function promptFileSelection(
-  options: FileSelectionOption[],
-  message: string = 'Select a file:'
-): Promise<number> {
-  if (options.length === 0) {
-    throw new Error('No files to select from');
-  }
-
-  if (options.length === 1) {
-    return 0; // Only one option, auto-select
-  }
-
-  const choices = options.map((option, index) => ({
-    title: `${option.platform}: ${option.registryPath}`,
-    value: index,
-    description: option.preview.substring(0, 60) + (option.preview.length > 60 ? '...' : '')
-  }));
-
-  const response = await safePrompts({
-    type: 'select',
-    name: 'selectedIndex',
-    message,
-    choices,
-    hint: 'Use arrow keys to navigate, Enter to select'
-  });
-
-  return response.selectedIndex;
-}
-
-/**
  * Prompt user to mark multiple files as platform-specific
  */
 export async function promptPlatformSpecificSelection(
