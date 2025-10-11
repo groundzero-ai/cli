@@ -5,7 +5,7 @@ import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js'
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
-import { GroundzeroFormula, gatherGlobalVersionConstraints } from '../core/groundzero.js';
+import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
 import { exists, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
@@ -336,6 +336,7 @@ async function buildFormulaDependencyTree(
   try {
     // Use the install command's dependency resolver to get the complete tree
     const constraints = await gatherGlobalVersionConstraints(cwd);
+    const rootConstraints = await gatherRootVersionConstraints(cwd);
     const resolvedFormulas = await resolveDependencies(
       formulaName,
       cwd,
@@ -344,7 +345,8 @@ async function buildFormulaDependencyTree(
       new Map(),
       version,
       new Map(),
-      constraints
+      constraints,
+      rootConstraints
     );
     
     // Convert resolved formulas to status info in parallel

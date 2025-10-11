@@ -58,7 +58,8 @@ export async function resolveDependencies(
   resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
   version?: string,
   requiredVersions: Map<string, string[]> = new Map(),
-  globalConstraints?: Map<string, string[]>
+  globalConstraints?: Map<string, string[]>,
+  rootOverrides?: Map<string, string[]>
 ): Promise<ResolvedFormula[]> {
   // 1. Cycle detection
   if (visitedStack.has(formulaName)) {
@@ -71,20 +72,26 @@ export async function resolveDependencies(
   // 2. Resolve version range(s) to specific version if needed
   let resolvedVersion: string | undefined;
   let versionRange: string | undefined;
-  const allRanges: string[] = [];
 
-  if (version) {
-    allRanges.push(version);
-  }
+  // Precedence: root overrides (from root formula.yml) > combined constraints
+  let allRanges: string[] = [];
 
-  const globalRanges = globalConstraints?.get(formulaName);
-  if (globalRanges) {
-    allRanges.push(...globalRanges);
-  }
-
-  const priorRanges = requiredVersions.get(formulaName) || [];
-  if (priorRanges.length > 0) {
-    allRanges.push(...priorRanges);
+  if (rootOverrides?.has(formulaName)) {
+    // Root formula.yml versions act as authoritative overrides
+    allRanges = [...(rootOverrides.get(formulaName)!)];
+  } else {
+    // No root override - combine all constraints
+    if (version) {
+      allRanges.push(version);
+    }
+    const globalRanges = globalConstraints?.get(formulaName);
+    if (globalRanges) {
+      allRanges.push(...globalRanges);
+    }
+    const priorRanges = requiredVersions.get(formulaName) || [];
+    if (priorRanges.length > 0) {
+      allRanges.push(...priorRanges);
+    }
   }
 
   if (allRanges.length === 0) {
@@ -304,7 +311,7 @@ export async function resolveDependencies(
     
     for (const dep of dependencies) {
       // Pass the required version from the dependency specification
-      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints);
+      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
     }
     
     // For root formula, also process dev-formulas
@@ -312,7 +319,7 @@ export async function resolveDependencies(
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
         // Pass the required version from the dev dependency specification
-        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints);
+        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
       }
     }
     

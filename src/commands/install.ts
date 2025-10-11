@@ -6,7 +6,7 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, writeResolutions, cleanupObsoleteResolutions } from '../core/groundzero.js';
+import { checkExistingFormulaInMarkdownFiles, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree, ResolvedFormula } from '../core/dependency-resolver.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { writeTextFile, exists, ensureDir, readTextFile } from '../utils/fs.js';
@@ -482,8 +482,6 @@ async function installAllFormulasCommand(
   
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
-  // Cleanup obsolete resolutions before resolving
-  await cleanupObsoleteResolutions(cwd);
   
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   
@@ -707,43 +705,55 @@ async function processResolvedFormulas(
 async function resolveDependenciesWithOverrides(
   formulaName: string,
   targetDir: string,
-  versionOverrides: Map<string, string>,
   skippedFormulas: string[],
-  globalConstraints?: Map<string, string[]>
+  globalConstraints?: Map<string, string[]>,
+  version?: string
 ): Promise<ResolvedFormula[]> {
-  // Create a custom dependency resolver that respects version overrides
+  // Re-gather root constraints (which now includes any newly persisted versions)
+  const rootConstraints = await gatherRootVersionConstraints(targetDir);
+  
+  // Filter out skipped formulas by creating a wrapper
   const customResolveDependencies = async (
     name: string,
     dir: string,
     isRoot: boolean = true,
     visitedStack: Set<string> = new Set(),
     resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
-    version?: string,
-    requiredVersions: Map<string, string[]> = new Map()
+    ver?: string,
+    requiredVersions: Map<string, string[]> = new Map(),
+    globalConst?: Map<string, string[]>,
+    rootOver?: Map<string, string[]>
   ): Promise<ResolvedFormula[]> => {
     // Skip if this formula is in the skipped list
     if (skippedFormulas.includes(name)) {
       return Array.from(resolvedFormulas.values());
     }
     
-    // Use override version if available, otherwise use the specified version
-    const effectiveVersion = versionOverrides.get(name) || version;
-    
-    // Call the original resolveDependencies with the effective version
     return await resolveDependencies(
       name,
       dir,
       isRoot,
       visitedStack,
       resolvedFormulas,
-      effectiveVersion,
+      ver,
       requiredVersions,
-      globalConstraints
+      globalConst,
+      rootOver
     );
   };
   
-  // Re-resolve the entire dependency tree with overrides
-  return await customResolveDependencies(formulaName, targetDir, true);
+  // Re-resolve the entire dependency tree with updated root constraints
+  return await customResolveDependencies(
+    formulaName,
+    targetDir,
+    true,
+    new Set(),
+    new Map(),
+    version,
+    new Map(),
+    globalConstraints,
+    rootConstraints
+  );
 }
 
 /**
@@ -832,10 +842,9 @@ async function checkAndHandleFormulaConflict(
 async function checkAndHandleAllFormulaConflicts(
   resolvedFormulas: ResolvedFormula[],
   options: InstallOptions
-): Promise<{ shouldProceed: boolean; skippedFormulas: string[]; versionOverrides: Map<string, string>; forceOverwriteFormulas: Set<string> }> {
+): Promise<{ shouldProceed: boolean; skippedFormulas: string[]; forceOverwriteFormulas: Set<string> }> {
   const cwd = process.cwd();
   const skippedFormulas: string[] = [];
-  const versionOverrides = new Map<string, string>();
   const forceOverwriteFormulas = new Set<string>();
   
   // Check each formula in the dependency tree for conflicts
@@ -876,7 +885,7 @@ async function checkAndHandleAllFormulaConflicts(
     }
   }
   
-  return { shouldProceed: true, skippedFormulas, versionOverrides, forceOverwriteFormulas };
+  return { shouldProceed: true, skippedFormulas, forceOverwriteFormulas };
 }
 
 /**
@@ -921,6 +930,7 @@ async function installFormulaCommand(
   const globalConstraints = await gatherGlobalVersionConstraints(cwd);
   let resolvedFormulas: ResolvedFormula[];
   try {
+    const rootConstraints = await gatherRootVersionConstraints(cwd);
     resolvedFormulas = await resolveDependencies(
       formulaName,
       cwd,
@@ -929,7 +939,8 @@ async function installFormulaCommand(
       new Map(),
       version,
       new Map(),
-      globalConstraints
+      globalConstraints,
+      rootConstraints
     );
   } catch (error) {
     if (error instanceof VersionConflictError) {
@@ -953,17 +964,17 @@ async function installFormulaCommand(
         return { success: false, error: `Unable to resolve version for ${(error as any).details?.formulaName || name}` };
       }
 
-      // Persist resolution immediately in main formula.yml
-      await writeResolutions(cwd, (current) => ({ ...current, [(error as any).details?.formulaName || name]: chosenVersion! }));
+      // Persist chosen version by promoting to direct dependency in main formula.yml
+      await addFormulaToYml(cwd, (error as any).details?.formulaName || name, chosenVersion!, false, chosenVersion!, true);
 
-      // Recompute constraints (now includes resolutions) and re-resolve with overrides
+      // Recompute constraints (now includes the persisted version in root) and re-resolve
       const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
       const overrideResolvedFormulas = await resolveDependenciesWithOverrides(
         formulaName,
         cwd,
-        new Map<string, string>([[ (error as any).details?.formulaName || name, chosenVersion! ]]),
         [],
-        updatedConstraints
+        updatedConstraints,
+        version
       );
       resolvedFormulas = overrideResolvedFormulas;
     } else if (
@@ -999,31 +1010,10 @@ async function installFormulaCommand(
     };
   }
   
-  // Filter out skipped formulas and apply version overrides
+  // Filter out skipped formulas
   const finalResolvedFormulas = resolvedFormulas.filter(formula => 
     !conflictResult.skippedFormulas.includes(formula.name)
   );
-  
-  // Apply version overrides to formulas that need specific versions
-  // This requires re-resolving the entire dependency tree to ensure child dependencies are correct
-  if (conflictResult.versionOverrides.size > 0) {
-    console.log('\n🔄 Re-resolving dependency tree with version overrides...');
-    
-    // Re-resolve the entire dependency tree with version overrides
-    const overrideResolvedFormulas = await resolveDependenciesWithOverrides(
-      formulaName, 
-      cwd, 
-      conflictResult.versionOverrides, 
-      conflictResult.skippedFormulas,
-      globalConstraints
-    );
-    
-    // Replace the final resolved formulas with the re-resolved ones
-    finalResolvedFormulas.length = 0;
-    finalResolvedFormulas.push(...overrideResolvedFormulas);
-    
-    console.log('✅ Dependency tree re-resolved with correct versions');
-  }
     
   displayDependencyTree(finalResolvedFormulas, true);
   

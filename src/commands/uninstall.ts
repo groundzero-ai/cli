@@ -8,7 +8,6 @@ import { type PlatformName } from '../core/platforms.js';
 import { detectPlatforms } from '../utils/formula-installation.js';
 import { cleanupPlatformFiles as cleanupPlatformFilesForSingle } from '../utils/platform-utils.js';
 import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
-import { cleanupObsoleteResolutions } from '../core/groundzero.js';
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
@@ -227,7 +226,6 @@ async function displayDryRunInfo(
     console.log('📋 No formula.yml file to update');
   }
 
-  console.log(`🧹 Would clean up any obsolete dependency resolution pins`);
 }
 
 
@@ -241,8 +239,7 @@ function displayUninstallSuccess(
   danglingDependencies: Set<string>,
   removedAiFiles: string[],
   ymlRemovalResults: Record<string, boolean>,
-  platformCleanup: Record<string, string[]>,
-  cleanedResolutions: string[]
+  platformCleanup: Record<string, string[]>
 ): void {
   console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
@@ -283,12 +280,6 @@ function displayUninstallSuccess(
     }
   }
 
-  if (cleanedResolutions.length > 0) {
-    console.log(`🧹 Cleaned up obsolete resolution pins: ${cleanedResolutions.length}`);
-    for (const dep of cleanedResolutions) {
-      console.log(`   ├── ${dep}`);
-    }
-  }
 }
 
 /**
@@ -435,11 +426,8 @@ async function uninstallFormulaCommand(
     }
     const removedFromYml = ymlRemovalResults[formulaName];
 
-    // Clean up obsolete dependency resolutions
-    const { removed: cleanedResolutions } = await cleanupObsoleteResolutions(cwd);
-
     // Success output
-    displayUninstallSuccess(formulaName, targetDir, options, danglingDependencies, removedAiFiles, ymlRemovalResults, platformCleanup, cleanedResolutions);
+    displayUninstallSuccess(formulaName, targetDir, options, danglingDependencies, removedAiFiles, ymlRemovalResults, platformCleanup);
 
     return {
       success: true,
@@ -451,8 +439,7 @@ async function uninstallFormulaCommand(
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
         totalRemoved: removedAiFiles.length,
-        platformCleanup,
-        cleanedResolutions
+        platformCleanup
       }
     };
   } catch (error) {
