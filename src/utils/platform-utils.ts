@@ -3,14 +3,11 @@
  * Utility functions for platform management, detection, and file operations
  */
 
-import { join, basename, dirname, relative } from 'path';
-import path from 'path';
+import { join } from 'path';
 import { 
   exists, 
-  ensureDir, 
   listFiles,
   readTextFile,
-  writeTextFile,
   remove,
   getStats
 } from './fs.js';
@@ -19,7 +16,6 @@ import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import {
   getAllPlatforms,
   PLATFORM_DEFINITIONS,
-  PLATFORM_CATEGORIES,
   type Platform,
   type PlatformName,
   type PlatformDetectionResult,
@@ -30,7 +26,7 @@ import {
   getPlatformRulesDirFilePatterns,
   getPlatformDescription
 } from '../core/platforms.js';
-import { PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS, FILE_PATTERNS, GLOBAL_PLATFORM_FILES } from '../constants/index.js';
+import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
 import { discoverFiles } from './file-discovery.js';
 import { resolveTargetDirectory, resolveTargetFilePath } from './platform-mapper.js';
 
@@ -130,7 +126,6 @@ export async function cleanupPlatformFiles(
     return { removedCount: 0, files: [], errors: [] };
   }
 
-  const preservedGlobal = new Set<string>(Object.values(GLOBAL_PLATFORM_FILES));
   const removedFiles: string[] = [];
   const errors: string[] = [];
 
@@ -155,10 +150,6 @@ export async function cleanupPlatformFiles(
       );
 
       const removalPromises = discovered.map(async (file) => {
-        const relFromCwd = relative(targetDir, file.fullPath).replace(/\\/g, '/');
-        if (preservedGlobal.has(relFromCwd)) {
-          return { success: true, path: file.fullPath };
-        }
         if (!options.dryRun) {
           try {
             await remove(file.fullPath);

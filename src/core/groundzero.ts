@@ -1,12 +1,13 @@
 import { join } from 'path';
-import * as semver from 'semver';
 import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
-import { exists, isDirectory, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
+import { exists, isDirectory, listDirectories, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
-// import { listFormulaVersions } from './directory.js';
+import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
+import { findFilesByExtension } from '../utils/file-discovery.js';
+import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
 
 /**
  * Formula metadata from groundzero directory
@@ -272,112 +273,54 @@ export async function checkExistingFormulaInMarkdownFiles(
   cwd: string, 
   formulaName: string
 ): Promise<{ found: boolean; version?: string; location?: string }> {
-  const searchDirectories = [
-    join(cwd, PLATFORM_DIRS.AI),
-    join(cwd, PLATFORM_DIRS.CLAUDECODE),
-    join(cwd, PLATFORM_DIRS.CURSOR)
-  ];
+  // Build search targets: ai directory + all detected platform subdirectories
+  const targets: Array<{ dir: string; exts: string[]; label: string }> = [];
 
-  logger.debug(`Checking for existing formula '${formulaName}' in directories: ${searchDirectories.join(', ')}`);
+  // Always include AI directory
+  targets.push({
+    dir: join(cwd, PLATFORM_DIRS.AI),
+    exts: [FILE_PATTERNS.MD_FILES],
+    label: PLATFORM_DIRS.AI
+  });
 
-  for (const searchDir of searchDirectories) {
-    logger.debug(`Checking directory: ${searchDir}`);
-    if (!(await exists(searchDir)) || !(await isDirectory(searchDir))) {
-      logger.debug(`Directory does not exist or is not a directory: ${searchDir}`);
-      continue;
+  // Add detected platforms' subdirectories (rules/commands/agents, etc.)
+  try {
+    const platforms = await getDetectedPlatforms(cwd);
+    for (const platform of platforms) {
+      const def = getPlatformDefinition(platform as Platform);
+      for (const [_, subdirDef] of Object.entries(def.subdirs)) {
+        const dirPath = join(cwd, def.rootDir, subdirDef.path);
+        targets.push({ dir: dirPath, exts: subdirDef.readExts, label: def.id });
+      }
     }
+  } catch (error) {
+    logger.debug(`Failed to build platform search targets: ${error}`);
+  }
 
+  logger.debug(`Checking for existing formula '${formulaName}' across ${targets.length} locations`);
+
+  // Search each target directory for files with supported extensions
+  for (const target of targets) {
     try {
-      // Walk through all files in the directory and filter for markdown files
-      for await (const filePath of walkFiles(searchDir)) {
-        // Filter for markdown files
-        if (!filePath.endsWith('.md') && !filePath.endsWith('.mdc')) {
-          continue;
-        }
-        
-        logger.debug(`Checking markdown file: ${filePath}`);
-        try {
-          const content = await readTextFile(filePath);
-          
-          // Check for frontmatter with formula name
-          const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-          if (frontmatterMatch) {
-            const frontmatter = frontmatterMatch[1];
-            
-            // Look for formula name in frontmatter - support both formats:
-            // 1. formula: formula-name (direct format)
-            // 2. formula:\n  name: formula-name (nested format)
-            let foundFormulaName: string | null = null;
-            
-            // Parse frontmatter line by line to handle both formats
-            const lines = frontmatter.split('\n');
-            let formulaLineIndex = -1;
-            
-            // Find the formula line
-            for (let i = 0; i < lines.length; i++) {
-              if (lines[i].trim().startsWith('formula:')) {
-                formulaLineIndex = i;
-                break;
-              }
+      for (const ext of target.exts) {
+        const files = await findFilesByExtension(target.dir, ext, target.dir);
+        for (const file of files) {
+          try {
+            const content = await readTextFile(file.fullPath);
+            const frontmatter: any = parseMarkdownFrontmatter(content);
+            if (frontmatter?.formula?.name === formulaName) {
+              const version: string | undefined = (typeof frontmatter.version === 'string' ? frontmatter.version : undefined)
+                || (typeof frontmatter.formula?.version === 'string' ? frontmatter.formula.version : undefined);
+              logger.debug(`Found existing formula '${formulaName}' in ${file.fullPath}`, { version });
+              return { found: true, version, location: file.fullPath };
             }
-            
-            if (formulaLineIndex >= 0) {
-              const formulaLine = lines[formulaLineIndex];
-              const afterFormula = formulaLine.substring(formulaLine.indexOf(':') + 1).trim();
-              
-              // If there's content on the same line, it's direct format
-              if (afterFormula) {
-                foundFormulaName = afterFormula;
-                logger.debug(`Direct format match: '${foundFormulaName}'`);
-              } else {
-                // Check for nested format on the next line
-                if (formulaLineIndex + 1 < lines.length) {
-                  const nextLine = lines[formulaLineIndex + 1].trim();
-                  const nameMatch = nextLine.match(/^name:\s*(.+)$/);
-                  if (nameMatch) {
-                    foundFormulaName = nameMatch[1].trim();
-                    logger.debug(`Nested format match: '${foundFormulaName}'`);
-                  } else {
-                    logger.debug(`No nested name found after formula line`);
-                  }
-                } else {
-                  logger.debug(`No line after formula line`);
-                }
-              }
-            } else {
-              logger.debug(`No formula line found in frontmatter`);
-            }
-            
-            logger.debug(`Found formula name in frontmatter: '${foundFormulaName}', looking for: '${formulaName}'`);
-            if (foundFormulaName && foundFormulaName === formulaName) {
-              // Extract version if present - support both direct and nested formats
-              let version: string | undefined;
-              const directVersionMatch = frontmatter.match(/^version:\s*(.+)$/m);
-              if (directVersionMatch) {
-                version = directVersionMatch[1].trim();
-              } else {
-                const nestedVersionMatch = frontmatter.match(/^formula:\s*\n[\s\S]*?\n\s*version:\s*(.+)$/m);
-                if (nestedVersionMatch) {
-                  version = nestedVersionMatch[1].trim();
-                }
-              }
-              
-              logger.debug(`Found existing formula '${formulaName}' in ${filePath}`, { version });
-              return {
-                found: true,
-                version,
-                location: filePath
-              };
-            }
+          } catch (readErr) {
+            logger.debug(`Failed to read or parse ${file.fullPath}: ${readErr}`);
           }
-        } catch (error) {
-          logger.debug(`Failed to read file ${filePath}: ${error}`);
-          // Continue to next file
         }
       }
-    } catch (error) {
-      logger.debug(`Failed to walk directory ${searchDir}: ${error}`);
-      // Continue to next directory
+    } catch (dirErr) {
+      logger.debug(`Failed to search directory ${target.dir}: ${dirErr}`);
     }
   }
 

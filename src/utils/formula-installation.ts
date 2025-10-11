@@ -1,11 +1,8 @@
-import { exists } from './fs.js';
 import { logger } from './logger.js';
 import { ValidationError } from './errors.js';
 import { parseVersionRange } from './version-ranges.js';
 import { promptPlatformSelection } from './prompts.js';
 import { detectAllPlatforms } from '../core/platforms.js';
-import { getAIDir, getLocalFormulaYmlPath } from './paths.js';
-import { DEPENDENCY_ARRAYS } from '../constants/index.js';
 
 /**
  * Parse formula input to extract name and version/range

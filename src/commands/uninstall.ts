@@ -15,7 +15,6 @@ import {
   PLATFORM_DIRS,
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
-  GLOBAL_PLATFORM_FILES,
 } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 

@@ -48,14 +48,3 @@ export function getAIDir(cwd: string): string {
   return join(cwd, PLATFORM_DIRS.AI);
 }
 
-/**
- * Get the platform directory paths
- */
-export function getPlatformDirs(cwd: string) {
-  return {
-    cursor: join(cwd, PLATFORM_DIRS.CURSOR),
-    claude: join(cwd, PLATFORM_DIRS.CLAUDECODE),
-    ai: join(cwd, PLATFORM_DIRS.AI),
-    groundzero: join(cwd, PLATFORM_DIRS.GROUNDZERO)
-  };
-}

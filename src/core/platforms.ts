@@ -9,14 +9,7 @@ import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir } from '../constants/index.js';
 
-// Platform Categories
-export const PLATFORM_CATEGORIES = {
-  AGENTS_MEMORIES: 'agents-memories',
-  ROOT_MEMORIES: 'root-memories',
-  RULES_DIRECTORY: 'rules-directory'
-} as const;
-
-// All platforms combined
+// All platforms
 export const ALL_PLATFORMS = Object.values(PLATFORMS) as readonly Platform[];
 
 // New unified platform definition structure
@@ -40,187 +33,7 @@ export interface PlatformDefinition {
 
 // Unified platform definitions using the new structure
 export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
-  // AGENTS.md + MEMORIES platforms
-  [PLATFORMS.CODEXCLI]: {
-    id: PLATFORMS.CODEXCLI,
-    rootDir: PLATFORM_DIRS.CODEXCLI,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'OpenAI Codex CLI - AGENTS.md + .codex/memories/ + .codex/commands + .codex/agents'
-  },
-  [PLATFORMS.OPENCODE]: {
-    id: PLATFORMS.OPENCODE,
-    rootDir: PLATFORM_DIRS.OPENCODE,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'OpenCode - AGENTS.md + .opencode/memories/ + .opencode/commands + .opencode/agents'
-  },
 
-  // Similar Root + Memories platforms
-  [PLATFORMS.CLAUDECODE]: {
-    id: PLATFORMS.CLAUDECODE,
-    rootDir: PLATFORM_DIRS.CLAUDECODE,
-    rootFile: FILE_PATTERNS.CLAUDE_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Claude Code - CLAUDE.md + .claude/memories/ + .claude/commands + .claude/agents'
-  },
-  [PLATFORMS.QWENCODE]: {
-    id: PLATFORMS.QWENCODE,
-    rootDir: PLATFORM_DIRS.QWENCODE,
-    rootFile: FILE_PATTERNS.QWEN_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Qwen Code - QWEN.md + .qwen/memories/ + .qwen/agents'
-  },
-  [PLATFORMS.GEMINICLI]: {
-    id: PLATFORMS.GEMINICLI,
-    rootDir: PLATFORM_DIRS.GEMINICLI,
-    rootFile: FILE_PATTERNS.GEMINI_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: ['.toml'],
-        writeExt: '.toml'
-      }
-    },
-    description: 'Gemini CLI - GEMINI.md + .gemini/memories/ + .gemini/commands (.toml files)'
-  },
-  [PLATFORMS.WARP]: {
-    id: PLATFORMS.WARP,
-    rootDir: PLATFORM_DIRS.WARP,
-    rootFile: FILE_PATTERNS.WARP_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'memories',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Warp - WARP.md + .warp/memories/'
-  },
-
-  // Rules Directory platforms
-  [PLATFORMS.CURSOR]: {
-    id: PLATFORMS.CURSOR,
-    rootDir: PLATFORM_DIRS.CURSOR,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MDC_FILES, FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MDC_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Cursor - .cursor/rules/ (*.mdc files) + .cursor/commands'
-  },
-  [PLATFORMS.CLINE]: {
-    id: PLATFORMS.CLINE,
-    rootDir: PLATFORM_DIRS.CLINE,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: '',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Cline - .clinerules/ (*.md files)'
-  },
-  [PLATFORMS.ROO]: {
-    id: PLATFORMS.ROO,
-    rootDir: PLATFORM_DIRS.ROO,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Roo Code - .roo/rules/ (*.md files) + .roo/commands'
-  },
-  [PLATFORMS.WINDSURF]: {
-    id: PLATFORMS.WINDSURF,
-    rootDir: PLATFORM_DIRS.WINDSURF,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    },
-    description: 'Windsurf - .windsurf/rules/ (*.md files)'
-  },
   [PLATFORMS.AUGMENT]: {
     id: PLATFORMS.AUGMENT,
     rootDir: PLATFORM_DIRS.AUGMENT,
@@ -236,8 +49,113 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         writeExt: FILE_PATTERNS.MD_FILES
       }
     },
-    description: 'AugmentCode - .augment/rules/ (*.md files) + .augment/commands'
+    description: 'Augment Code'
   },
+
+  [PLATFORMS.CLAUDE]: {
+    id: PLATFORMS.CLAUDE,
+    rootDir: PLATFORM_DIRS.CLAUDE,
+    rootFile: FILE_PATTERNS.CLAUDE_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.AGENTS]: {
+        path: 'agents',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      }
+    },
+    description: 'Claude Code'
+  },
+
+  [PLATFORMS.CODEX]: {
+    id: PLATFORMS.CODEX,
+    rootDir: PLATFORM_DIRS.CODEX,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'prompts',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+    },
+    description: 'OpenAI Codex CLI'
+  },
+
+  [PLATFORMS.CURSOR]: {
+    id: PLATFORMS.CURSOR,
+    rootDir: PLATFORM_DIRS.CURSOR,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.RULES]: {
+        path: 'rules',
+        readExts: [FILE_PATTERNS.MDC_FILES, FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MDC_FILES
+      },
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      }
+    },
+    description: 'Cursor'
+  },
+
+  [PLATFORMS.FACTORY]: {
+    id: PLATFORMS.FACTORY,
+    rootDir: PLATFORM_DIRS.FACTORY,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.AGENTS]: {
+        path: 'droids',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      }
+    },
+    description: 'Factory AI'
+  },
+
+  [PLATFORMS.GEMINI]: {
+    id: PLATFORMS.GEMINI,
+    rootDir: PLATFORM_DIRS.GEMINI,
+    rootFile: FILE_PATTERNS.GEMINI_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.TOML_FILES],
+        writeExt: FILE_PATTERNS.TOML_FILES
+      }
+    },
+    description: 'Gemini CLI'
+  },
+
+  [PLATFORMS.KILO]: {
+    id: PLATFORMS.KILO,
+    rootDir: PLATFORM_DIRS.KILO,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.RULES]: {
+        path: 'rules',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'workflows',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+    },
+    description: 'Kilo Code'
+  },
+
   [PLATFORMS.KIRO]: {
     id: PLATFORMS.KIRO,
     rootDir: PLATFORM_DIRS.KIRO,
@@ -246,10 +164,85 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         path: 'steering',
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
+      },
+    },
+    description: 'Kiro'
+  },
+
+  [PLATFORMS.OPENCODE]: {
+    id: PLATFORMS.OPENCODE,
+    rootDir: PLATFORM_DIRS.OPENCODE,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'command',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.AGENTS]: {
+        path: 'agent',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
       }
     },
-    description: 'Kiro IDE - .kiro/steering/ (*.md files)'
-  }
+    description: 'opencode'
+  },
+
+  [PLATFORMS.QWEN]: {
+    id: PLATFORMS.QWEN,
+    rootDir: PLATFORM_DIRS.QWEN,
+    rootFile: FILE_PATTERNS.QWEN_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.AGENTS]: {
+        path: 'agents',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      }
+    },
+    description: 'Qwen Code'
+  },
+
+  [PLATFORMS.ROO]: {
+    id: PLATFORMS.ROO,
+    rootDir: PLATFORM_DIRS.ROO,
+    rootFile: FILE_PATTERNS.AGENTS_MD,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.COMMANDS]: {
+        path: 'commands',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      },
+    },
+    description: 'Roo Code'
+  },
+
+  [PLATFORMS.WARP]: {
+    id: PLATFORMS.WARP,
+    rootDir: PLATFORM_DIRS.WARP,
+    rootFile: FILE_PATTERNS.WARP_MD,
+    subdirs: {
+    },
+    description: 'Warp'
+  },
+
+  [PLATFORMS.WINDSURF]: {
+    id: PLATFORMS.WINDSURF,
+    rootDir: PLATFORM_DIRS.WINDSURF,
+    subdirs: {
+      [UNIVERSAL_SUBDIRS.RULES]: {
+        path: 'rules',
+        readExts: [FILE_PATTERNS.MD_FILES],
+        writeExt: FILE_PATTERNS.MD_FILES
+      }
+    },
+    description: 'Windsurf'
+  },
+
 } as const;
 
 // Legacy type definitions for compatibility
