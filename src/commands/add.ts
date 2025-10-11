@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { basename, extname } from 'path';
 import { safePrompts } from '../utils/prompts.js';
 import { CommandResult } from '../types/index.js';
-import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/formula-yml.js';
+import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../utils/fs.js';
 import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';

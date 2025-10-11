@@ -15,7 +15,7 @@ import {
   getStats
 } from './fs.js';
 import { logger } from './logger.js';
-import { parseMarkdownFrontmatter } from './formula-yml.js';
+import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import {
   getAllPlatforms,
   PLATFORM_DEFINITIONS,

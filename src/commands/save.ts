@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import { join, basename, dirname } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml, updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
+import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
+import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
 import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';

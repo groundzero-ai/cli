@@ -8,7 +8,7 @@ import { logger } from './logger.js';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
 import { promptFileSelection, promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
-import { updateMarkdownWithFormulaFrontmatter } from './formula-yml.js';
+import { updateMarkdownWithFormulaFrontmatter } from './md-frontmatter.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import { UserCancellationError } from './errors.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';

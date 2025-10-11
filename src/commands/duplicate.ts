@@ -3,7 +3,7 @@ import * as semver from 'semver';
 import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { updateMarkdownWithFormulaFrontmatter } from '../utils/formula-yml.js';
+import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { Formula, FormulaFile, FormulaYml, CommandResult } from '../types/index.js';

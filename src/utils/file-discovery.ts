@@ -1,5 +1,5 @@
 import { join, dirname } from 'path';
-import { parseMarkdownFrontmatter } from './formula-yml.js';
+import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import { detectTemplateFile } from './template.js';
 import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS, FORMULA_DIRS, type UniversalSubdir } from '../constants/index.js';
 import { getLocalFormulasDir } from './paths.js';
