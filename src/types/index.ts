@@ -241,6 +241,7 @@ export interface DiscoveredFile {
   mtime: number;
   contentHash: string;
   forcePlatformSpecific?: boolean;  // Force platform-specific saving
+  isRootFile?: boolean;  // Indicates this is a platform root file (AGENTS.md, CLAUDE.md, etc.)
 }
 
 export interface ContentAnalysisResult {

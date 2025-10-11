@@ -589,7 +589,8 @@ export async function discoverAllRootFiles(
         // Map all root files to universal AGENTS.md target for conflict resolution
         registryPath: FILE_PATTERNS.AGENTS_MD,
         mtime,
-        contentHash
+        contentHash,
+        isRootFile: true  // Mark as root file for special conflict resolution
       });
     } catch (error) {
       logger.warn(`Failed to process root file ${rootFile}: ${error}`);
