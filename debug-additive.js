@@ -1,4 +1,4 @@
-import { discoverFilesForPattern } from './dist/utils/file-discovery.js';
+import { discoverFilesForPattern } from './dist/utils/discovery/discovery-core.js';
 import { getLocalFormulaDir } from './dist/utils/paths.js';
 import { resolveFileConflicts } from './dist/utils/conflict-resolution.js';
 

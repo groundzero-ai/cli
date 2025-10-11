@@ -27,7 +27,7 @@ import {
   getPlatformDescription
 } from '../core/platforms.js';
 import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
-import { discoverFiles } from './file-discovery.js';
+import { discoverFiles } from './discovery/file-processing.js';
 import { resolveTargetDirectory, resolveTargetFilePath } from './platform-mapper.js';
 
 /**

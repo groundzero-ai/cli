@@ -3,7 +3,7 @@ import { join, relative } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { discoverFiles } from '../utils/file-discovery.js';
+import { discoverFiles } from '../utils/discovery/file-processing.js';
 import { type PlatformName } from '../core/platforms.js';
 import { detectPlatforms } from '../utils/formula-installation.js';
 import { cleanupPlatformFiles as cleanupPlatformFilesForSingle } from '../utils/platform-utils.js';

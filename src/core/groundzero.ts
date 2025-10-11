@@ -6,7 +6,7 @@ import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
-import { findFilesByExtension } from '../utils/file-discovery.js';
+import { findFilesByExtension } from '../utils/discovery/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
 
 /**
