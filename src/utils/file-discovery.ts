@@ -23,6 +23,7 @@ import {
 type Platformish = Platform | typeof PLATFORM_DIRS.AI;
 import { mapPlatformFileToUniversal } from './platform-mapper.js';
 import type { DiscoveredFile } from '../types/index.js';
+import { extractFormulaContentFromAgentsMd } from './agents-md-extractor.js';
 
 /**
  * Process a single file for discovery - common logic used by multiple discovery methods
@@ -492,6 +493,45 @@ export async function discoverMdFilesUnified(formulaDir: string, formulaName: st
   allDiscoveredFiles.push(...results.flat());
 
   return allDiscoveredFiles;
+}
+
+/**
+ * Discover root-level AGENTS.md content designated for a specific formula.
+ * Only includes content between markers: <!-- formula: <name> --><content><!-- -->
+ */
+export async function discoverAgentsMdFile(
+  cwd: string,
+  formulaName: string
+): Promise<DiscoveredFile | null> {
+  const agentsPath = join(cwd, FILE_PATTERNS.AGENTS_MD);
+  if (!(await exists(agentsPath))) {
+    return null;
+  }
+
+  try {
+    const content = await readTextFile(agentsPath);
+    const extracted = extractFormulaContentFromAgentsMd(content, formulaName);
+    if (!extracted) {
+      return null; // No matching section; treat as non-existent
+    }
+
+    const mtime = await getFileMtime(agentsPath);
+    const contentHash = await calculateFileHash(extracted);
+
+    const discovered: DiscoveredFile = {
+      fullPath: agentsPath,
+      relativePath: FILE_PATTERNS.AGENTS_MD,
+      sourceDir: 'root',
+      registryPath: FILE_PATTERNS.AGENTS_MD,
+      mtime,
+      contentHash
+    };
+
+    return discovered;
+  } catch (error) {
+    logger.warn(`Failed to process root ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
+    return null;
+  }
 }
 
 /**

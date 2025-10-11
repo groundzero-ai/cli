@@ -14,13 +14,14 @@ import { FILE_PATTERNS } from '../constants/index.js';
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
 import { resolveFileConflicts } from '../utils/conflict-resolution.js';
-import { discoverFilesForPattern, findFormulas } from '../utils/file-discovery.js';
+import { discoverFilesForPattern, discoverAgentsMdFile, findFormulas } from '../utils/file-discovery.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
+import { extractFormulaContentFromAgentsMd } from '../utils/agents-md-extractor.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -370,6 +371,12 @@ async function saveFormulaCommand(
   // Discover and include MD files using appropriate logic
   let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
 
+  // Discover root AGENTS.md for this formula and include if present
+  const agentsDiscovered = await discoverAgentsMdFile(cwd, formulaConfig.name);
+  if (agentsDiscovered) {
+    discoveredFiles.push(agentsDiscovered);
+  }
+
   // Process discovered files and create formula files array
   const formulaFiles = await processDiscoveredFiles(formulaYmlPath, formulaConfig, discoveredFiles);
 
@@ -437,6 +444,22 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
   // Process discovered MD files in parallel
   const mdFilePromises = discoveredFiles.map(async (mdFile) => {
     const originalContent = await readTextFile(mdFile.fullPath);
+
+    // Special handling for AGENTS.md: use designated content only, skip frontmatter
+    if (mdFile.registryPath === FILE_PATTERNS.AGENTS_MD) {
+      const agentsContent = extractFormulaContentFromAgentsMd(originalContent, formulaConfig.name);
+      if (!agentsContent) {
+        // If somehow missing (race), skip including
+        return null as any;
+      }
+      return {
+        path: FILE_PATTERNS.AGENTS_MD,
+        content: agentsContent,
+        isTemplate: false,
+        encoding: UTF8_ENCODING
+      };
+    }
+
     const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name });
 
     // Update source file if content changed
@@ -453,7 +476,8 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
     };
   });
 
-  return await Promise.all(mdFilePromises);
+  const results = await Promise.all(mdFilePromises);
+  return results.filter(Boolean) as FormulaFile[];
 }
 
 /**
