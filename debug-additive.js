@@ -1,6 +1,7 @@
 import { discoverFilesForPattern } from './dist/utils/discovery/discovery-core.js';
 import { getLocalFormulaDir } from './dist/utils/paths.js';
-import { resolveFileConflicts } from './dist/utils/conflict-resolution.js';
+import { resolvePlatformFileConflicts } from './dist/utils/platform-conflict-resolution.js';
+import { resolveRootFileConflicts } from './dist/utils/root-conflict-resolution.js';
 
 async function debugAdditive() {
   const formulaName = 'test-additive-formula';
@@ -27,7 +28,18 @@ async function debugAdditive() {
       console.log('  -', file.relativePath, '->', file.registryPath);
     });
 
-    const resolvedFiles = await resolveFileConflicts(discoveredFiles, '0.1.0-dev.test');
+    // Separate root files from normal files
+    const rootFiles = discoveredFiles.filter(f => f.isRootFile);
+    const normalFiles = discoveredFiles.filter(f => !f.isRootFile);
+
+    // Resolve root file conflicts separately
+    const resolvedRootFiles = await resolveRootFileConflicts(rootFiles, '0.1.0-dev.test');
+
+    // Resolve normal file conflicts
+    const resolvedNormalFiles = await resolvePlatformFileConflicts(normalFiles, '0.1.0-dev.test');
+
+    // Combine resolved files
+    const resolvedFiles = [...resolvedRootFiles, ...resolvedNormalFiles];
     console.log('After conflict resolution:', resolvedFiles.length);
     resolvedFiles.forEach(file => {
       console.log('  -', file.relativePath, '->', file.registryPath);

@@ -13,7 +13,8 @@ import { FILE_PATTERNS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
-import { resolveFileConflicts } from '../utils/conflict-resolution.js';
+import { resolvePlatformFileConflicts } from '../utils/platform-conflict-resolution.js';
+import { resolveRootFileConflicts } from '../utils/root-conflict-resolution.js';
 import { discoverFilesForPattern } from '../utils/discovery/discovery-core.js';
 import { discoverAllRootFiles, findFormulas } from '../utils/discovery/formula-discovery.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
@@ -240,8 +241,18 @@ async function processDiscoveredFiles(
   formulaConfig: FormulaYml,
   discoveredFiles: DiscoveredFile[]
 ): Promise<FormulaFile[]> {
-  // Resolve file conflicts (keep latest mtime)
-  const resolvedFiles = await resolveFileConflicts(discoveredFiles, formulaConfig.version, /* silent */ true);
+  // Separate root files from normal files
+  const rootFiles = discoveredFiles.filter(f => f.isRootFile);
+  const normalFiles = discoveredFiles.filter(f => !f.isRootFile);
+
+  // Resolve root file conflicts separately
+  const resolvedRootFiles = await resolveRootFileConflicts(rootFiles, formulaConfig.version, /* silent */ true);
+
+  // Resolve normal file conflicts
+  const resolvedNormalFiles = await resolvePlatformFileConflicts(normalFiles, formulaConfig.version, /* silent */ true);
+
+  // Combine resolved files
+  const resolvedFiles = [...resolvedRootFiles, ...resolvedNormalFiles];
 
   // Create formula files array
   return await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
