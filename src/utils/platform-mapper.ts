@@ -3,6 +3,17 @@ import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Plat
 import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir, PLATFORM_DIRS } from '../constants/index.js';
 
 /**
+ * Normalize platform names from command line input
+ */
+export function normalizePlatforms(platforms?: string[]): string[] | undefined {
+  if (!platforms || platforms.length === 0) {
+    return undefined;
+  }
+  
+  return platforms.map(p => p.toLowerCase());
+}
+
+/**
  * Platform Mapper Module
  * Unified functions for mapping between universal subdirs and platform-specific paths
  */
