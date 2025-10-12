@@ -152,20 +152,15 @@ export async function postSavePlatformSync(
 
       // Check each target platform
       for (const target of targets) {
-        // Skip if file already exists
-        if (await exists(target.absFile)) {
-          continue;
-        }
-
         // Ensure target directory exists
         await ensureDir(target.absDir);
 
-        // Write the file
+        // Write the file (overwrite if exists to ensure IDs are propagated)
         await writeTextFile(target.absFile, file.content, 'utf8');
 
-        // Record as created
+        // Record as created/updated
         result.created.push(target.absFile);
-        logger.debug(`Created synced file: ${target.absFile}`);
+        logger.debug(`Synced file: ${target.absFile}`);
       }
     } catch (error) {
       logger.warn(`Failed to sync file ${file.path}: ${error}`);

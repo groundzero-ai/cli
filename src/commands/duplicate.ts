@@ -93,7 +93,7 @@ async function duplicateFormulaCommand(
     }
 
     if (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path.endsWith(FILE_PATTERNS.MDC_FILES)) {
-      const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName });
+      const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
       return { ...file, content: updatedContent };
     }
 

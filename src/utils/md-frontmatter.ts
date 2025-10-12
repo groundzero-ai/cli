@@ -1,4 +1,5 @@
 import matter from 'gray-matter';
+import { generateEntityId, isValidEntityId } from './entity-id.js';
 
 /**
  * Interface for markdown frontmatter
@@ -7,6 +8,7 @@ export interface MarkdownFrontmatter {
   formula?: {
     name: string;
     platformSpecific?: boolean;
+    id?: string;
   };
 }
 
@@ -22,7 +24,14 @@ export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter |
       return null;
     }
     
-    return parsed.data as MarkdownFrontmatter;
+    const frontmatter = parsed.data as MarkdownFrontmatter;
+    
+    // Validate formula name field - must be defined and non-empty
+    if (frontmatter.formula?.name === undefined || frontmatter.formula.name === '') {
+      return null;
+    }
+    
+    return frontmatter;
   } catch (error) {
     // If parsing fails, return null (no valid frontmatter)
     return null;
@@ -34,13 +43,27 @@ export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter |
  */
 export function updateMarkdownWithFormulaFrontmatter(
   content: string,
-  formulaUpdate: { name?: string; platformSpecific?: boolean }
+  formulaUpdate: { name?: string; platformSpecific?: boolean; id?: string; ensureId?: boolean; resetId?: boolean }
 ): string {
   const updateObject = formulaUpdate || {};
+
+  // Determine effective id to write, honoring resetId > ensureId > explicit id
+  let effectiveId: string | undefined = undefined;
+  if (updateObject.resetId) {
+    effectiveId = generateEntityId();
+  } else if (updateObject.ensureId) {
+    const existingParsed = parseMarkdownFrontmatter(content);
+    const existingId = existingParsed?.formula?.id;
+    effectiveId = existingId && isValidEntityId(existingId) ? existingId : generateEntityId();
+  } else if (typeof updateObject.id === 'string' && updateObject.id.length > 0) {
+    effectiveId = updateObject.id;
+  }
+
   const shouldUpdateName = typeof updateObject.name === 'string' && updateObject.name.length > 0;
   const shouldUpdatePlatform = updateObject.platformSpecific === true;
+  const shouldUpdateId = typeof effectiveId === 'string' && effectiveId.length > 0;
 
-  if (!shouldUpdateName && !shouldUpdatePlatform) {
+  if (!shouldUpdateName && !shouldUpdatePlatform && !shouldUpdateId) {
     return content;
   }
 
@@ -55,7 +78,11 @@ export function updateMarkdownWithFormulaFrontmatter(
   const markdownContentStart = bounds.end + (nl + '---' + nl).length;
   const markdownContent = content.slice(markdownContentStart);
 
-  const updatedFrontmatter = updateFormulaBlockInText(frontmatterContent, updateObject, nl);
+  const updatedFrontmatter = updateFormulaBlockInText(
+    frontmatterContent,
+    { name: updateObject.name, platformSpecific: updateObject.platformSpecific, id: effectiveId },
+    nl
+  );
 
   return content.slice(0, bounds.start - ('---'.length + nl.length)) + '---' + nl + updatedFrontmatter + nl + '---' + nl + markdownContent;
 }
@@ -81,12 +108,15 @@ function findFrontmatterBounds(content: string, nl: string): { has: boolean; sta
 
 function buildNewFrontmatter(
   content: string,
-  updateObject: { name?: string; platformSpecific?: boolean },
+  updateObject: { name?: string; platformSpecific?: boolean; id?: string },
   nl: string
 ): string {
   const lines: string[] = [];
   if (typeof updateObject.name === 'string' && updateObject.name.length > 0) {
     lines.push(`  name: ${updateObject.name}`);
+  }
+  if (typeof updateObject.id === 'string' && updateObject.id.length > 0) {
+    lines.push(`  id: ${updateObject.id}`);
   }
   if (updateObject.platformSpecific === true) {
     lines.push(`  platformSpecific: true`);
@@ -97,12 +127,13 @@ function buildNewFrontmatter(
 
 function updateFormulaBlockInText(
   frontmatterContent: string,
-  updateObject: { name?: string; platformSpecific?: boolean },
+  updateObject: { name?: string; platformSpecific?: boolean; id?: string },
   nl: string
 ): string {
   const lines = frontmatterContent.split(nl);
   const shouldUpdateName = typeof updateObject.name === 'string' && updateObject.name.length > 0;
   const shouldUpdatePlatform = updateObject.platformSpecific === true;
+  const shouldUpdateId = typeof updateObject.id === 'string' && updateObject.id.length > 0;
 
   // Find formula line
   let formulaIndex = -1;
@@ -139,6 +170,7 @@ function updateFormulaBlockInText(
   // Scan existing child lines for name/platform
   let nameFoundAt = -1;
   let platformFoundAt = -1;
+  let idFoundAt = -1;
   for (let i = blockStart; i < blockEnd; i++) {
     const childLine = lines[i];
     const trimmed = childLine.trim();
@@ -146,6 +178,8 @@ function updateFormulaBlockInText(
       nameFoundAt = i;
     } else if (trimmed.startsWith('platformSpecific:')) {
       platformFoundAt = i;
+    } else if (trimmed.startsWith('id:')) {
+      idFoundAt = i;
     }
   }
 
@@ -168,5 +202,15 @@ function updateFormulaBlockInText(
     }
   }
 
+  if (shouldUpdateId) {
+    if (idFoundAt !== -1) {
+      lines[idFoundAt] = `${childIndent}id: ${updateObject.id}`;
+    } else {
+      lines.splice(blockEnd, 0, `${childIndent}id: ${updateObject.id}`);
+      blockEnd++;
+    }
+  }
+
   return lines.join(nl);
 }
+

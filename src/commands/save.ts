@@ -483,7 +483,7 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
       };
     }
 
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name });
+    const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name, ensureId: true });
 
     // Update source file if content changed
     if (updatedContent !== originalContent) {
