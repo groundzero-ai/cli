@@ -255,3 +255,12 @@ export interface ContentAnalysisResult {
     finalRegistryPath: string;
   }>;
 }
+
+// ID-based file matching types
+export interface FileIdInfo {
+  fullPath: string;
+  id: string | null;
+  formulaName: string | null;
+  isValid: boolean;
+  frontmatter: any | null;
+}

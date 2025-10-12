@@ -49,9 +49,9 @@ export async function isFile(path: string): Promise<boolean> {
 export async function ensureDir(path: string): Promise<void> {
   try {
     await fs.mkdir(path, { recursive: true });
-    logger.debug(`Created directory: ${path}`);
+    logger.debug(`Directory located or created: ${path}`);
   } catch (error) {
-    throw new FileSystemError(`Failed to create directory: ${path}`, { path, error });
+    throw new FileSystemError(`Failed to locate or create directory: ${path}`, { path, error });
   }
 }
 

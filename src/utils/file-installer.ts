@@ -56,9 +56,10 @@ export async function provideIdeTemplateFiles(
 
   // Process platforms in parallel
   const platformPromises = platforms.map(async (platform) => {
-    // Use centralized platform mapping to get the rules directory path
-    const { absDir: rulesDirRelative } = mapUniversalToPlatform(platform as Platform, UNIVERSAL_SUBDIRS.RULES, '');
-    const rulesDir = join(targetDir, rulesDirRelative);
+    try {
+      // Use centralized platform mapping to get the rules directory path
+      const { absDir: rulesDirRelative } = mapUniversalToPlatform(platform as Platform, UNIVERSAL_SUBDIRS.RULES, '');
+      const rulesDir = join(targetDir, rulesDirRelative);
 
     const rulesDirExists = await exists(rulesDir);
     if (!rulesDirExists) {
@@ -83,6 +84,11 @@ export async function provideIdeTemplateFiles(
     const ruleContent = RESOURCES_RULES['groundzero.md'];
     await writeTextFile(ruleFilePath, ruleContent);
     provided.filesAdded.push(ruleFilePath);
+    } catch (error) {
+      // Skip platforms that don't support this subdir
+      logger.debug(`Skipping platform ${platform} - does not support subdir rules: ${error}`);
+      return;
+    }
   });
 
   await Promise.all(platformPromises);

@@ -334,8 +334,8 @@ async function installFormulaCommand(
     return await handleDryRunMode(finalResolvedFormulas, formulaName, targetDir, options, formulaYmlExists);
   }
 
-  // Process resolved formulas
-  const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(finalResolvedFormulas, targetDir, options, conflictResult.forceOverwriteFormulas);
+  // Process resolved formulas (will be called with platforms later after detection)
+  // Note: Platform files will be installed after platform detection below
 
   // Get main formula for formula.yml updates and display
   const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
@@ -349,6 +349,15 @@ async function installFormulaCommand(
   }
 
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
+
+  // Now process resolved formulas with platform information for ID-based installation
+  const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(
+    finalResolvedFormulas, 
+    targetDir, 
+    options, 
+    conflictResult.forceOverwriteFormulas, 
+    finalPlatforms as Platform[]
+  );
 
   // Install root files from registry for all formulas in dependency tree
   const { installRootFiles } = await import('../utils/root-file-installer.js');

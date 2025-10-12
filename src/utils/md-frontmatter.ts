@@ -214,3 +214,66 @@ function updateFormulaBlockInText(
   return lines.join(nl);
 }
 
+/**
+ * Remove only formula-related frontmatter from markdown content,
+ * preserving other frontmatter fields and the markdown body
+ */
+export function removeFormulaFrontmatter(content: string): string {
+  const nl = detectNewline(content);
+  const bounds = findFrontmatterBounds(content, nl);
+  
+  if (!bounds.has) {
+    // No frontmatter to remove
+    return content;
+  }
+  
+  const frontmatterContent = content.slice(bounds.start, bounds.end);
+  const markdownContentStart = bounds.end + (nl + '---' + nl).length;
+  const markdownContent = content.slice(markdownContentStart);
+  
+  const lines = frontmatterContent.split(nl);
+  
+  // Find formula block
+  let formulaIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed === 'formula:') {
+      formulaIndex = i;
+      break;
+    }
+  }
+  
+  if (formulaIndex === -1) {
+    // No formula block found
+    return content;
+  }
+  
+  // Find formula block bounds
+  const formulaIndent = lines[formulaIndex].slice(0, lines[formulaIndex].indexOf('f'));
+  const childIndent = formulaIndent + '  ';
+  let blockStart = formulaIndex;
+  let blockEnd = formulaIndex + 1;
+  
+  while (blockEnd < lines.length && lines[blockEnd].startsWith(childIndent)) {
+    blockEnd++;
+  }
+  
+  // Remove formula block
+  lines.splice(blockStart, blockEnd - blockStart);
+  
+  // Remove any trailing empty lines or comments that were only for the formula block
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+  
+  // If no frontmatter remains, return just the markdown content
+  if (lines.length === 0 || lines.every(line => line.trim() === '' || line.trim().startsWith('#'))) {
+    return markdownContent;
+  }
+  
+  // Reconstruct with remaining frontmatter
+  const updatedFrontmatter = lines.join(nl);
+  return '---' + nl + updatedFrontmatter + nl + '---' + nl + markdownContent;
+}
+

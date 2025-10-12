@@ -1,10 +1,11 @@
 import { join, dirname } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { CONFLICT_RESOLUTION, FILE_PATTERNS } from '../constants/index.js';
+import { CONFLICT_RESOLUTION, FILE_PATTERNS, type Platform } from '../constants/index.js';
 import { logger } from './logger.js';
 import { formulaManager } from '../core/formula.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
+import { installPlatformFilesById } from './id-based-installer.js';
 
 /**
  * Install formula files to ai directory
@@ -102,11 +103,15 @@ export async function processResolvedFormulas(
   resolvedFormulas: ResolvedFormula[],
   targetDir: string,
   options: InstallOptions,
-  forceOverwriteFormulas?: Set<string>
+  forceOverwriteFormulas?: Set<string>,
+  platforms?: Platform[]
 ): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> }> {
   let installedCount = 0;
   let skippedCount = 0;
   const groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> = [];
+  
+  // Get cwd for platform file installation
+  const cwd = process.cwd();
   
   for (const resolved of resolvedFormulas) {
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.SKIPPED) {
@@ -122,21 +127,74 @@ export async function processResolvedFormulas(
     }
     
     const shouldForceOverwrite = forceOverwriteFormulas?.has(resolved.name) || false;
+    
+    // Install platform-specific files using ID-based matching if platforms are provided
+    if (platforms && platforms.length > 0) {
+      try {
+        const platformResult = await installPlatformFilesById(
+          cwd,
+          resolved.name,
+          resolved.version,
+          platforms,
+          options,
+          shouldForceOverwrite
+        );
+        
+        // Log platform file installation results
+        if (platformResult.cleaned > 0 || platformResult.deleted > 0) {
+          console.log(`🧹 Cleaned ${platformResult.cleaned} invalid files, deleted ${platformResult.deleted} orphaned files for ${resolved.name}`);
+        }
+        if (platformResult.renamed > 0) {
+          console.log(`📝 Renamed ${platformResult.renamed} files for ${resolved.name}`);
+        }
+        
+        // Add platform files to results
+        if (platformResult.installed > 0 || platformResult.updated > 0) {
+          installedCount++;
+          groundzeroResults.push({
+            name: resolved.name,
+            filesInstalled: platformResult.installed + platformResult.updated,
+            files: platformResult.files,
+            overwritten: platformResult.updated > 0
+          });
+        }
+      } catch (error) {
+        logger.error(`Failed to install platform files for ${resolved.name}: ${error}`);
+        skippedCount++;
+        continue;
+      }
+    }
+    
+    // Install non-platform files (ai directory files) using traditional path-based method
     const groundzeroResult = await installFormula(resolved.name, targetDir, options, resolved.version, shouldForceOverwrite);
     
     if (groundzeroResult.skipped) {
-      skippedCount++;
-      console.log(`⏭️  Skipped ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      // Only count as skipped if no platform files were installed
+      if (!platforms || platforms.length === 0) {
+        skippedCount++;
+        console.log(`⏭️  Skipped ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      }
       continue;
     }
     
-    installedCount++;
-    groundzeroResults.push({
-      name: resolved.name,
-      filesInstalled: groundzeroResult.installedCount,
-      files: groundzeroResult.files,
-      overwritten: groundzeroResult.overwritten
-    });
+    // Add non-platform files to results (or merge with platform results if both exist)
+    if (groundzeroResult.installedCount > 0) {
+      const existingResult = groundzeroResults.find(r => r.name === resolved.name);
+      if (existingResult) {
+        // Merge with existing platform result
+        existingResult.filesInstalled += groundzeroResult.installedCount;
+        existingResult.files.push(...groundzeroResult.files);
+        existingResult.overwritten = existingResult.overwritten || groundzeroResult.overwritten;
+      } else {
+        installedCount++;
+        groundzeroResults.push({
+          name: resolved.name,
+          filesInstalled: groundzeroResult.installedCount,
+          files: groundzeroResult.files,
+          overwritten: groundzeroResult.overwritten
+        });
+      }
+    }
     
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.OVERWRITTEN || groundzeroResult.overwritten) {
       console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in ai`);
