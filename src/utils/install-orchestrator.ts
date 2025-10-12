@@ -1,7 +1,10 @@
+import { join, dirname } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { CONFLICT_RESOLUTION } from '../constants/index.js';
+import { CONFLICT_RESOLUTION, FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
+import { formulaManager } from '../core/formula.js';
+import { exists, ensureDir, writeTextFile } from './fs.js';
 
 /**
  * Install formula files to ai directory
@@ -19,18 +22,77 @@ export async function installFormula(
   version?: string,
   forceOverwrite?: boolean
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
-  // This is a placeholder implementation
-  // The actual implementation would need to be extracted from the original install.ts
-  // For now, return a minimal response to satisfy the interface
-  
   logger.debug(`Installing formula files for ${formulaName} to ${targetDir}`, { version, forceOverwrite });
   
-  return {
-    installedCount: 0,
-    files: [],
-    overwritten: false,
-    skipped: false
-  };
+  try {
+    // Get formula from registry
+    const formula = await formulaManager.loadFormula(formulaName, version);
+    
+    // Filter files to install (exclude formula.yml and root markdown files)
+    const filesToInstall = formula.files.filter(file => 
+      file.path !== FILE_PATTERNS.FORMULA_YML && !file.path.endsWith(FILE_PATTERNS.MD_FILES)
+    );
+    
+    if (filesToInstall.length === 0) {
+      logger.debug(`No files to install for ${formulaName}@${version || 'latest'}`);
+      return { installedCount: 0, files: [], overwritten: false, skipped: true };
+    }
+    
+    // Check for existing files in parallel
+    const existenceChecks = await Promise.all(
+      filesToInstall.map(async (file) => {
+        const targetPath = join(targetDir, file.path);
+        const fileExists = await exists(targetPath);
+        return { file, targetPath, exists: fileExists };
+      })
+    );
+    
+    const conflicts = existenceChecks.filter(item => item.exists);
+    const hasOverwritten = conflicts.length > 0 && (options.force === true || forceOverwrite === true);
+    
+    // Handle conflicts - skip if files exist and no force flag
+    if (conflicts.length > 0 && options.force !== true && forceOverwrite !== true) {
+      logger.debug(`Skipping ${formulaName} - files would be overwritten: ${conflicts.map(c => c.targetPath).join(', ')}`);
+      return { installedCount: 0, files: [], overwritten: false, skipped: true };
+    }
+    
+    // Pre-create all necessary directories
+    const directories = new Set<string>();
+    for (const { targetPath } of existenceChecks) {
+      directories.add(dirname(targetPath));
+    }
+    
+    // Create all directories in parallel
+    await Promise.all(Array.from(directories).map(dir => ensureDir(dir)));
+    
+    // Install files in parallel
+    const installedFiles: string[] = [];
+    const installPromises = existenceChecks.map(async ({ file, targetPath }) => {
+      await writeTextFile(targetPath, file.content);
+      installedFiles.push(targetPath);
+      logger.debug(`Installed file: ${targetPath}`);
+    });
+    
+    await Promise.all(installPromises);
+    
+    logger.info(`Successfully installed ${installedFiles.length} files for ${formulaName}@${version || 'latest'}`);
+    
+    return {
+      installedCount: filesToInstall.length,
+      files: installedFiles,
+      overwritten: hasOverwritten,
+      skipped: false
+    };
+    
+  } catch (error) {
+    logger.error(`Failed to install formula ${formulaName}: ${error}`);
+    return {
+      installedCount: 0,
+      files: [],
+      overwritten: false,
+      skipped: true
+    };
+  }
 }
 
 /**
