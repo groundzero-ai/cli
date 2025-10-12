@@ -17,7 +17,7 @@ import {
   DEPENDENCY_ARRAYS,
 } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
-
+import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 
 /**
  * Clean up platform-specific files for a formula across all detected platforms
@@ -181,6 +181,18 @@ async function displayDryRunInfo(
   }
   
   console.log('');
+
+  // Root files that would be updated or deleted
+  const cwd = process.cwd();
+  const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
+  console.log(`📝 Root files to update: ${rootPlan.toUpdate.length}`);
+  for (const f of rootPlan.toUpdate.sort((a, b) => a.localeCompare(b))) {
+    console.log(`   ├── ${f}`);
+  }
+  console.log(`🗑️  Root files to delete: ${rootPlan.toDelete.length}`);
+  for (const f of rootPlan.toDelete.sort((a, b) => a.localeCompare(b))) {
+    console.log(`   ├── ${f}`);
+  }
   
   // Check platform files that would be cleaned up for all formulas
   const dryRunPlatformCleanupPromises = formulasToRemove.map(formula =>
@@ -238,7 +250,9 @@ function displayUninstallSuccess(
   danglingDependencies: Set<string>,
   removedAiFiles: string[],
   ymlRemovalResults: Record<string, boolean>,
-  platformCleanup: Record<string, string[]>
+  platformCleanup: Record<string, string[]>,
+  updatedRootFiles: string[],
+  deletedRootFiles: string[]
 ): void {
   console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
@@ -254,11 +268,22 @@ function displayUninstallSuccess(
     allRemovedFiles.push(...platformFiles);
   }
 
+  // Add deleted root files
+  allRemovedFiles.push(...deletedRootFiles);
+
   // Display removed files count and list
   const sortedRemovedFiles = allRemovedFiles.sort((a, b) => a.localeCompare(b));
   console.log(`🗑️  Removed files: ${allRemovedFiles.length}`);
   for (const file of sortedRemovedFiles) {
     console.log(`   ├── ${file}`);
+  }
+
+  // Display updated root files
+  if (updatedRootFiles.length > 0) {
+    console.log(`📝 Updated root files:`);
+    for (const f of updatedRootFiles.sort((a, b) => a.localeCompare(b))) {
+      console.log(`   ├── ${f}`);
+    }
   }
 
   // Report formula.yml updates
@@ -344,6 +369,7 @@ async function uninstallFormulaCommand(
   if (options.dryRun) {
     const relAiFiles = aiFilesToRemove.map(p => relative(cwd, p));
     await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, relAiFiles, formulasToRemove);
+    const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
     const platformCleanup = await cleanupPlatformFiles(cwd, formulaName, { ...options, dryRun: true });
     return {
@@ -356,7 +382,8 @@ async function uninstallFormulaCommand(
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
         totalToRemove: formulasToRemove.length,
-        platformCleanup
+        platformCleanup,
+        rootFiles: { toUpdate: rootPlan.toUpdate, toDelete: rootPlan.toDelete }
       }
     };
   }
@@ -418,6 +445,9 @@ async function uninstallFormulaCommand(
       }
     }
     
+    // Remove or update root files by stripping formula sections
+    const rootRemoval = await applyRootFileRemovals(cwd, formulasToRemove);
+
     // Remove all formulas being uninstalled from formula.yml
     const ymlRemovalResults: Record<string, boolean> = {};
     for (const formula of formulasToRemove) {
@@ -426,7 +456,17 @@ async function uninstallFormulaCommand(
     const removedFromYml = ymlRemovalResults[formulaName];
 
     // Success output
-    displayUninstallSuccess(formulaName, targetDir, options, danglingDependencies, removedAiFiles, ymlRemovalResults, platformCleanup);
+    displayUninstallSuccess(
+      formulaName,
+      targetDir,
+      options,
+      danglingDependencies,
+      removedAiFiles,
+      ymlRemovalResults,
+      platformCleanup,
+      rootRemoval.updated,
+      rootRemoval.deleted
+    );
 
     return {
       success: true,
@@ -438,7 +478,8 @@ async function uninstallFormulaCommand(
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
         totalRemoved: removedAiFiles.length,
-        platformCleanup
+        platformCleanup,
+        rootFiles: { updated: rootRemoval.updated, deleted: rootRemoval.deleted }
       }
     };
   } catch (error) {
