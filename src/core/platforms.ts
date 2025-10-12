@@ -310,10 +310,38 @@ export function getPlatformDirectoryPaths(cwd: string): PlatformDirectoryPaths {
 }
 
 /**
+ * Detect platforms by their root files
+ * Note: AGENTS.md is ambiguous (maps to multiple platforms), so we return empty for it
+ */
+export async function detectPlatformByRootFile(cwd: string): Promise<Platform[]> {
+  const detectedPlatforms: Platform[] = [];
+
+  // Build dynamic root file mapping from platform definitions
+  const rootFileToPlatform = new Map<string, Platform>();
+  for (const platform of getAllPlatforms()) {
+    const def = getPlatformDefinition(platform);
+    if (def.rootFile && def.rootFile !== FILE_PATTERNS.AGENTS_MD) {
+      rootFileToPlatform.set(def.rootFile, platform);
+    }
+  }
+
+  // Check for existence of each root file at cwd
+  for (const [rootFile, platform] of rootFileToPlatform.entries()) {
+    const filePath = join(cwd, rootFile);
+    if (await exists(filePath)) {
+      detectedPlatforms.push(platform);
+    }
+  }
+
+  return detectedPlatforms;
+}
+
+/**
  * Detect all platforms present in a directory
+ * Checks both platform directories and root files
  */
 export async function detectAllPlatforms(cwd: string): Promise<PlatformDetectionResult[]> {
-  // Check all platforms in parallel
+  // Check all platforms by directory in parallel
   const detectionPromises = getAllPlatforms().map(async (platform) => {
     const definition = getPlatformDefinition(platform);
     const rootDirPath = join(cwd, definition.rootDir);
@@ -328,6 +356,18 @@ export async function detectAllPlatforms(cwd: string): Promise<PlatformDetection
   });
 
   const detectionResults = await Promise.all(detectionPromises);
+  
+  // Also detect by root files
+  const rootFileDetectedPlatforms = await detectPlatformByRootFile(cwd);
+  
+  // Merge results - mark platforms as detected if they have either directory or root file
+  for (const platform of rootFileDetectedPlatforms) {
+    const result = detectionResults.find(r => r.name === platform);
+    if (result && !result.detected) {
+      result.detected = true;
+    }
+  }
+
   return detectionResults;
 }
 

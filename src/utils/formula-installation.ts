@@ -88,7 +88,8 @@ export function displayInstallationResults(
   ideTemplateResult: { filesAdded: string[]; skipped: string[]; directoriesCreated: string[] },
   options: any,
   mainFormula?: any,
-  allAddedFiles?: string[]
+  allAddedFiles?: string[],
+  rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] }
 ): void {
   // Build installation summary
   let summaryText = `✓ Installed ${formulaName}`;
@@ -113,6 +114,30 @@ export function displayInstallationResults(
     const sortedFiles = [...allAddedFiles].sort((a, b) => a.localeCompare(b));
     for (const file of sortedFiles) {
       console.log(`   ├── ${file}`);
+    }
+  }
+
+  // Root file installation results
+  if (rootFileResults) {
+    const totalRootFiles = rootFileResults.installed.length + rootFileResults.updated.length;
+    if (totalRootFiles > 0) {
+      console.log(`📄 Root files: ${totalRootFiles} file(s)`);
+      
+      // Show newly created root files
+      if (rootFileResults.installed.length > 0) {
+        const sortedInstalled = [...rootFileResults.installed].sort((a, b) => a.localeCompare(b));
+        for (const file of sortedInstalled) {
+          console.log(`   ├── ${file} (created)`);
+        }
+      }
+      
+      // Show updated root files
+      if (rootFileResults.updated.length > 0) {
+        const sortedUpdated = [...rootFileResults.updated].sort((a, b) => a.localeCompare(b));
+        for (const file of sortedUpdated) {
+          console.log(`   ├── ${file} (updated)`);
+        }
+      }
     }
   }
 

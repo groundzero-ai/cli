@@ -24,7 +24,7 @@ import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
-import { extractFormulaContentFromAgentsMd } from '../utils/agents-md-extractor.js';
+import { extractFormulaContentFromRootFile } from '../utils/root-file-extractor.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -471,7 +471,7 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
     // Special handling for root files: always extract formula-specific content by markers
     // This applies to AGENTS.md and platform-native root files regardless of final registryPath
     if (rootFilenamesSet.has(basename(mdFile.fullPath))) {
-      const agentsContent = extractFormulaContentFromAgentsMd(originalContent, formulaConfig.name);
+      const agentsContent = extractFormulaContentFromRootFile(originalContent, formulaConfig.name);
       if (!agentsContent) {
         return null as any;
       }

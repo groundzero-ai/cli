@@ -6,7 +6,7 @@ import { logger } from '../logger.js';
 import { exists, readTextFile, listDirectories, isDirectory } from '../fs.js';
 import { calculateFileHash } from '../hash-utils.js';
 import { getAllPlatforms, getPlatformDefinition } from '../../core/platforms.js';
-import { extractFormulaContentFromAgentsMd } from '../agents-md-extractor.js';
+import { extractFormulaContentFromRootFile } from '../root-file-extractor.js';
 import { getFileMtime } from './file-processing.js';
 import { findFilesByExtension } from './file-processing.js';
 import { buildPlatformSearchConfig } from './platform-discovery.js';
@@ -27,7 +27,7 @@ export async function discoverAgentsMdFile(
 
   try {
     const content = await readTextFile(agentsPath);
-    const extracted = extractFormulaContentFromAgentsMd(content, formulaName);
+    const extracted = extractFormulaContentFromRootFile(content, formulaName);
     if (!extracted) {
       return null; // No matching section; treat as non-existent
     }
@@ -80,7 +80,7 @@ export async function discoverAllRootFiles(
 
     try {
       const content = await readTextFile(absPath);
-      const extracted = extractFormulaContentFromAgentsMd(content, formulaName);
+      const extracted = extractFormulaContentFromRootFile(content, formulaName);
       if (!extracted) {
         continue; // No matching section in this root file
       }

@@ -350,6 +350,24 @@ async function installFormulaCommand(
 
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 
+  // Install root files from registry for all formulas in dependency tree
+  const { installRootFiles } = await import('../utils/root-file-installer.js');
+  const allRootFileResults = { installed: [] as string[], updated: [] as string[], skipped: [] as string[] };
+  
+  for (const resolved of finalResolvedFormulas) {
+    const rootFileResult = await installRootFiles(
+      cwd,
+      resolved.name,
+      resolved.version,
+      finalPlatforms as Platform[]
+    );
+    
+    // Aggregate results
+    allRootFileResults.installed.push(...rootFileResult.installed);
+    allRootFileResults.updated.push(...rootFileResult.updated);
+    allRootFileResults.skipped.push(...rootFileResult.skipped);
+  }
+
   // Add formula to formula.yml if it exists and we have a main formula
   if (formulaYmlExists && mainFormula) {
     await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
@@ -380,7 +398,8 @@ async function installFormulaCommand(
     ideTemplateResult,
     options,
     mainFormula,
-    allAddedFiles
+    allAddedFiles,
+    allRootFileResults
   );
   
   return {
