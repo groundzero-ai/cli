@@ -24,7 +24,7 @@ import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
-import { extractFormulaContentFromRootFile } from '../utils/root-file-extractor.js';
+import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../utils/root-file-extractor.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -72,6 +72,7 @@ const LOG_PREFIXES = {
   WARNING_SUFFIX: 'is already stable.',
   ARROW_SEPARATOR: ' → '
 } as const;
+
 
 /**
  * Parse formula inputs to handle three usage patterns:
@@ -468,16 +469,26 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
   const mdFilePromises = discoveredFiles.map(async (mdFile) => {
     const originalContent = await readTextFile(mdFile.fullPath);
 
-    // Special handling for root files: always extract formula-specific content by markers
-    // This applies to AGENTS.md and platform-native root files regardless of final registryPath
+    // Special handling for root files: ensure marker id and include markers in registry content
+    // Supports AGENTS.md and platform-native root files
     if (rootFilenamesSet.has(basename(mdFile.fullPath))) {
-      const agentsContent = extractFormulaContentFromRootFile(originalContent, formulaConfig.name);
-      if (!agentsContent) {
+      const ensured = ensureRootMarkerIdAndExtract(originalContent, formulaConfig.name);
+      if (!ensured) {
         return null as any;
       }
+
+      // If source content changed (id added/updated), write it back to the workspace
+      if (ensured.updatedContent !== originalContent) {
+        await writeTextFile(mdFile.fullPath, ensured.updatedContent);
+        console.log(`${LOG_PREFIXES.UPDATED} ${mdFile.relativePath}`);
+      }
+
+      const openMarker = buildOpenMarker(formulaConfig.name, ensured.id);
+      const wrapped = `${openMarker}\n${ensured.sectionBody}\n${CLOSE_MARKER}\n`;
+
       return {
         path: mdFile.registryPath,
-        content: agentsContent,
+        content: wrapped,
         isTemplate: false,
         encoding: UTF8_ENCODING
       };
