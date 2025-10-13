@@ -24,6 +24,7 @@ import { getLatestFormulaVersion } from '../core/directory.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
+import { syncRootFiles } from '../utils/root-file-sync.js';
 import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../utils/root-file-extractor.js';
 
 // Constants
@@ -407,8 +408,11 @@ async function saveFormulaCommand(
     return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
   }
 
-  // Sync files across detected platforms
+  // Sync universal files across detected platforms
   const syncResult = await postSavePlatformSync(cwd, formulaFiles);
+
+  // Sync root files across detected platforms
+  const rootSyncResult = await syncRootFiles(cwd, formulaFiles, formulaConfig.name);
 
   // Finalize the save operation
   if (!options?.skipProjectLink) {
@@ -424,18 +428,21 @@ async function saveFormulaCommand(
   }
 
   // Display platform sync results
-  if (syncResult.created.length > 0) {
-    const sortedCreated = [...syncResult.created].sort((a, b) => a.localeCompare(b));
-    console.log(`✓ Platform sync created ${syncResult.created.length} files:`);
-    for (const createdFile of sortedCreated) {
+  const totalCreated = syncResult.created.length + rootSyncResult.created.length;
+  const totalUpdated = syncResult.updated.length + rootSyncResult.updated.length;
+
+  if (totalCreated > 0) {
+    const allCreated = [...syncResult.created, ...rootSyncResult.created].sort((a, b) => a.localeCompare(b));
+    console.log(`✓ Platform sync created ${totalCreated} files:`);
+    for (const createdFile of allCreated) {
       console.log(`   ├── ${createdFile}`);
     }
   }
 
-  if (syncResult.updated.length > 0) {
-    const sortedUpdated = [...syncResult.updated].sort((a, b) => a.localeCompare(b));
-    console.log(`✓ Platform sync updated ${syncResult.updated.length} files:`);
-    for (const updatedFile of sortedUpdated) {
+  if (totalUpdated > 0) {
+    const allUpdated = [...syncResult.updated, ...rootSyncResult.updated].sort((a, b) => a.localeCompare(b));
+    console.log(`✓ Platform sync updated ${totalUpdated} files:`);
+    for (const updatedFile of allUpdated) {
       console.log(`   ├── ${updatedFile}`);
     }
   }

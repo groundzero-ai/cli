@@ -53,23 +53,37 @@ export function mergeFormulaContentIntoRootFile(
     return existingContent.trim() + separator + openMarker + '\n' + newContent.trim() + '\n' + closeMarker + '\n';
   }
 
-  // Formula section exists - replace it
+  // Formula section exists - check if it already has the correct content
   const beforeSection = existingContent.substring(0, openMatch.index);
   const afterMarkerIndex = openMatch.index + openMatch[0].length;
   const restContent = existingContent.substring(afterMarkerIndex);
-  
+
   const closeMatch = closeRe.exec(restContent);
-  
+
   if (!closeMatch) {
     // Malformed - missing closing marker, append new section at end
     const separator = existingContent.trim() ? '\n\n' : '';
     return existingContent.trim() + separator + openMarker + '\n' + newContent.trim() + '\n' + closeMarker + '\n';
   }
 
-  // Replace the section content
+  // Extract the existing section content
+  const existingSectionBody = restContent.substring(0, closeMatch.index).trim();
   const afterCloseMarkerIndex = closeMatch.index + closeMatch[0].length;
   const afterSection = restContent.substring(afterCloseMarkerIndex);
-  
+
+  // Check if the existing section already has the correct content and marker
+  // Use component-wise comparison to avoid issues with whitespace formatting differences
+  const existingOpenMarker = openMatch[0];
+  const hasCorrectMarker = existingOpenMarker === openMarker;
+  const hasCorrectContent = existingSectionBody === newContent.trim();
+  const hasCloseMarker = true; // We already verified closeMatch exists
+
+  if (hasCorrectMarker && hasCorrectContent && hasCloseMarker) {
+    // Existing section is already correct, return unchanged
+    return existingContent;
+  }
+
+  // Replace the section content
   return beforeSection + openMarker + '\n' + newContent.trim() + '\n' + closeMarker + afterSection;
 }
 
