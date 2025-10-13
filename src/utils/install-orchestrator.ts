@@ -204,7 +204,7 @@ export async function processResolvedFormulas(
     }
     
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.OVERWRITTEN || groundzeroResult.overwritten) {
-      console.log(`🔄 Overwritten ${resolved.name}@${resolved.version} in ai`);
+      console.log(`✓ Overwritten ${resolved.name}@${resolved.version} in ai`);
     }
   }
   

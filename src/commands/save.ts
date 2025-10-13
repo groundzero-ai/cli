@@ -426,9 +426,17 @@ async function saveFormulaCommand(
   // Display platform sync results
   if (syncResult.created.length > 0) {
     const sortedCreated = [...syncResult.created].sort((a, b) => a.localeCompare(b));
-    console.log(`🔄 Platform sync created ${syncResult.created.length} files:`);
+    console.log(`✓ Platform sync created ${syncResult.created.length} files:`);
     for (const createdFile of sortedCreated) {
       console.log(`   ├── ${createdFile}`);
+    }
+  }
+
+  if (syncResult.updated.length > 0) {
+    const sortedUpdated = [...syncResult.updated].sort((a, b) => a.localeCompare(b));
+    console.log(`✓ Platform sync updated ${syncResult.updated.length} files:`);
+    for (const updatedFile of sortedUpdated) {
+      console.log(`   ├── ${updatedFile}`);
     }
   }
 

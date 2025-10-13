@@ -3,7 +3,8 @@
  * Utility functions for syncing saved formula files across detected platforms
  */
 
-import { exists, ensureDir, writeTextFile } from './fs.js';
+import { relative } from 'path';
+import { ensureDir, writeTextFile, exists, readTextFile } from './fs.js';
 import { getDetectedPlatforms } from '../core/platforms.js';
 import { resolveInstallTargets } from './platform-mapper.js';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORMS, PLATFORM_DIRS, type UniversalSubdir } from '../constants/index.js';
@@ -15,6 +16,7 @@ import type { FormulaFile } from '../types/index.js';
  */
 export interface PlatformSyncResult {
   created: string[];
+  updated: string[];
 }
 
 /**
@@ -105,7 +107,8 @@ export async function postSavePlatformSync(
   formulaFiles: FormulaFile[]
 ): Promise<PlatformSyncResult> {
   const result: PlatformSyncResult = {
-    created: []
+    created: [],
+    updated: []
   };
 
   // Get detected platforms
@@ -155,12 +158,34 @@ export async function postSavePlatformSync(
         // Ensure target directory exists
         await ensureDir(target.absDir);
 
+        // Check if file already exists and get current contents
+        const fileExists = await exists(target.absFile);
+        let existingContent = '';
+        if (fileExists) {
+          try {
+            existingContent = await readTextFile(target.absFile, 'utf8');
+          } catch (error) {
+            logger.warn(`Failed to read existing file ${target.absFile}: ${error}`);
+          }
+        }
+
         // Write the file (overwrite if exists to ensure IDs are propagated)
         await writeTextFile(target.absFile, file.content, 'utf8');
 
-        // Record as created/updated
-        result.created.push(target.absFile);
-        logger.debug(`Synced file: ${target.absFile}`);
+        // Record as created or updated based on whether contents changed
+        const relativePath = relative(cwd, target.absFile);
+        if (fileExists) {
+          // Only mark as updated if contents actually changed
+          if (existingContent !== file.content) {
+            result.updated.push(relativePath);
+            logger.debug(`Updated synced file: ${target.absFile}`);
+          } else {
+            logger.debug(`Synced file unchanged: ${target.absFile}`);
+          }
+        } else {
+          result.created.push(relativePath);
+          logger.debug(`Created synced file: ${target.absFile}`);
+        }
       }
     } catch (error) {
       logger.warn(`Failed to sync file ${file.path}: ${error}`);

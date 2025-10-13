@@ -554,7 +554,7 @@ export function logConflictResolution(
   const universalCount = analysisResult.universalFiles.length;
   const platformSpecificCount = analysisResult.platformSpecificFiles.length;
 
-  console.log(`📄 Processed conflicts for ${registryPath} (${totalFiles} files)`);
+  console.log(`✓ Processed conflicts for ${registryPath} (${totalFiles} files)`);
 
   if (universalCount > 0) {
     console.log(`  ✓ Universal: ${universalCount} file(s) saved without prefix`);
@@ -568,6 +568,6 @@ export function logConflictResolution(
   const processedFiles = universalCount + platformSpecificCount;
   if (processedFiles < totalFiles) {
     const synchronizedFiles = totalFiles - processedFiles;
-    console.log(`  🔄 Synchronized: ${synchronizedFiles} file(s) updated with universal content`);
+    console.log(`  ✓ Synchronized: ${synchronizedFiles} file(s) updated with universal content`);
   }
 }

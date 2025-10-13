@@ -66,8 +66,8 @@ export function displayInstallationSummary(
   totalFormulas: number,
   results: Array<{ name: string; success: boolean; error?: string }>
 ): void {
-  console.log(`\n📊 Installation Summary:`);
-  console.log(`✅ Successfully installed: ${totalInstalled}/${totalFormulas} formulas`);
+  console.log(`\n✓ Installation Summary:`);
+  console.log(`✓ Successfully installed: ${totalInstalled}/${totalFormulas} formulas`);
 
   if (totalSkipped > 0) {
     console.log(`❌ Failed to install: ${totalSkipped} formulas`);
@@ -107,11 +107,11 @@ export function displayInstallationResults(
   }
 
   console.log(`\n${summaryText}`);
-  console.log(`📦 Total formulas processed: ${resolvedFormulas.length}`);
+  console.log(`✓ Total formulas processed: ${resolvedFormulas.length}`);
 
   // Show detailed file list
   if (allAddedFiles && allAddedFiles.length > 0) {
-    console.log(`📝 Added files: ${allAddedFiles.length}`);
+    console.log(`✓ Added files: ${allAddedFiles.length}`);
     const sortedFiles = [...allAddedFiles].sort((a, b) => a.localeCompare(b));
     for (const file of sortedFiles) {
       console.log(`   ├── ${file}`);
@@ -119,7 +119,7 @@ export function displayInstallationResults(
   }
 
   if (allUpdatedFiles && allUpdatedFiles.length > 0) {
-    console.log(`🔄 Updated files: ${allUpdatedFiles.length}`);
+    console.log(`✓ Updated files: ${allUpdatedFiles.length}`);
     const sortedFiles = [...allUpdatedFiles].sort((a, b) => a.localeCompare(b));
     for (const file of sortedFiles) {
       console.log(`   ├── ${file}`);
@@ -130,7 +130,7 @@ export function displayInstallationResults(
   if (rootFileResults) {
     const totalRootFiles = rootFileResults.installed.length + rootFileResults.updated.length;
     if (totalRootFiles > 0) {
-      console.log(`📄 Root files: ${totalRootFiles} file(s)`);
+      console.log(`✓ Root files: ${totalRootFiles} file(s)`);
       
       // Show newly created root files
       if (rootFileResults.installed.length > 0) {
@@ -152,10 +152,10 @@ export function displayInstallationResults(
 
   // Platform and IDE template output
   if (platformResult.created.length > 0) {
-    console.log(`📁 Created platform directories: ${platformResult.created.join(', ')}`);
+    console.log(`✓ Created platform directories: ${platformResult.created.join(', ')}`);
   }
 
   if (ideTemplateResult.directoriesCreated.length > 0) {
-    console.log(`📁 Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
+    console.log(`✓ Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
   }
 }
