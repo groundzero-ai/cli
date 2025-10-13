@@ -7,6 +7,8 @@ import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../
 import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS } from '../constants/index.js';
+import { isRootFile } from '../utils/root-file-sync.js';
+import { addFormulaToRootFile } from '../utils/root-file-operations.js';
 
 /**
  * Options for the add command
@@ -162,41 +164,55 @@ async function addFormulaCommand(
 ): Promise<AddCommandResult> {
   try {
     logger.info(`Adding formula '${formulaName}' to: ${targetPath}`);
-    
-    // Get all markdown files to process
+
+    // Check if target is a single root file
+    const pathExists = await exists(targetPath);
+    const isDir = pathExists && await isDirectory(targetPath);
+
+    if (!isDir && isRootFile(targetPath)) {
+      // Handle single root file
+      const result = await addFormulaToRootFile(targetPath, formulaName);
+
+      return {
+        success: true,
+        filesProcessed: result.processed ? 1 : 0,
+        filesSkipped: result.processed ? 0 : 1,
+        data: {
+          formulaName,
+          targetPath,
+          filesProcessed: result.processed ? 1 : 0,
+          filesSkipped: result.processed ? 0 : 1,
+          isRootFile: true
+        }
+      };
+    }
+
+    // Handle regular markdown files (existing logic)
     const markdownFiles = await getMarkdownFiles(targetPath);
-    
+
     // Show what we're about to process
-    const isDir = await isDirectory(targetPath);
     if (isDir) {
       console.log(`Found ${markdownFiles.length} markdown file(s) in directory: ${targetPath}`);
     }
-    
+
     let filesProcessed = 0;
     let filesSkipped = 0;
-    
+
     // Process each file
     for (let i = 0; i < markdownFiles.length; i++) {
       const filePath = markdownFiles[i];
-      
+
       if (markdownFiles.length > 1) {
         console.log(`\nProcessing file ${i + 1} of ${markdownFiles.length}: ${basename(filePath)}`);
       }
-      
+
       const result = await processMarkdownFile(filePath, formulaName);
-      
+
       if (result.processed) {
         filesProcessed++;
       } else {
         filesSkipped++;
       }
-    }
-    
-    // Summary
-    console.log('\n🎉 Add operation complete!');
-    console.log(`   ✓ ${filesProcessed} file(s) updated`);
-    if (filesSkipped > 0) {
-      console.log(`   ⊝ ${filesSkipped} file(s) skipped`);
     }
     
     return {
@@ -216,7 +232,7 @@ async function addFormulaCommand(
       throw error; // Re-throw to be handled by withErrorHandling
     }
     
-    logger.error('Failed to add formula to markdown files', { error, formulaName, targetPath });
+    logger.error('Failed to add formula to files', { error, formulaName, targetPath });
     throw error instanceof Error ? error : new Error(`Add operation failed: ${error}`);
   }
 }

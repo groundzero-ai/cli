@@ -78,7 +78,7 @@ export async function syncRootFiles(
 /**
  * Check if a file path represents a root file
  */
-function isRootFile(filePath: string): boolean {
+export function isRootFile(filePath: string): boolean {
   // Get all possible root file names from platform definitions
   const rootFileNames = new Set<string>();
   for (const platform of getAllPlatforms()) {

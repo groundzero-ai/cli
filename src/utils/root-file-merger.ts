@@ -3,7 +3,7 @@
  * Handles marker-based content merging for root files (AGENTS.md, CLAUDE.md, etc.)
  */
 
-import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX, extractAllFormulaSections, extractFormulaContentFromRootFile, isMarkerWrappedContent, ensureRootMarkerIdAndExtract } from './root-file-extractor.js';
+import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX, isMarkerWrappedContent, ensureRootMarkerIdAndExtract } from './root-file-extractor.js';
 
 /**
  * Merge formula-specific content into a root file while preserving all other content.
