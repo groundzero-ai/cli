@@ -161,19 +161,19 @@ async function syncSingleRootFile(
       const relativePath = relative(cwd, targetPath);
       if (fileExists) {
         if (existingContent !== mergedContent) {
-          result.updated.push(`${platform}:${relativePath}`);
+          result.updated.push(`${relativePath}`);
           logger.debug(`Updated synced root file: ${targetPath}`);
         } else {
           logger.debug(`Root file unchanged: ${targetPath}`);
         }
       } else {
-        result.created.push(`${platform}:${relativePath}`);
+        result.created.push(`${relativePath}`);
         logger.debug(`Created synced root file: ${targetPath}`);
       }
 
     } catch (error) {
-      logger.warn(`Failed to sync root file for platform ${platform}: ${error}`);
-      result.skipped.push(`${platform}:${platformDef.rootFile}`);
+      logger.warn(`Failed to sync root file ${platformDef.rootFile}: ${error}`);
+      result.skipped.push(`${platformDef.rootFile}`);
     }
   }
 

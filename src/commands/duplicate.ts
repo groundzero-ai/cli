@@ -4,6 +4,8 @@ import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
+import { isRootFile } from '../utils/root-file-sync.js';
+import { transformRootFileContent } from '../utils/root-file-transformer.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { Formula, FormulaFile, FormulaYml, CommandResult } from '../types/index.js';
@@ -69,7 +71,7 @@ async function duplicateFormulaCommand(
   // Determine new version
   const newVersion = newVersionInput || sourceFormula.metadata.version;
 
-  // Transform files: update frontmatter and formula.yml
+  // Transform files: update frontmatter, formula.yml, and root file markers
   const transformedFiles: FormulaFile[] = sourceFormula.files.map((file) => {
     if (file.path === FILE_PATTERNS.FORMULA_YML) {
       try {
@@ -92,6 +94,13 @@ async function duplicateFormulaCommand(
       }
     }
 
+    // Handle root files (AGENTS.md, CLAUDE.md, etc.) - update markers with new name and ID
+    if (isRootFile(file.path)) {
+      const updatedContent = transformRootFileContent(file.content, sourceName, newName);
+      return { ...file, content: updatedContent };
+    }
+
+    // Handle regular markdown files - update frontmatter (only for non-root files)
     if (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path.endsWith(FILE_PATTERNS.MDC_FILES)) {
       const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
       return { ...file, content: updatedContent };
@@ -113,6 +122,20 @@ async function duplicateFormulaCommand(
   await formulaManager.saveFormula(newFormula);
 
   console.log(`✓ Duplicated '${sourceName}@${sourceFormula.metadata.version}' -> '${newName}@${newVersion}'`);
+
+  // Count processed file types for better user feedback
+  const rootFileCount = transformedFiles.filter(f => isRootFile(f.path)).length;
+  const markdownFileCount = transformedFiles.filter(f =>
+    (f.path.endsWith(FILE_PATTERNS.MD_FILES) || f.path.endsWith(FILE_PATTERNS.MDC_FILES)) &&
+    !isRootFile(f.path)
+  ).length;
+
+  if (rootFileCount > 0) {
+    logger.debug(`  └─ Updated ${rootFileCount} root file marker(s) with new IDs`);
+  }
+  if (markdownFileCount > 0) {
+    logger.debug(`  └─ Updated ${markdownFileCount} markdown file(s) with new frontmatter and IDs`);
+  }
 
   return { success: true, data: { from: `${sourceName}@${sourceFormula.metadata.version}`, to: `${newName}@${newVersion}` } };
 }
