@@ -148,11 +148,20 @@ function updateFormulaBlockInText(
     }
   }
 
+  // Ensure # GroundZero formula comment exists above formula:
+  if (formulaIndex !== -1) {
+    const hasCommentAbove = formulaIndex > 0 && lines[formulaIndex - 1].trim() === '# GroundZero formula';
+    if (!hasCommentAbove) {
+      lines.splice(formulaIndex, 0, '# GroundZero formula');
+      formulaIndex++; // Adjust index since we inserted a line
+    }
+  }
+
   const childIndent = formulaIndent + '  ';
 
   if (formulaIndex === -1) {
     // Append new formula block at the end of frontmatter
-    const insert: string[] = ['formula:'];
+    const insert: string[] = ['# GroundZero formula', 'formula:'];
     if (shouldUpdateName) insert.push(`${childIndent}name: ${updateObject.name}`);
     if (shouldUpdatePlatform) insert.push(`${childIndent}platformSpecific: true`);
     // Ensure we keep original frontmatter content as-is and append

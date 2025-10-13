@@ -21,7 +21,7 @@ import {
   getLocalFormulaYmlPath,
   getAIDir
 } from '../utils/paths.js';
-import { createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
+import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } from '../utils/formula-management.js';
 import {
   detectPlatforms,
   promptForPlatformSelection,
@@ -352,10 +352,10 @@ async function installFormulaCommand(
 
   // Now process resolved formulas with platform information for ID-based installation
   const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(
-    finalResolvedFormulas, 
-    targetDir, 
-    options, 
-    conflictResult.forceOverwriteFormulas, 
+    finalResolvedFormulas,
+    targetDir,
+    options,
+    conflictResult.forceOverwriteFormulas,
     finalPlatforms as Platform[]
   );
 
@@ -375,6 +375,11 @@ async function installFormulaCommand(
     allRootFileResults.installed.push(...rootFileResult.installed);
     allRootFileResults.updated.push(...rootFileResult.updated);
     allRootFileResults.skipped.push(...rootFileResult.skipped);
+  }
+
+  // Write local formula metadata for all successfully installed formulas
+  for (const resolved of finalResolvedFormulas) {
+    await writeLocalFormulaMetadata(cwd, resolved.name, resolved.formula.metadata);
   }
 
   // Add formula to formula.yml if it exists and we have a main formula

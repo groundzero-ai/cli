@@ -115,7 +115,7 @@ async function processMarkdownFile(
     if (existingFormulaName) {
       if (existingFormulaName === formulaName) {
         // Same formula: update without prompt to ensure latest formatting
-        const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName, ensureId: true });
+        const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName });
         await writeTextFile(filePath, updatedContent);
         console.log(`✓ Updated ${basename(filePath)} (same formula, refreshed formatting)`);
         return { processed: true };
@@ -128,7 +128,7 @@ async function processMarkdownFile(
           return { processed: false, reason: 'user_skipped' };
         } else {
           // Overwrite
-          const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName, ensureId: true });
+          const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName });
           await writeTextFile(filePath, updatedContent);
           console.log(`✓ Updated ${basename(filePath)} (overrode '${existingFormulaName}' with '${formulaName}')`);
           return { processed: true };
@@ -136,9 +136,9 @@ async function processMarkdownFile(
       }
     } else {
       // No existing formula: add new frontmatter
-      const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName, ensureId: true });
+      const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { name: formulaName });
       await writeTextFile(filePath, updatedContent);
-      console.log(`✓ Added formula to ${basename(filePath)}`);
+      console.log(`✓ Added formula frontmatter to ${basename(filePath)}`);
       return { processed: true };
     }
   } catch (error) {
