@@ -70,15 +70,21 @@ export async function getRootFilesFromRegistry(
  * @returns Platform identifier or 'universal' for AGENTS.md
  */
 export function getPlatformForRootFile(filename: string): Platform | 'universal' {
-  // Prefer dynamic mapping via platform definitions
+  // AGENTS.md is universal since it maps to multiple platforms
+  if (filename === FILE_PATTERNS.AGENTS_MD) {
+    return 'universal';
+  }
+
+  // Check platform-specific root files
   for (const platform of getAllPlatforms()) {
     const def = getPlatformDefinition(platform);
     if (def.rootFile === filename) {
       return platform;
     }
   }
-  // Fallback to universal for AGENTS.md or unknown
-  return filename === FILE_PATTERNS.AGENTS_MD ? 'universal' : 'universal';
+
+  // Unknown root file
+  return 'universal';
 }
 
 
