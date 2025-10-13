@@ -210,7 +210,6 @@ export async function resolveInstallPathFromAdjacent(
 
 /**
  * Validate and clean invalid formula files in cwd
- * - Files with invalid/missing IDs but matching formula name → remove formula frontmatter
  * - Files with valid IDs matching formula but not in registry → delete file
  */
 export async function cleanupInvalidFormulaFiles(
@@ -242,15 +241,7 @@ export async function cleanupInvalidFormulaFiles(
       if (frontmatter?.formula?.name === formulaName) {
         const id = frontmatter.formula.id;
 
-        if (!id || !isValidEntityId(id)) {
-          const cleanedContent = removeFormulaFrontmatter(content);
-          await writeTextFile(filePath, cleanedContent);
-          cleaned.push(filePath);
-          logger.debug(`Cleaned invalid frontmatter from ${filePath}`);
-          return;
-        }
-
-        if (!validRegistryIds.has(id)) {
+        if (id && isValidEntityId(id) && !validRegistryIds.has(id)) {
           await remove(filePath);
           deleted.push(filePath);
           logger.debug(`Deleted orphaned file ${filePath} with ID ${id}`);
