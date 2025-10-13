@@ -2,6 +2,7 @@ import prompts from 'prompts';
 import { basename } from 'path';
 import { FormulaYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
+import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
 
 /**
  * Common prompt types and utilities for user interaction
@@ -191,22 +192,18 @@ export async function promptVersionOverwrite(formulaName: string, oldVersion: st
  * Prompt user to select platform they're using
  */
 export async function promptPlatformSelection(): Promise<string[]> {
+  const choices = Object.values(PLATFORM_DEFINITIONS).map(platform => ({
+    title: platform.name,
+    value: platform.id
+  }));
+
   const response = await safePrompts({
     type: 'select',
     name: 'platform',
     message: 'Which platform are you using for AI-assisted development?',
-    choices: [
-      { title: 'Cursor IDE', value: 'cursor' },
-      { title: 'Claude Code', value: 'claude' },
-      { title: 'Other/None', value: 'other' }
-    ],
+    choices,
     hint: 'Use arrow keys to navigate, Enter to select'
   });
-
-  // If user selected "other", return empty array
-  if (response.platform === 'other') {
-    return [];
-  }
 
   // Return single selection as array for consistency
   return response.platform ? [response.platform] : [];

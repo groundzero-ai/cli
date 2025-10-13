@@ -23,8 +23,7 @@ import {
   getPlatformDirectoryPaths,
   createPlatformDirectories,
   validatePlatformStructure,
-  getPlatformRulesDirFilePatterns,
-  getPlatformDescription
+  getPlatformRulesDirFilePatterns
 } from '../core/platforms.js';
 import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
 import { discoverFiles } from './discovery/file-processing.js';
@@ -175,69 +174,6 @@ export async function cleanupPlatformFiles(
   }
 }
 
-/**
- * Get platform status information
- */
-export async function getPlatformStatus(cwd: string): Promise<{
-  platforms: Array<{
-    name: Platform;
-    detected: boolean;
-    directoryExists: boolean;
-    filesPresent: boolean;
-    fileCount: number;
-    category: string;
-    description: string;
-  }>;
-  summary: {
-    total: number;
-    detected: number;
-    byCategory: Record<string, number>;
-  };
-}> {
-  const results = await detectAllPlatforms(cwd);
-  const summary = {
-    total: results.length,
-    detected: 0,
-    byCategory: {} as Record<string, number>
-  };
-  
-  // Process platforms in parallel for better performance
-  const platformPromises = results.map(async (result) => {
-    let fileCount = 0;
-    const definition = PLATFORM_DEFINITIONS[result.name];
-
-    if (result.detected) {
-      try {
-        const files = await findPlatformFiles(cwd, result.name);
-        fileCount = files.length;
-      } catch (error) {
-        logger.debug(`Failed to count files for ${result.name}: ${error}`);
-      }
-    }
-
-    return {
-      name: result.name,
-      detected: result.detected,
-      directoryExists: result.detected, // Since we only check rootDir existence now
-      filesPresent: fileCount > 0,
-      fileCount,
-      category: 'platform',
-      description: getPlatformDescription(result.name)
-    };
-  });
-  
-  const platforms = await Promise.all(platformPromises);
-  
-  // Calculate summary
-  for (const platform of platforms) {
-    if (platform.detected) {
-      summary.detected++;
-      summary.byCategory[platform.category] = (summary.byCategory[platform.category] || 0) + 1;
-    }
-  }
-  
-  return { platforms, summary };
-}
 
 /**
  * Validate all platform structures

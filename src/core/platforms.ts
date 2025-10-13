@@ -25,10 +25,10 @@ export interface SubdirDef {
 
 export interface PlatformDefinition {
   id: Platform;
+  name: string;
   rootDir: string;
   rootFile?: string;
   subdirs: Partial<Record<UniversalSubdir, SubdirDef>>;
-  description: string;
 }
 
 // Unified platform definitions using the new structure
@@ -36,6 +36,7 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
 
   [PLATFORMS.AUGMENT]: {
     id: PLATFORMS.AUGMENT,
+    name: 'Augment Code',
     rootDir: PLATFORM_DIRS.AUGMENT,
     subdirs: {
       [UNIVERSAL_SUBDIRS.RULES]: {
@@ -48,12 +49,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Augment Code'
+    }
   },
 
   [PLATFORMS.CLAUDE]: {
     id: PLATFORMS.CLAUDE,
+    name: 'Claude Code',
     rootDir: PLATFORM_DIRS.CLAUDE,
     rootFile: FILE_PATTERNS.CLAUDE_MD,
     subdirs: {
@@ -67,12 +68,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Claude Code'
+    }
   },
 
   [PLATFORMS.CODEX]: {
     id: PLATFORMS.CODEX,
+    name: 'Codex CLI',
     rootDir: PLATFORM_DIRS.CODEX,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -81,12 +82,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       },
-    },
-    description: 'OpenAI Codex CLI'
+    }
   },
 
   [PLATFORMS.CURSOR]: {
     id: PLATFORMS.CURSOR,
+    name: 'Cursor',
     rootDir: PLATFORM_DIRS.CURSOR,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -100,12 +101,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Cursor'
+    }
   },
 
   [PLATFORMS.FACTORY]: {
     id: PLATFORMS.FACTORY,
+    name: 'Factory AI',
     rootDir: PLATFORM_DIRS.FACTORY,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -119,12 +120,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Factory AI'
+    }
   },
 
   [PLATFORMS.GEMINI]: {
     id: PLATFORMS.GEMINI,
+    name: 'Gemini CLI',
     rootDir: PLATFORM_DIRS.GEMINI,
     rootFile: FILE_PATTERNS.GEMINI_MD,
     subdirs: {
@@ -133,12 +134,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.TOML_FILES],
         writeExt: FILE_PATTERNS.TOML_FILES
       }
-    },
-    description: 'Gemini CLI'
+    }
   },
 
   [PLATFORMS.KILO]: {
     id: PLATFORMS.KILO,
+    name: 'Kilo Code',
     rootDir: PLATFORM_DIRS.KILO,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -152,12 +153,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       },
-    },
-    description: 'Kilo Code'
+    }
   },
 
   [PLATFORMS.KIRO]: {
     id: PLATFORMS.KIRO,
+    name: 'Kiro',
     rootDir: PLATFORM_DIRS.KIRO,
     subdirs: {
       [UNIVERSAL_SUBDIRS.RULES]: {
@@ -165,12 +166,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       },
-    },
-    description: 'Kiro'
+    }
   },
 
   [PLATFORMS.OPENCODE]: {
     id: PLATFORMS.OPENCODE,
+    name: 'opencode',
     rootDir: PLATFORM_DIRS.OPENCODE,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -184,12 +185,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'opencode'
+    }
   },
 
   [PLATFORMS.QWEN]: {
     id: PLATFORMS.QWEN,
+    name: 'Qwen Code',
     rootDir: PLATFORM_DIRS.QWEN,
     rootFile: FILE_PATTERNS.QWEN_MD,
     subdirs: {
@@ -203,12 +204,12 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Qwen Code'
+    }
   },
 
   [PLATFORMS.ROO]: {
     id: PLATFORMS.ROO,
+    name: 'Roo Code',
     rootDir: PLATFORM_DIRS.ROO,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
@@ -217,21 +218,21 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       },
-    },
-    description: 'Roo Code'
+    }
   },
 
   [PLATFORMS.WARP]: {
     id: PLATFORMS.WARP,
+    name: 'Warp',
     rootDir: PLATFORM_DIRS.WARP,
     rootFile: FILE_PATTERNS.WARP_MD,
     subdirs: {
-    },
-    description: 'Warp'
+    }
   },
 
   [PLATFORMS.WINDSURF]: {
     id: PLATFORMS.WINDSURF,
+    name: 'Windsurf',
     rootDir: PLATFORM_DIRS.WINDSURF,
     subdirs: {
       [UNIVERSAL_SUBDIRS.RULES]: {
@@ -239,8 +240,7 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
       }
-    },
-    description: 'Windsurf'
+    }
   },
 
 } as const;
@@ -445,9 +445,3 @@ export function getPlatformRulesDirFilePatterns(platform: Platform): string[] {
   return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
 }
 
-/**
- * Get platform description
- */
-export function getPlatformDescription(platform: Platform): string {
-  return getPlatformDefinition(platform).description;
-}
