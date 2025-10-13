@@ -81,7 +81,7 @@ export async function promptCreateFormula(): Promise<boolean> {
 export async function promptFormulaDetails(defaultName?: string): Promise<FormulaYml> {
   const cwd = process.cwd();
   const suggestedName = defaultName || basename(cwd);
-  
+
   const response = await safePrompts([
     {
       type: 'text',
@@ -126,9 +126,9 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
       initial: false
     }
   ]);
-  
+
   // Process keywords from space-separated string to array
-  const keywordsArray = response.keywords 
+  const keywordsArray = response.keywords
     ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
     : [];
 
@@ -139,7 +139,59 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
     ...(response.private && { private: response.private })
   };
-  
+
+  return config;
+}
+
+/**
+ * Formula details prompt for named formula creation (skips name prompt)
+ */
+export async function promptFormulaDetailsForNamed(formulaName: string): Promise<FormulaYml> {
+  const response = await safePrompts([
+    {
+      type: 'text',
+      name: 'version',
+      message: 'Version:',
+      initial: '0.1.0',
+      validate: (value: string) => {
+        if (!value) return 'Version is required';
+        if (!/^\d+\.\d+\.\d+/.test(value)) {
+          return 'Version should follow semantic versioning (e.g., 1.0.0)';
+        }
+        return true;
+      }
+    },
+    {
+      type: 'text',
+      name: 'description',
+      message: 'Description:'
+    },
+    {
+      type: 'text',
+      name: 'keywords',
+      message: 'Keywords (space-separated):'
+    },
+    {
+      type: 'confirm',
+      name: 'private',
+      message: 'Private formula?',
+      initial: false
+    }
+  ]);
+
+  // Process keywords from space-separated string to array
+  const keywordsArray = response.keywords
+    ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
+    : [];
+
+  const config: FormulaYml = {
+    name: formulaName,
+    version: response.version,
+    ...(response.description && { description: response.description }),
+    ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
+    ...(response.private && { private: response.private })
+  };
+
   return config;
 }
 

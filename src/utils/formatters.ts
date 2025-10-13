@@ -1,3 +1,5 @@
+import { FormulaYml } from '../types/index.js';
+
 /**
  * Formatting utilities for consistent display across commands
  */
@@ -168,4 +170,24 @@ export function formatFileCount(count: number, type: string = 'files'): string {
  */
 export function formatDependencyList(dependencies: Array<{ name: string; version: string }>): string[] {
   return dependencies.map(dep => `${dep.name}@${dep.version}`);
+}
+
+/**
+ * Display formula configuration details in a consistent format
+ */
+export function displayFormulaConfig(formulaConfig: FormulaYml, path: string, isExisting: boolean = false): void {
+  const action = isExisting ? 'already exists' : 'created';
+  console.log(`✓ ${path} ${action}`);
+
+  console.log(`  - Name: ${formulaConfig.name}`);
+  console.log(`  - Version: ${formulaConfig.version}`);
+  if (formulaConfig.description) {
+    console.log(`  - Description: ${formulaConfig.description}`);
+  }
+  if (formulaConfig.keywords && formulaConfig.keywords.length > 0) {
+    console.log(`  - Keywords: ${formulaConfig.keywords.join(', ')}`);
+  }
+  if (formulaConfig.private) {
+    console.log(`  - Private: Yes`);
+  }
 }
