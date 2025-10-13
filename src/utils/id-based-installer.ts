@@ -265,7 +265,7 @@ async function processNewFilesForPlatform(
   );
 
   // Determine target directory for this platform
-  let targetDir: string;
+  let targetDir: string | null;
 
   if (resolvedDir) {
     // Found adjacent files - use their directory
@@ -274,6 +274,15 @@ async function processNewFilesForPlatform(
   } else {
     // No adjacent files - map registry path to this platform's directory
     targetDir = await mapRegistryPathToCwd(cwd, [platform], registryParentDir);
+
+    if (targetDir === null) {
+      // Platform doesn't support this universal subdirectory
+      const universalSubdir = registryParentDir.split('/')[0];
+      console.log(`⚠️  Skipping ${files.length} files in ${universalSubdir}/ - ${platform} platform does not support ${universalSubdir} subdirectory`);
+      logger.debug(`Platform ${platform} does not support universal subdirectory: ${universalSubdir}`);
+      return; // Skip processing this batch
+    }
+
     logger.debug(`Installing ${files.length} new files to ${targetDir} for platform ${platform} (using registry path)`);
   }
 
@@ -286,12 +295,13 @@ async function processNewFilesForPlatform(
 /**
  * Map a registry parent directory path to a cwd platform directory
  * E.g., "rules/subdir" → ".cursor/rules/subdir" (for first available platform)
+ * Returns null if the platform doesn't support the universal subdirectory
  */
 async function mapRegistryPathToCwd(
   cwd: string,
   platforms: Platform[],
   registryParentDir: string
-): Promise<string> {
+): Promise<string | null> {
   // Extract the universal subdir and relative path
   const parts = registryParentDir.split('/');
   const universalSubdir = parts[0] as typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
@@ -303,15 +313,8 @@ async function mapRegistryPathToCwd(
   const subdirDef = platformDef.subdirs[universalSubdir];
 
   if (!subdirDef) {
-    // Fallback to rules if subdir not found
-    const rulesDef = platformDef.subdirs[UNIVERSAL_SUBDIRS.RULES];
-    if (!rulesDef) {
-      // Ultimate fallback - use platform root dir
-      const baseDir = join(cwd, platformDef.rootDir);
-      return relativePath ? join(baseDir, relativePath) : baseDir;
-    }
-    const baseDir = join(cwd, platformDef.rootDir, rulesDef.path);
-    return relativePath ? join(baseDir, relativePath) : baseDir;
+    // Platform doesn't support this universal subdirectory
+    return null;
   }
 
   const baseDir = join(cwd, platformDef.rootDir, subdirDef.path);

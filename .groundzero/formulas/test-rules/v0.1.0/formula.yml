@@ -1,0 +1,16 @@
+name: test-rules
+version: 0.1.0
+description: Test formula with rules content
+
+files:
+  - path: rules/test-rule.md
+    content: |
+      ---
+      formula:
+        name: test-rules
+        id: test-rule-123
+      ---
+
+      # Test Rule
+
+      This is a test rule that should be skipped when installing to CLAUDE platform.
