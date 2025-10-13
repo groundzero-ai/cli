@@ -5,7 +5,7 @@
 
 import { join } from 'path';
 import { exists, readTextFile, writeTextFile } from './fs.js';
-import { getRootFilesFromRegistry, getPlatformForRootFile } from './root-file-registry.js';
+import { getRootFilesFromRegistry } from './root-file-registry.js';
 import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
 import { logger } from './logger.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
@@ -50,72 +50,45 @@ export async function installRootFiles(
     return result;
   }
 
-  // Process each root file from registry
-  for (const [rootFileName, registryContent] of rootFilesMap.entries()) {
-    const targetPlatform = getPlatformForRootFile(rootFileName);
+  // Process each detected platform - install appropriate root file content
+  for (const platform of detectedPlatforms) {
+    const platformDef = getPlatformDefinition(platform);
+    if (!platformDef.rootFile) continue;
 
-    // Check if this root file should be installed based on detected platforms
-    const shouldInstall = shouldInstallRootFile(rootFileName, targetPlatform, detectedPlatforms);
+    // Get content: prefer platform-specific, fallback to universal AGENTS.md
+    let content = rootFilesMap.get(platformDef.rootFile);
+    let sourceFileName = platformDef.rootFile;
 
-    if (!shouldInstall) {
-      result.skipped.push(rootFileName);
-      logger.debug(`Skipped ${rootFileName} - platform not detected`);
+    if (!content) {
+      content = rootFilesMap.get(FILE_PATTERNS.AGENTS_MD);
+      sourceFileName = FILE_PATTERNS.AGENTS_MD;
+    }
+
+    if (!content) {
+      // No content available for this platform
       continue;
     }
 
-    // Install or update the root file
+    // Install the content as the platform's root file
     try {
-      const wasUpdated = await installSingleRootFile(cwd, rootFileName, formulaName, registryContent);
-      
+      const wasUpdated = await installSingleRootFile(cwd, platformDef.rootFile, formulaName, content);
+
       if (wasUpdated) {
-        result.updated.push(rootFileName);
+        result.updated.push(platformDef.rootFile);
       } else {
-        result.installed.push(rootFileName);
+        result.installed.push(platformDef.rootFile);
       }
-      
-      logger.debug(`Installed root file ${rootFileName} for ${formulaName}@${version}`);
+
+      logger.debug(`Installed root file ${platformDef.rootFile} for ${formulaName}@${version} (from ${sourceFileName})`);
     } catch (error) {
-      logger.error(`Failed to install root file ${rootFileName}: ${error}`);
-      result.skipped.push(rootFileName);
+      logger.error(`Failed to install root file ${platformDef.rootFile}: ${error}`);
+      result.skipped.push(platformDef.rootFile);
     }
   }
 
   return result;
 }
 
-/**
- * Determine if a root file should be installed based on platform detection.
- * 
- * @param rootFileName - Name of the root file (e.g., 'CLAUDE.md')
- * @param targetPlatform - Platform associated with the root file
- * @param detectedPlatforms - List of detected platforms
- * @returns True if the root file should be installed
- */
-function shouldInstallRootFile(
-  rootFileName: string,
-  targetPlatform: Platform | 'universal',
-  detectedPlatforms: Platform[]
-): boolean {
-  // AGENTS.md is universal - install if any compatible platform is detected
-  if (targetPlatform === 'universal' && rootFileName === FILE_PATTERNS.AGENTS_MD) {
-    // Compute AGENTS.md-compatible platforms dynamically from platform definitions
-    const agentsCompatible = new Set<Platform>();
-    for (const platform of getAllPlatforms()) {
-      const def = getPlatformDefinition(platform);
-      if (def.rootFile === FILE_PATTERNS.AGENTS_MD) {
-        agentsCompatible.add(platform);
-      }
-    }
-    return detectedPlatforms.some(p => agentsCompatible.has(p));
-  }
-
-  // Platform-specific root file - install only if that platform is detected
-  if (targetPlatform !== 'universal') {
-    return detectedPlatforms.includes(targetPlatform);
-  }
-
-  return false;
-}
 
 /**
  * Install or update a single root file at cwd root.
