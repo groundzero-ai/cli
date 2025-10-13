@@ -33,7 +33,6 @@ import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
 import { installFormula, processResolvedFormulas } from '../utils/install-orchestrator.js';
-import { provideIdeTemplateFiles } from '../utils/file-installer.js';
 import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
 import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
@@ -398,8 +397,6 @@ async function installFormulaCommand(
     await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
   }
   
-  // Provide IDE-specific template files (use specified/detected platforms)
-  const ideTemplateResult = await provideIdeTemplateFiles(cwd, finalPlatforms, options);
   
   // Collect all added and updated files
   const allAddedFiles: string[] = [];
@@ -411,8 +408,6 @@ async function installFormulaCommand(
     allUpdatedFiles.push(...result.updatedFiles);
   });
 
-  // Add IDE template files (all are newly added)
-  allAddedFiles.push(...ideTemplateResult.filesAdded);
 
   // Calculate total groundzero files
   const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled + result.filesUpdated, 0);
@@ -422,7 +417,6 @@ async function installFormulaCommand(
     formulaName,
     finalResolvedFormulas,
     { platforms: finalPlatforms, created: createdDirs },
-    ideTemplateResult,
     options,
     mainFormula,
     allAddedFiles,

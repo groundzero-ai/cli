@@ -7,8 +7,7 @@
     "g0": "./bin/g0"
   },
   "scripts": {
-    "prebuild": "node scripts/bundle-resources.js",
-    "build": "npm run prebuild && tsc",
+    "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "dev:watch": "nodemon --exec ts-node src/index.ts",

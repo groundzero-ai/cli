@@ -1,9 +1,0 @@
-name: formula-main
-version: 0.1.0-dev.Uy02qBK
-keywords: []
-private: true
-formulas:
-- name: formula-a
-  version: 0.1.0
-- name: formula-b
-  version: 0.1.0

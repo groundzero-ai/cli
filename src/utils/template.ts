@@ -2,24 +2,15 @@
  * Template file utilities for detecting and processing template variables
  */
 
-import { RESOURCES_RULES } from './embedded-resources.js';
 
 /**
- * Detect if a file contains template variables or is a known template file
+ * Detect if a file contains template variables
  * Template variables are in the format {{ variableName }}
- * Also checks against known embedded templates that shouldn't be saved
  */
 export function detectTemplateFile(content: string): boolean {
   // Check for template variables
   if (/\{\{\s*\w+\s*\}\}/.test(content)) {
     return true;
-  }
-
-  // Check if content matches known embedded resources
-  for (const resourceContent of Object.values(RESOURCES_RULES)) {
-    if (content.trim() === resourceContent.trim()) {
-      return true;
-    }
   }
 
   return false;

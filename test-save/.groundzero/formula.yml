@@ -1,6 +1,0 @@
-name: test-save
-version: 0.1.0
-formulas:
-- name: test-formula-save-test
-  version: ^0.1.0
-dev-formulas: []

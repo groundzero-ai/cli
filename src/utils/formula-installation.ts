@@ -85,7 +85,6 @@ export function displayInstallationResults(
   formulaName: string,
   resolvedFormulas: any[],
   platformResult: { platforms: string[]; created: string[] },
-  ideTemplateResult: { filesAdded: string[]; skipped: string[]; directoriesCreated: string[] },
   options: any,
   mainFormula?: any,
   allAddedFiles?: string[],
@@ -155,7 +154,4 @@ export function displayInstallationResults(
     console.log(`✓ Created platform directories: ${platformResult.created.join(', ')}`);
   }
 
-  if (ideTemplateResult.directoriesCreated.length > 0) {
-    console.log(`✓ Created IDE directories: ${ideTemplateResult.directoriesCreated.join(', ')}`);
-  }
 }
