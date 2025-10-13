@@ -1,5 +1,0 @@
-name: test-debug
-version: 1.0.0
-description: Testing keywords flow style
-keywords: [nestjs, scalable, api, typescript]
-private: false
