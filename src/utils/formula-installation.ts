@@ -89,6 +89,7 @@ export function displayInstallationResults(
   options: any,
   mainFormula?: any,
   allAddedFiles?: string[],
+  allUpdatedFiles?: string[],
   rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] }
 ): void {
   // Build installation summary
@@ -112,6 +113,14 @@ export function displayInstallationResults(
   if (allAddedFiles && allAddedFiles.length > 0) {
     console.log(`📝 Added files: ${allAddedFiles.length}`);
     const sortedFiles = [...allAddedFiles].sort((a, b) => a.localeCompare(b));
+    for (const file of sortedFiles) {
+      console.log(`   ├── ${file}`);
+    }
+  }
+
+  if (allUpdatedFiles && allUpdatedFiles.length > 0) {
+    console.log(`🔄 Updated files: ${allUpdatedFiles.length}`);
+    const sortedFiles = [...allUpdatedFiles].sort((a, b) => a.localeCompare(b));
     for (const file of sortedFiles) {
       console.log(`   ├── ${file}`);
     }

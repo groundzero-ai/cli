@@ -385,19 +385,21 @@ async function installFormulaCommand(
   // Provide IDE-specific template files (use specified/detected platforms)
   const ideTemplateResult = await provideIdeTemplateFiles(cwd, finalPlatforms, options);
   
-  // Collect all added files
+  // Collect all added and updated files
   const allAddedFiles: string[] = [];
+  const allUpdatedFiles: string[] = [];
 
   // Add AI files from groundzero results
   groundzeroResults.forEach(result => {
-    allAddedFiles.push(...result.files);
+    allAddedFiles.push(...result.installedFiles);
+    allUpdatedFiles.push(...result.updatedFiles);
   });
 
-  // Add IDE template files
+  // Add IDE template files (all are newly added)
   allAddedFiles.push(...ideTemplateResult.filesAdded);
 
   // Calculate total groundzero files
-  const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled, 0);
+  const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled + result.filesUpdated, 0);
   
   // Display results
   displayInstallationResults(
@@ -408,6 +410,7 @@ async function installFormulaCommand(
     options,
     mainFormula,
     allAddedFiles,
+    allUpdatedFiles,
     allRootFileResults
   );
   

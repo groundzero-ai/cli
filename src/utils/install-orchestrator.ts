@@ -1,4 +1,4 @@
-import { join, dirname } from 'path';
+import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
 import { CONFLICT_RESOLUTION, FILE_PATTERNS, type Platform } from '../constants/index.js';
@@ -105,10 +105,10 @@ export async function processResolvedFormulas(
   options: InstallOptions,
   forceOverwriteFormulas?: Set<string>,
   platforms?: Platform[]
-): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> }> {
+): Promise<{ installedCount: number; skippedCount: number; groundzeroResults: Array<{ name: string; filesInstalled: number; filesUpdated: number; installedFiles: string[]; updatedFiles: string[]; overwritten: boolean }> }> {
   let installedCount = 0;
   let skippedCount = 0;
-  const groundzeroResults: Array<{ name: string; filesInstalled: number; files: string[]; overwritten: boolean }> = [];
+  const groundzeroResults: Array<{ name: string; filesInstalled: number; filesUpdated: number; installedFiles: string[]; updatedFiles: string[]; overwritten: boolean }> = [];
   
   // Get cwd for platform file installation
   const cwd = process.cwd();
@@ -153,8 +153,10 @@ export async function processResolvedFormulas(
           installedCount++;
           groundzeroResults.push({
             name: resolved.name,
-            filesInstalled: platformResult.installed + platformResult.updated,
-            files: platformResult.files,
+            filesInstalled: platformResult.installed,
+            filesUpdated: platformResult.updated,
+            installedFiles: platformResult.installedFiles,
+            updatedFiles: platformResult.updatedFiles,
             overwritten: platformResult.updated > 0
           });
         }
@@ -167,7 +169,7 @@ export async function processResolvedFormulas(
     
     // Install non-platform files (ai directory files) using traditional path-based method
     const groundzeroResult = await installFormula(resolved.name, targetDir, options, resolved.version, shouldForceOverwrite);
-    
+
     if (groundzeroResult.skipped) {
       // Only count as skipped if no platform files were installed
       if (!platforms || platforms.length === 0) {
@@ -176,21 +178,26 @@ export async function processResolvedFormulas(
       }
       continue;
     }
-    
+
+    // Convert non-platform file paths to relative
+    const relativeInstalledFiles = groundzeroResult.files.map(filePath => relative(cwd, filePath));
+
     // Add non-platform files to results (or merge with platform results if both exist)
     if (groundzeroResult.installedCount > 0) {
       const existingResult = groundzeroResults.find(r => r.name === resolved.name);
       if (existingResult) {
         // Merge with existing platform result
         existingResult.filesInstalled += groundzeroResult.installedCount;
-        existingResult.files.push(...groundzeroResult.files);
+        existingResult.installedFiles.push(...relativeInstalledFiles);
         existingResult.overwritten = existingResult.overwritten || groundzeroResult.overwritten;
       } else {
         installedCount++;
         groundzeroResults.push({
           name: resolved.name,
           filesInstalled: groundzeroResult.installedCount,
-          files: groundzeroResult.files,
+          filesUpdated: 0,
+          installedFiles: relativeInstalledFiles,
+          updatedFiles: [],
           overwritten: groundzeroResult.overwritten
         });
       }

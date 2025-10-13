@@ -4,8 +4,8 @@
  * instead of path-based matching, allowing custom file organization in cwd.
  */
 
-import { join, dirname, basename } from 'path';
-import { exists, ensureDir, writeTextFile, renameDirectory, remove } from './fs.js';
+import { join, dirname, relative } from 'path';
+import { exists, ensureDir, writeTextFile, remove } from './fs.js';
 import { logger } from './logger.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
@@ -29,6 +29,8 @@ export interface IdBasedInstallResult {
   deleted: number;
   skipped: number;
   files: string[];
+  installedFiles: string[];
+  updatedFiles: string[];
 }
 
 /**
@@ -56,7 +58,9 @@ export async function installPlatformFilesById(
     cleaned: 0,
     deleted: 0,
     skipped: 0,
-    files: []
+    files: [],
+    installedFiles: [],
+    updatedFiles: []
   };
 
   logger.debug(`Installing platform files by ID for ${formulaName}@${version}`, {
@@ -153,7 +157,7 @@ async function processBatchOfFilesForPlatform(
 
   // Process matching files (update/overwrite at current cwd location)
   for (const file of matchingFiles) {
-    await processMatchingFileForPlatform(file, platform, cwdIdMap, options, forceOverwrite, result);
+    await processMatchingFileForPlatform(file, platform, cwdIdMap, options, forceOverwrite, result, cwd);
   }
 
   // Process new files (install to adjacent file location or use registry path)
@@ -173,7 +177,8 @@ async function processMatchingFileForPlatform(
   cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
   options: InstallOptions,
   forceOverwrite: boolean,
-  result: IdBasedInstallResult
+  result: IdBasedInstallResult,
+  cwd: string
 ): Promise<void> {
   const cwdEntries = cwdIdMap.get(registryFile.id!);
   if (!cwdEntries || cwdEntries.length === 0) return;
@@ -219,7 +224,9 @@ async function processMatchingFileForPlatform(
     }
     
     result.updated++;
-    result.files.push(targetPath);
+    const relativePath = relative(cwd, targetPath);
+    result.files.push(relativePath);
+    result.updatedFiles.push(relativePath);
     } catch (error) {
       logger.error(`Failed to update file ${currentPath}: ${error}`);
       result.skipped++;
@@ -271,7 +278,7 @@ async function processNewFilesForPlatform(
 
   // Install each file to this platform
   for (const file of files) {
-    await installNewFile(targetDir, file, options, result);
+    await installNewFile(cwd, targetDir, file, options, result);
   }
 }
 
@@ -314,6 +321,7 @@ async function mapRegistryPathToCwd(
  * Install a new file to the target directory
  */
 async function installNewFile(
+  cwd: string,
   targetDir: string,
   file: RegistryFileInfo,
   options: InstallOptions,
@@ -338,7 +346,9 @@ async function installNewFile(
     await writeTextFile(targetPath, file.content);
     
     result.installed++;
-    result.files.push(targetPath);
+    const relativePath = relative(cwd, targetPath);
+    result.files.push(relativePath);
+    result.installedFiles.push(relativePath);
     logger.debug(`Installed new file ${file.fileName} to ${targetPath}`);
   } catch (error) {
     logger.error(`Failed to install ${file.fileName}: ${error}`);
