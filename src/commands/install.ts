@@ -361,8 +361,12 @@ async function installFormulaCommand(
 
   // Install root files from registry for all formulas in dependency tree
   const { installRootFiles } = await import('../utils/root-file-installer.js');
-  const allRootFileResults = { installed: [] as string[], updated: [] as string[], skipped: [] as string[] };
-  
+  const allRootFileResults = {
+    installed: new Set<string>(),
+    updated: new Set<string>(),
+    skipped: new Set<string>()
+  };
+
   for (const resolved of finalResolvedFormulas) {
     const rootFileResult = await installRootFiles(
       cwd,
@@ -370,12 +374,19 @@ async function installFormulaCommand(
       resolved.version,
       finalPlatforms as Platform[]
     );
-    
-    // Aggregate results
-    allRootFileResults.installed.push(...rootFileResult.installed);
-    allRootFileResults.updated.push(...rootFileResult.updated);
-    allRootFileResults.skipped.push(...rootFileResult.skipped);
+
+    // Aggregate results (deduplicate using Sets)
+    rootFileResult.installed.forEach(file => allRootFileResults.installed.add(file));
+    rootFileResult.updated.forEach(file => allRootFileResults.updated.add(file));
+    rootFileResult.skipped.forEach(file => allRootFileResults.skipped.add(file));
   }
+
+  // Convert Sets back to arrays for compatibility
+  const rootFileResultsArrays = {
+    installed: Array.from(allRootFileResults.installed),
+    updated: Array.from(allRootFileResults.updated),
+    skipped: Array.from(allRootFileResults.skipped)
+  };
 
   // Write local formula metadata for all successfully installed formulas
   for (const resolved of finalResolvedFormulas) {
@@ -416,7 +427,7 @@ async function installFormulaCommand(
     mainFormula,
     allAddedFiles,
     allUpdatedFiles,
-    allRootFileResults
+    rootFileResultsArrays
   );
   
   return {
