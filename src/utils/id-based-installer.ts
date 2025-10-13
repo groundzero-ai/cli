@@ -17,6 +17,7 @@ import {
   cleanupInvalidFormulaFiles,
   type RegistryFileInfo
 } from './id-based-discovery.js';
+import { getPlatformSpecificFilename } from './platform-file.js';
 
 /**
  * Result of ID-based installation
@@ -191,18 +192,18 @@ async function processMatchingFileForPlatform(
   for (const cwdEntry of platformEntries) {
     const currentPath = cwdEntry.fullPath;
     const currentFileName = cwdEntry.fileName;
-  const registryFileName = registryFile.fileName;
+    const platformSpecificFileName = getPlatformSpecificFilename(registryFile.registryPath, platform);
 
-  // Check if filename needs to be updated
-    const needsRename = currentFileName !== registryFileName;
-    const targetPath = needsRename 
-      ? join(dirname(currentPath), registryFileName)
+    // Check if filename needs to be updated
+    const needsRename = currentFileName !== platformSpecificFileName;
+    const targetPath = needsRename
+      ? join(dirname(currentPath), platformSpecificFileName)
       : currentPath;
 
   // Check if target path already exists (for rename case)
     if (needsRename && (await exists(targetPath))) {
       if (!forceOverwrite && !options.force) {
-        logger.warn(`Cannot rename ${currentFileName} to ${registryFileName}: target exists`);
+        logger.warn(`Cannot rename ${currentFileName} to ${platformSpecificFileName}: target exists`);
         result.skipped++;
         continue;
       }
@@ -220,7 +221,7 @@ async function processMatchingFileForPlatform(
       const { rename } = await import('fs/promises');
       await rename(currentPath, targetPath);
       result.renamed++;
-      logger.debug(`Renamed and updated ${currentFileName} → ${registryFileName}`);
+      logger.debug(`Renamed and updated ${currentFileName} → ${platformSpecificFileName}`);
     }
     
     result.updated++;
@@ -278,7 +279,7 @@ async function processNewFilesForPlatform(
 
   // Install each file to this platform
   for (const file of files) {
-    await installNewFile(cwd, targetDir, file, options, result);
+    await installNewFile(cwd, targetDir, file, platform, options, result);
   }
 }
 
@@ -324,15 +325,17 @@ async function installNewFile(
   cwd: string,
   targetDir: string,
   file: RegistryFileInfo,
+  platform: Platform,
   options: InstallOptions,
   result: IdBasedInstallResult
 ): Promise<void> {
-  const targetPath = join(targetDir, file.fileName);
+  const platformSpecificFileName = getPlatformSpecificFilename(file.registryPath, platform);
+  const targetPath = join(targetDir, platformSpecificFileName);
 
   // Check if file already exists
   if (await exists(targetPath)) {
     if (!options.force) {
-      console.log(`Skipping ${file.fileName} - already exists at ${targetPath}`);
+      console.log(`Skipping ${platformSpecificFileName} - already exists at ${targetPath}`);
       result.skipped++;
       return;
     }
@@ -349,9 +352,9 @@ async function installNewFile(
     const relativePath = relative(cwd, targetPath);
     result.files.push(relativePath);
     result.installedFiles.push(relativePath);
-    logger.debug(`Installed new file ${file.fileName} to ${targetPath}`);
+    logger.debug(`Installed new file ${platformSpecificFileName} to ${targetPath}`);
   } catch (error) {
-    logger.error(`Failed to install ${file.fileName}: ${error}`);
+    logger.error(`Failed to install ${platformSpecificFileName}: ${error}`);
     result.skipped++;
   }
 }
