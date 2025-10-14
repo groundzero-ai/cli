@@ -1,19 +1,16 @@
 import { join, relative, basename, dirname } from 'path';
-import { Formula, FormulaYml, FormulaFile } from '../types/index.js';
+import { Formula, FormulaFile } from '../types/index.js';
 import { 
   exists, 
   walkFiles, 
   readTextFile, 
   writeTextFile, 
-  copyFile, 
   remove,
-  isDirectory,
   ensureDir
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { 
   FormulaNotFoundError, 
-  FormulaAlreadyExistsError, 
   InvalidFormulaError,
   ValidationError 
 } from '../utils/errors.js';
@@ -27,7 +24,6 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { 
   resolveVersionRange, 
   isExactVersion, 
-  isWildcardVersion 
 } from '../utils/version-ranges.js';
 
 /**

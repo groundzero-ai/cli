@@ -1,6 +1,5 @@
 import { join, isAbsolute } from 'path';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORM_DIRS } from '../../constants/index.js';
-import { logger } from '../logger.js';
 import { discoverFiles } from './file-processing.js';
 import {
   buildPlatformSearchConfig,
@@ -12,8 +11,32 @@ import type { Platformish } from './file-processing.js';
 import { mapPlatformFileToUniversal } from '../platform-mapper.js';
 import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
 import type { DiscoveredFile } from '../../types/index.js';
-import { exists } from '../fs.js';
 import { normalizePathForProcessing } from '../path-normalization.js';
+
+/**
+ * Get file patterns for a given platform info
+ */
+function getFilePatternsForPlatform(platformInfo: { platformName: Platformish }): string[] {
+  if (platformInfo.platformName === PLATFORM_DIRS.AI) {
+    return [FILE_PATTERNS.MD_FILES];
+  }
+
+  const definition = getPlatformDefinition(platformInfo.platformName as any);
+  return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
+}
+
+/**
+ * Calculate registry path prefix for platform-specific directories
+ */
+function calculateRegistryPathPrefix(directoryPath: string, platformInfo: { platform: string; relativePath: string; platformName: Platformish }): string {
+  const dummyPath = join(directoryPath, 'dummy.md');
+  const mapping = mapPlatformFileToUniversal(dummyPath);
+  if (mapping) {
+    return join(mapping.subdir, platformInfo.relativePath || '');
+  } else {
+    return platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
+  }
+}
 
 /**
  * Unified file discovery function that searches platform-specific directories
@@ -35,118 +58,24 @@ export async function discoverMdFilesUnified(formulaDir: string, formulaName: st
 }
 
 /**
- * Discover md files directly in a directory (shallow search - only immediate directory, not subdirectories)
+ * Unified function for discovering md files with configurable options
  */
-export async function discoverFilesShallow(
+async function discoverDirectMdFilesWithOptions(
   directoryPath: string,
   formulaName: string,
-  platformName: Platformish,
-  registryPathPrefix: string = '',
-  filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
-  inclusionMode: 'directory' | 'platform' = 'directory'
-): Promise<DiscoveredFile[]> {
-  return discoverFiles(directoryPath, formulaName, platformName, registryPathPrefix, filePatterns, inclusionMode, undefined, false);
-}
-
-/**
- * Discover md files directly in a specified directory (not in platform subdirectories)
- */
-export async function discoverDirectMdFiles(
-  directoryPath: string,
-  formulaName: string,
-  platformInfo?: { platform: string; relativePath: string; platformName: Platformish } | null
+  platformInfo: { platform: string; relativePath: string; platformName: Platformish } | null,
+  recursive: boolean = false
 ): Promise<DiscoveredFile[]> {
   if (!platformInfo) {
     // Non-platform directory - search for .md files directly
-    return discoverFiles(directoryPath, formulaName, PLATFORM_DIRS.AI, '', [FILE_PATTERNS.MD_FILES], 'directory');
+    return discoverFiles(directoryPath, formulaName, PLATFORM_DIRS.AI, '', [FILE_PATTERNS.MD_FILES], 'directory', undefined, recursive);
   } else {
-    // Platform-specific directory - search for .md files directly (shallow) and map to universal subdirs
-    const filePatterns = platformInfo.platformName === PLATFORM_DIRS.AI
-      ? [FILE_PATTERNS.MD_FILES]
-      : (() => {
-          const definition = getPlatformDefinition(platformInfo.platformName as any);
-          return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
-        })();
+    // Platform-specific directory - search for .md files and map to universal subdirs
+    const filePatterns = getFilePatternsForPlatform(platformInfo);
+    const registryPathPrefix = calculateRegistryPathPrefix(directoryPath, platformInfo);
 
-    // Use the mapper to determine the universal path
-    const dummyPath = join(directoryPath, 'dummy.md');
-    const mapping = mapPlatformFileToUniversal(dummyPath); // Use dummy file to get path mapping
-    let registryPathPrefix: string;
-    if (mapping) {
-      registryPathPrefix = join(mapping.subdir, platformInfo.relativePath || '');
-    } else {
-      // Fallback: keep platform path structure
-      registryPathPrefix = platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
-    }
-
-    return discoverFilesShallow(directoryPath, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory');
+    return discoverFiles(directoryPath, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory', undefined, recursive);
   }
-}
-
-/**
- * Discover md files recursively in a specified directory (including subdirectories)
- */
-export async function discoverDirectMdFilesRecursive(
-  directoryPath: string,
-  formulaName: string,
-  platformInfo?: { platform: string; relativePath: string; platformName: Platformish } | null
-): Promise<DiscoveredFile[]> {
-  if (!platformInfo) {
-    // Non-platform directory - search for .md files recursively
-    return discoverFiles(directoryPath, formulaName, PLATFORM_DIRS.AI, '', [FILE_PATTERNS.MD_FILES], 'directory', undefined, true);
-  } else {
-    // Platform-specific directory - search for .md files recursively and map to universal subdirs
-    const filePatterns = platformInfo.platformName === PLATFORM_DIRS.AI
-      ? [FILE_PATTERNS.MD_FILES]
-      : (() => {
-          const definition = getPlatformDefinition(platformInfo.platformName as any);
-          return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
-        })();
-
-    // Use the mapper to determine the universal path
-    const dummyPath = join(directoryPath, 'dummy.md');
-    const mapping = mapPlatformFileToUniversal(dummyPath);
-    let registryPathPrefix: string;
-    if (mapping) {
-      registryPathPrefix = join(mapping.subdir, platformInfo.relativePath || '');
-    } else {
-      // Fallback: keep platform path structure
-      registryPathPrefix = platformInfo.relativePath ? join(platformInfo.platform, platformInfo.relativePath) : platformInfo.platform;
-    }
-
-    // Use recursive=true to search subdirectories
-    return discoverFiles(directoryPath, formulaName, platformInfo.platformName, registryPathPrefix, filePatterns, 'directory', undefined, true);
-  }
-}
-
-/**
- * Resolve the source directory based on directory path
- * @param directoryPath - The directory path to resolve
- * @returns Promise resolving to the resolved source directory path
- */
-async function resolveSourceDirectory(directoryPath: string): Promise<string> {
-  if (isAbsolute(directoryPath)) {
-    return directoryPath;
-  } else {
-    return join(process.cwd(), directoryPath);
-  }
-}
-
-/**
- * Add global frontmatter matches to results and dedupe
- * @param results - Current discovered files
- * @param formulaDir - Path to the formula directory
- * @param formulaName - Name of the formula
- * @returns Promise resolving to deduplicated array of discovered files
- */
-async function addGlobalMatches(
-  results: DiscoveredFile[],
-  formulaDir: string,
-  formulaName: string
-): Promise<DiscoveredFile[]> {
-  const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
-  results.push(...globalFiles);
-  return dedupeDiscoveredFilesPreferUniversal(results);
 }
 
 /**
@@ -167,7 +96,7 @@ export async function discoverFilesForPattern(
   }
 
   // Directory path provided: discover files from that directory
-  const sourceDir = await resolveSourceDirectory(directoryPath);
+  const sourceDir = isAbsolute(directoryPath) ? directoryPath : join(process.cwd(), directoryPath);
   const platformInfo = parsePlatformDirectory(directoryPath);
   const results: DiscoveredFile[] = [];
 
@@ -175,7 +104,7 @@ export async function discoverFilesForPattern(
     // Platform-specific directory: search for files recursively AND platform subdirectories
     
     // 1. Recursive file discovery in the platform directory
-    const recursiveFiles = await discoverDirectMdFilesRecursive(sourceDir, formulaName, platformInfo);
+    const recursiveFiles = await discoverDirectMdFilesWithOptions(sourceDir, formulaName, platformInfo, true);
     results.push(...recursiveFiles);
     
     // 2. Platform subdirectory discovery (rules/, commands/, agents/)
@@ -194,19 +123,23 @@ export async function discoverFilesForPattern(
       return !(normalizedRegistryPath === PLATFORM_DIRS.AI || normalizedRegistryPath.startsWith(`${PLATFORM_DIRS.AI}/`));
     });
 
-    // Add global frontmatter matches
-    return addGlobalMatches(filteredResults, formulaDir, formulaName);
+    // Add global frontmatter matches and dedupe
+    const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
+    filteredResults.push(...globalFiles);
+    return dedupeDiscoveredFilesPreferUniversal(filteredResults);
   }
 
   // Non-platform directory: search for platform subdirectories + direct files
   const platformSubdirFiles = await discoverMdFilesUnified(formulaDir, formulaName, undefined, true);
   results.push(...platformSubdirFiles);
 
-  const directFiles = await discoverDirectMdFiles(sourceDir, formulaName, null);
+  const directFiles = await discoverDirectMdFilesWithOptions(sourceDir, formulaName, null, false);
   results.push(...directFiles);
 
-  // Add global frontmatter matches
-  return addGlobalMatches(results, formulaDir, formulaName);
+  // Add global frontmatter matches and dedupe
+  const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
+  results.push(...globalFiles);
+  return dedupeDiscoveredFilesPreferUniversal(results);
 }
 
 /**

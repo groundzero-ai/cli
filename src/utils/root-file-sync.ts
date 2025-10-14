@@ -6,7 +6,7 @@
 import { relative } from 'path';
 import { ensureDir, writeTextFile, exists, readTextFile } from './fs.js';
 import { getDetectedPlatforms, getPlatformDefinition, getAllPlatforms } from '../core/platforms.js';
-import { FILE_PATTERNS, type Platform } from '../constants/index.js';
+import { type Platform } from '../constants/index.js';
 import { logger } from './logger.js';
 import type { FormulaFile } from '../types/index.js';
 import { getPlatformForRootFile } from './root-file-registry.js';

@@ -1,0 +1,20 @@
+name: g0-gpm-cli
+version: 0.1.0
+formulas:
+- name: test-formula
+  version: ^0.1.0
+- name: test-formula2
+  version: ^0.1.0
+- name: test-formula-new
+  version: ^0.1.0
+- name: test-formula-original
+  version: ^0.1.0
+- name: test-formula-current
+  version: ^0.1.0
+- name: test-formula-revert
+  version: ^0.1.0
+- name: test-formula-clean
+  version: ^0.1.0
+- name: test-formula-no-frontmatter
+  version: ^0.1.0
+dev-formulas: []

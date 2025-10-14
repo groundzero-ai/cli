@@ -9,7 +9,7 @@ import { getRootFilesFromRegistry } from './root-file-registry.js';
 import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
 import { logger } from './logger.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
-import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
+import { getPlatformDefinition } from '../core/platforms.js';
 
 /**
  * Result of root file installation

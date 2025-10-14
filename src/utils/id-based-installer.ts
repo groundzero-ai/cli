@@ -7,7 +7,7 @@
 import { join, dirname, relative } from 'path';
 import { exists, ensureDir, writeTextFile, remove } from './fs.js';
 import { logger } from './logger.js';
-import { getFirstPathComponent, getPathAfterFirstComponent, splitPath } from './path-normalization.js';
+import { getFirstPathComponent, getPathAfterFirstComponent } from './path-normalization.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
 import type { InstallOptions } from '../types/index.js';

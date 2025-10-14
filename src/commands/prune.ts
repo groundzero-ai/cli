@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { join } from 'path';
 import * as semver from 'semver';
 import { PruneOptions, CommandResult, PrereleaseVersion, PruneResult } from '../types/index.js';
 import { ensureRegistryDirectories, listFormulaVersions, getFormulaVersionPath } from '../core/directory.js';

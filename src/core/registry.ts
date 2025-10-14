@@ -21,7 +21,6 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { 
   resolveVersionRange, 
   isExactVersion, 
-  isWildcardVersion 
 } from '../utils/version-ranges.js';
 
 /**

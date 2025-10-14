@@ -4,7 +4,7 @@ import { ensureRegistryDirectories, listFormulaVersions, hasFormulaVersion } fro
 import { formulaManager } from '../core/formula.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
-import { promptFormulaDelete, promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, promptPrereleaseVersionsDelete } from '../utils/prompts.js';
+import { promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, promptPrereleaseVersionsDelete } from '../utils/prompts.js';
 import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 
 /**

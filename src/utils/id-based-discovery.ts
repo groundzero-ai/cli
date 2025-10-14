@@ -5,8 +5,8 @@
  */
 
 import { join, dirname, basename } from 'path';
-import { exists, readTextFile, writeTextFile, remove } from './fs.js';
-import { parseMarkdownFrontmatter, removeFormulaFrontmatter } from './md-frontmatter.js';
+import { exists, readTextFile, remove } from './fs.js';
+import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import { isValidEntityId } from './entity-id.js';
 import { logger } from './logger.js';
 import { formulaManager } from '../core/formula.js';
