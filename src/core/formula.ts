@@ -1,4 +1,4 @@
-import { join, relative, basename, dirname } from 'path';
+import { join, relative, dirname } from 'path';
 import { Formula, FormulaFile } from '../types/index.js';
 import { 
   exists, 
@@ -9,11 +9,11 @@ import {
   ensureDir
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { 
-  FormulaNotFoundError, 
+import {
+  FormulaNotFoundError,
   InvalidFormulaError,
-  ValidationError 
 } from '../utils/errors.js';
+import { validateFormulaName } from '../utils/formula-validation.js';
 import { 
   getFormulaPath, 
   getFormulaVersionPath, 
@@ -39,7 +39,7 @@ export class FormulaManager {
   async loadFormula(formulaName: string, version?: string): Promise<Formula> {
     logger.debug(`Loading formula: ${formulaName}`, { version });
     
-    this.validateFormulaName(formulaName);
+    validateFormulaName(formulaName);
     
     let targetVersion: string | null;
     
@@ -131,7 +131,7 @@ export class FormulaManager {
   async deleteFormulaVersion(formulaName: string, version: string): Promise<void> {
     logger.info(`Deleting formula version: ${formulaName}@${version}`);
     
-    this.validateFormulaName(formulaName);
+    validateFormulaName(formulaName);
     
     const formulaPath = getFormulaVersionPath(formulaName, version);
     
@@ -154,7 +154,7 @@ export class FormulaManager {
   async deleteFormula(formulaName: string): Promise<void> {
     logger.info(`Deleting all versions of formula: ${formulaName}`);
     
-    this.validateFormulaName(formulaName);
+    validateFormulaName(formulaName);
     
     const formulaPath = getFormulaPath(formulaName);
     
@@ -175,7 +175,7 @@ export class FormulaManager {
    * Check if a formula exists in the registry (any version)
    */
   async formulaExists(formulaName: string): Promise<boolean> {
-    this.validateFormulaName(formulaName);
+    validateFormulaName(formulaName);
     const latestVersion = await getLatestFormulaVersion(formulaName);
     return latestVersion !== null;
   }
@@ -223,26 +223,6 @@ export class FormulaManager {
     ];
   }
   
-  /**
-   * Validate formula name
-   */
-  private validateFormulaName(name: string): void {
-    if (!name || typeof name !== 'string') {
-      throw new ValidationError('Formula name is required');
-    }
-    
-    if (name.length < 1 || name.length > 100) {
-      throw new ValidationError('Formula name must be between 1 and 100 characters');
-    }
-    
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-      throw new ValidationError('Formula name can only contain letters, numbers, hyphens, and underscores');
-    }
-    
-    if (name.startsWith('-') || name.endsWith('-')) {
-      throw new ValidationError('Formula name cannot start or end with a hyphen');
-    }
-  }
 }
 
 // Create and export a singleton instance
