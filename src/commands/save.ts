@@ -26,6 +26,8 @@ import { postSavePlatformSync } from '../utils/platform-sync.js';
 import { syncRootFiles } from '../utils/root-file-sync.js';
 import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../utils/root-file-extractor.js';
 import { getLocalFormulaYmlPath } from '../utils/paths.js';
+import { autoNormalizeDirectoryPath } from '../utils/path-normalization.js';
+import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -88,20 +90,36 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
 } {
   // Pattern 1: Explicit name + directory
   if (directory) {
+    validateFormulaName(formulaName);
     return {
       name: formulaName,
       directoryPath: directory
     };
   }
 
-  // Pattern 2: Directory path as first argument
-  if (isAbsolute(formulaName) || formulaName.startsWith('./') || formulaName.startsWith('../')) {
-    const directoryPath = formulaName;
+  // Check if this looks like a scoped formula name (@scope/name)
+  // Handle this before path normalization to avoid treating it as a directory
+  const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
+  if (scopedMatch) {
+    validateFormulaName(formulaName);
+    return {
+      name: formulaName
+    };
+  }
+
+  // Auto-normalize potential directory paths
+  const normalizedInput = autoNormalizeDirectoryPath(formulaName);
+
+  // Pattern 2: Directory path as first argument (now catches auto-normalized paths)
+  if (isAbsolute(normalizedInput) || normalizedInput.startsWith('./') || normalizedInput.startsWith('../')) {
+    const directoryPath = normalizedInput;
     const name = basename(directoryPath);
 
     if (!name) {
       throw new ValidationError(`Invalid directory path: ${formulaName}`);
     }
+
+    validateFormulaName(name);
 
     return {
       name,
@@ -110,20 +128,23 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   }
 
   // Pattern 3: Formula name with optional version
-  const atIndex = formulaName.lastIndexOf('@');
+  const atIndex = normalizedInput.lastIndexOf('@');
 
   if (atIndex === -1) {
+    validateFormulaName(normalizedInput);
     return {
-      name: formulaName
+      name: normalizedInput
     };
   }
 
-  const name = formulaName.substring(0, atIndex);
-  const version = formulaName.substring(atIndex + 1);
+  const name = normalizedInput.substring(0, atIndex);
+  const version = normalizedInput.substring(atIndex + 1);
 
   if (!name || !version) {
     throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_SYNTAX.replace('%s', formulaName));
   }
+
+  validateFormulaName(name);
 
   return {
     name,

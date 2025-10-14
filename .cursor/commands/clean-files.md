@@ -1,7 +1,1 @@
----
-# GroundZero formula
-formula:
-  name: test-formula
----
-
 Please review the file(s) mentioned, refactor to streamline, make performant, and simplify the code wherever possible. Be absolutely sure that the original business logic is not altered or affected.

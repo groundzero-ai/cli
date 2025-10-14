@@ -1,4 +1,4 @@
-import { basename, dirname, normalize, relative, sep } from 'path';
+import { basename, dirname, normalize, relative, sep, isAbsolute } from 'path';
 
 /**
  * Centralized path normalization utilities for cross-platform compatibility
@@ -168,4 +168,26 @@ export function findSubpathIndex(fullPath: string, subpath: string): number {
   }
 
   return -1;
+}
+
+/**
+ * Auto-normalize potential directory paths by prepending './' to relative paths with separators
+ * This helps distinguish between formula names and directory paths in user input
+ *
+ * Examples:
+ * - '.cursor/rules' -> './.cursor/rules'
+ * - 'src/components' -> './src/components'
+ * - 'formula-name' -> 'formula-name' (unchanged)
+ * - './already/normalized' -> './already/normalized' (unchanged)
+ * - '/absolute/path' -> '/absolute/path' (unchanged)
+ */
+export function autoNormalizeDirectoryPath(input: string): string {
+  // If it contains path separators but doesn't start with ./ or ../, treat as relative directory
+  if ((input.includes('/') || input.includes('\\')) &&
+      !input.startsWith('./') &&
+      !input.startsWith('../') &&
+      !isAbsolute(input)) {
+    return `./${input}`;
+  }
+  return input;
 }
