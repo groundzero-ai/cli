@@ -25,6 +25,7 @@ import { exists, readTextFile, writeTextFile, ensureDir } from '../utils/fs.js';
 import { postSavePlatformSync } from '../utils/platform-sync.js';
 import { syncRootFiles } from '../utils/root-file-sync.js';
 import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../utils/root-file-extractor.js';
+import { getLocalFormulaYmlPath } from '../utils/paths.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -165,11 +166,34 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
 
 /**
  * Get or create formula configuration in the specified directory
+ * @param cwd - Current working directory
  * @param formulaDir - Directory where formula.yml should be located
  * @param formulaName - Name of the formula
  * @returns Formula configuration info
  */
-async function getOrCreateFormulaConfig(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
+async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean; isRootFormula: boolean }> {
+  // Check if this is a root formula
+  const rootFormulaPath = getLocalFormulaYmlPath(cwd);
+  if (await exists(rootFormulaPath)) {
+    try {
+      const rootConfig = await parseFormulaYml(rootFormulaPath);
+      if (rootConfig.name === formulaName) {
+        logger.debug('Detected root formula match');
+        console.log(`✓ Found root formula ${rootConfig.name}@${rootConfig.version}`);
+        return {
+          fullPath: rootFormulaPath,
+          config: rootConfig,
+          isNewFormula: false,
+          isRootFormula: true
+        };
+      }
+    } catch (error) {
+      // If root formula.yml is invalid, continue to sub-formula logic
+      logger.warn(`Failed to parse root formula.yml: ${error}`);
+    }
+  }
+
+  // Not a root formula - use sub-formula logic
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
   // Check if formula.yml already exists
@@ -182,14 +206,19 @@ async function getOrCreateFormulaConfig(formulaDir: string, formulaName: string)
       return {
         fullPath: formulaYmlPath,
         config: formulaConfig,
-        isNewFormula: false
+        isNewFormula: false,
+        isRootFormula: false
       };
     } catch (error) {
       throw new ValidationError(ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace('%s', formulaYmlPath).replace('%s', String(error)));
     }
   } else {
     logger.debug('No formula.yml found, creating automatically...');
-    return await createFormulaYmlInDirectory(formulaDir, formulaName);
+    const result = await createFormulaYmlInDirectory(formulaDir, formulaName);
+    return {
+      ...result,
+      isRootFormula: false
+    };
   }
 }
 
@@ -278,11 +307,12 @@ async function saveFormulaCommand(
 
   // Get formula configuration based on input pattern
   const formulaDir = getLocalFormulaDir(cwd, name);
-  const formulaInfo = await getOrCreateFormulaConfig(formulaDir, name);
+  const formulaInfo = await getOrCreateFormulaConfig(cwd, formulaDir, name);
   const formulaYmlPath = formulaInfo.fullPath;
   let formulaConfig = formulaInfo.config;
+  const isRootFormula = formulaInfo.isRootFormula;
 
-  logger.debug(`Found formula.yml at: ${formulaYmlPath}`);
+  logger.debug(`Found formula.yml at: ${formulaYmlPath}`, { isRootFormula });
 
   // Determine target version
   const targetVersion = await determineTargetVersion(explicitVersion, versionType, options, formulaInfo.isNewFormula ? undefined : formulaConfig.version);
@@ -300,6 +330,16 @@ async function saveFormulaCommand(
 
   // Inject includes into this formula's own formula.yml (dependencies)
   if (hasIncludes) {
+    // Filter out self-references for root formulas
+    const filteredIncludes = includeList.filter(dep => dep !== formulaConfig.name);
+    const filteredDevIncludes = includeDevList.filter(dep => dep !== formulaConfig.name);
+
+    // Warn if self-references were filtered
+    const selfReferences = [...includeList, ...includeDevList].filter(dep => dep === formulaConfig.name);
+    if (selfReferences.length > 0) {
+      logger.warn(`Skipping self-reference: ${formulaConfig.name} cannot depend on itself`);
+    }
+
     // Ensure arrays exist
     if (!formulaConfig.formulas) formulaConfig.formulas = [];
     if (!formulaConfig['dev-formulas']) formulaConfig['dev-formulas'] = [];
@@ -323,13 +363,13 @@ async function saveFormulaCommand(
     };
 
     // First: add normal includes to formulas
-    for (const dep of includeList) {
+    for (const dep of filteredIncludes) {
       const range = await computeCaretRange(dep);
       upsertDependency(formulaConfig.formulas!, dep, range);
     }
 
     // Then: add dev includes to dev-formulas and remove from formulas if present
-    for (const dep of includeDevList) {
+    for (const dep of filteredDevIncludes) {
       const range = await computeCaretRange(dep);
       upsertDependency((formulaConfig as any)['dev-formulas']!, dep, range);
       const idx = formulaConfig.formulas!.findIndex(d => d.name === dep);
@@ -371,10 +411,14 @@ async function saveFormulaCommand(
   const rootSyncResult = await syncRootFiles(cwd, formulaFiles, formulaConfig.name);
 
   // Finalize the save operation
-  if (!options?.skipProjectLink) {
+  // Don't add root formula to itself as a dependency
+  if (!options?.skipProjectLink && !isRootFormula) {
     await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
   }
-  console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaFiles.length} files):`);
+  
+  // Display appropriate message based on formula type
+  const formulaType = isRootFormula ? 'root formula' : 'formula';
+  console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaType}, ${formulaFiles.length} files):`);
   if (formulaFiles.length > 0) {
     const savedPaths = formulaFiles.map(f => f.path);
     const sortedSaved = [...savedPaths].sort((a, b) => a.localeCompare(b));
