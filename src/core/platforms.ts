@@ -171,7 +171,7 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
 
   [PLATFORMS.OPENCODE]: {
     id: PLATFORMS.OPENCODE,
-    name: 'opencode',
+    name: 'OpenCode',
     rootDir: PLATFORM_DIRS.OPENCODE,
     rootFile: FILE_PATTERNS.AGENTS_MD,
     subdirs: {
