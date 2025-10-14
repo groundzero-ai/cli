@@ -130,7 +130,6 @@ export async function extractFormulaFromTarball(
           files.push({
             path: relativePath,
             content,
-            isTemplate: content.includes('{{') && content.includes('}}'),
             encoding: 'utf8'
           });
         } else if (stats.isDirectory()) {

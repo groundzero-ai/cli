@@ -69,7 +69,6 @@ interface PlatformStatus {
   detected: boolean;
   configured: boolean;
   directoryExists: boolean;
-  templatesPresent: boolean;
 }
 
 /**
@@ -160,24 +159,16 @@ async function detectPlatformStatus(cwd: string): Promise<PlatformStatus[]> {
   const checks = detections.map(async ({ name, detected }) => {
     const def = getPlatformDefinition(name as any);
     const rootAbs = join(cwd, def.rootDir);
-    const rulesDef = def.subdirs[UNIVERSAL_SUBDIRS.RULES];
-    const rulesAbs = rulesDef ? join(rootAbs, rulesDef.path) : undefined;
-    const writeExt = rulesDef?.writeExt || '.md';
-    const gzTemplate = rulesAbs ? join(rulesAbs, `groundzero${writeExt}`) : undefined;
-    const aiTemplate = rulesAbs ? join(rulesAbs, `ai${writeExt}`) : undefined;
 
-    const [dirExists, gzExists, aiExists] = await Promise.all([
-      exists(rootAbs),
-      gzTemplate ? exists(gzTemplate) : Promise.resolve(false),
-      aiTemplate ? exists(aiTemplate) : Promise.resolve(false)
+    const [dirExists] = await Promise.all([
+      exists(rootAbs)
     ]);
 
     return {
       name,
       detected: detected && dirExists,
       configured: detected && dirExists,
-      directoryExists: dirExists,
-      templatesPresent: Boolean(gzExists || aiExists)
+      directoryExists: dirExists
     };
   });
   return Promise.all(checks);
@@ -536,8 +527,7 @@ function renderTreeView(
     console.log('\n🖥️ Platforms:');
     for (const platform of projectInfo.platforms) {
       const status = platform.detected ? '✅' : '❌';
-      const templates = platform.templatesPresent ? ' (templates ✅)' : ' (templates ❌)';
-      console.log(`  ${status} ${platform.name}${platform.detected ? templates : ''}`);
+      console.log(`  ${status} ${platform.name}`);
     }
   }
   

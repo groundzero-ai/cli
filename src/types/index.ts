@@ -36,33 +36,10 @@ export interface AuthOptions {
 }
 
 // Formula types
-export interface FormulaMetadata {
-  name: string;
-  version: string;
-  description?: string;
-  author?: string;
-  license?: string;
-  keywords?: string[];
-  dependencies?: string[];
-  created: string;
-  updated: string;
-  files: string[];
-  excludePatterns?: string[];
-  templateVariables?: TemplateVariable[];
-}
-
-export interface TemplateVariable {
-  name: string;
-  description?: string;
-  type: 'string' | 'number' | 'boolean';
-  required?: boolean;
-  default?: string | number | boolean;
-}
 
 export interface FormulaFile {
   path: string;
   content: string;
-  isTemplate: boolean;
   encoding?: string;
 }
 

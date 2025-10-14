@@ -3,7 +3,6 @@ import { join, basename, dirname, isAbsolute } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
-import { detectTemplateFile } from '../utils/template.js';
 import { ensureRegistryDirectories, getFormulaVersionPath, hasFormulaVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
@@ -418,7 +417,6 @@ async function createFormulaYmlFile(formulaYmlPath: string, formulaConfig: Formu
   return {
     path: FILE_PATTERNS.FORMULA_YML,
     content,
-    isTemplate: false,
     encoding: UTF8_ENCODING
   };
 }
@@ -461,7 +459,6 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
       return {
         path: mdFile.registryPath,
         content: wrapped,
-        isTemplate: false,
         encoding: UTF8_ENCODING
       };
     }
@@ -477,7 +474,6 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
     return {
       path: mdFile.registryPath,
       content: updatedContent,
-      isTemplate: detectTemplateFile(updatedContent),
       encoding: UTF8_ENCODING
     };
   });
@@ -507,7 +503,6 @@ async function createFormulaFilesUnified(
     formulaFiles.push({
       path: FILE_PATTERNS.README_MD,
       content: readmeContent,
-      isTemplate: false,
       encoding: UTF8_ENCODING
     });
   }

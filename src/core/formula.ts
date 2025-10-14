@@ -1,5 +1,5 @@
 import { join, relative, basename, dirname } from 'path';
-import { Formula, FormulaYml, FormulaFile, TemplateVariable } from '../types/index.js';
+import { Formula, FormulaYml, FormulaFile } from '../types/index.js';
 import { 
   exists, 
   walkFiles, 
@@ -198,12 +198,10 @@ export class FormulaManager {
       for await (const fullPath of walkFiles(formulaPath, includePatterns)) {
         const relativePath = relative(formulaPath, fullPath);
         const content = await readTextFile(fullPath);
-        const isTemplate = this.detectTemplateFile(content);
-        
+
         files.push({
           path: relativePath,
           content,
-          isTemplate,
           encoding: 'utf8'
         });
       }
@@ -216,40 +214,7 @@ export class FormulaManager {
     }
   }
   
-  /**
-   * Extract template variables from formula files
-   */
-  private extractTemplateVariables(files: FormulaFile[]): TemplateVariable[] {
-    const variables = new Set<string>();
-    
-    for (const file of files) {
-      if (file.isTemplate) {
-        // Extract {{variable}} patterns
-        const matches = file.content.match(/\{\{\s*(\w+)\s*\}\}/g);
-        if (matches) {
-          for (const match of matches) {
-            const variable = match.replace(/\{\{\s*|\s*\}\}/g, '');
-            variables.add(variable);
-          }
-        }
-      }
-    }
-    
-    // Convert to TemplateVariable objects with defaults
-    return Array.from(variables).map(name => ({
-      name,
-      type: 'string' as const,
-      required: true,
-      description: `Template variable: ${name}`
-    }));
-  }
   
-  /**
-   * Detect if a file contains template variables
-   */
-  private detectTemplateFile(content: string): boolean {
-    return /\{\{\s*\w+\s*\}\}/.test(content);
-  }
   
   /**
    * Get default include patterns

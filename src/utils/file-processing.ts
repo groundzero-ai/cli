@@ -1,6 +1,5 @@
 import { join } from 'path';
 import { parseMarkdownFrontmatter } from './md-frontmatter.js';
-import { detectTemplateFile } from './template.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { logger } from './logger.js';
 import {
@@ -91,12 +90,6 @@ export async function processFileForDiscovery(
       : shouldIncludeMarkdownFile ? shouldIncludeMarkdownFile(file, frontmatter, platformName, formulaName, formulaDir, inclusionMode === 'platform') : true;
 
     if (shouldInclude) {
-      // Skip template files
-      if (detectTemplateFile(content)) {
-        logger.debug(`Skipping template file: ${file.relativePath}`);
-        return null;
-      }
-
       try {
         const mtime = await getFileMtime(file.fullPath);
         const contentHash = await calculateFileHash(content);
