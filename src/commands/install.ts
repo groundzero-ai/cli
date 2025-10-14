@@ -19,7 +19,8 @@ import {
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import {
   getLocalFormulaYmlPath,
-  getAIDir
+  getAIDir,
+  isRootFormula
 } from '../utils/paths.js';
 import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } from '../utils/formula-management.js';
 import {
@@ -63,24 +64,47 @@ async function installAllFormulasCommand(
     formulaYmlPath
   );
   
-  const formulasToInstall = extractFormulasFromConfig(cwdConfig);
-  
-  if (formulasToInstall.length === 0) {
-    console.log('📦 No formulas found in formula.yml');
-    console.log('\nTips:');
-    console.log('• Add formulas to the "formulas" array in formula.yml');
-    console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
-    console.log('• Use "g0 install <formula-name>" to install a specific formula');
-    
-    return { success: true, data: { installed: 0, skipped: 0 } };
+  const allFormulasToInstall = extractFormulasFromConfig(cwdConfig);
+
+  // Filter out any formulas that match the root formula name
+  const formulasToInstall = [];
+  const skippedRootFormulas = [];
+  for (const formula of allFormulasToInstall) {
+    if (await isRootFormula(cwd, formula.name)) {
+      skippedRootFormulas.push(formula);
+      console.log(`⚠️  Skipping ${formula.name} - it matches your project's root formula name`);
+    } else {
+      formulasToInstall.push(formula);
+    }
   }
-  
+
+  if (formulasToInstall.length === 0) {
+    if (skippedRootFormulas.length > 0) {
+      console.log('📦 All formulas in formula.yml were skipped (matched root formula)');
+      console.log('\nTips:');
+      console.log('• Root formulas cannot be installed as dependencies');
+      console.log('• Use "g0 install <formula-name>" to install external formulas');
+      console.log('• Use "g0 save" to save your root formula to the registry');
+    } else {
+      console.log('📦 No formulas found in formula.yml');
+      console.log('\nTips:');
+      console.log('• Add formulas to the "formulas" array in formula.yml');
+      console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
+      console.log('• Use "g0 install <formula-name>" to install a specific formula');
+    }
+
+    return { success: true, data: { installed: 0, skipped: skippedRootFormulas.length } };
+  }
+
   console.log(`📦 Installing ${formulasToInstall.length} formulas from formula.yml:`);
   formulasToInstall.forEach(formula => {
     const prefix = formula.isDev ? '[dev] ' : '';
     const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
     console.log(`  • ${prefix}${label}`);
   });
+  if (skippedRootFormulas.length > 0) {
+    console.log(`  • ${skippedRootFormulas.length} formulas skipped (matched root formula)`);
+  }
   console.log('');
   
   // Install formulas sequentially to avoid conflicts
@@ -210,8 +234,21 @@ async function installFormulaCommand(
   version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
+
+  // Check if trying to install the root formula (circular dependency)
+  if (await isRootFormula(cwd, formulaName)) {
+    console.log(`⚠️  Cannot install ${formulaName} - it matches your project's root formula name`);
+    console.log(`   This would create a circular dependency.`);
+    console.log(`💡 Tip: Use 'g0 install' without specifying a formula name to install all formulas`);
+    console.log(`   referenced in your .groundzero/formula.yml file.`);
+    return {
+      success: true,
+      data: { skipped: true, reason: 'root formula' }
+    };
+  }
+
   logger.debug(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
-  
+
   await ensureRegistryDirectories();
   
   // Auto-create basic formula.yml if it doesn't exist
