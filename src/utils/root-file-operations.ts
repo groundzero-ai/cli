@@ -7,6 +7,7 @@ import { extractFormulaContentFromRootFile } from './root-file-extractor.js';
 import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import { logger } from './logger.js';
+import { getPathLeaf } from './path-normalization.js';
 
 /**
  * Result of processing a root file operation
@@ -35,7 +36,7 @@ export async function addFormulaToRootFile(
     // Check if formula marker already exists
     const existingContent = extractFormulaContentFromRootFile(content, formulaName);
     if (existingContent !== null) {
-      console.log(`✓ Formula '${formulaName}' is already added to ${filePath.split('/').pop()}`);
+      console.log(`✓ Formula '${formulaName}' is already added to ${getPathLeaf(filePath)}`);
       return { processed: false, reason: 'already_exists' };
     }
 
@@ -43,12 +44,12 @@ export async function addFormulaToRootFile(
     const updatedContent = mergeFormulaContentIntoRootFile(content, formulaName, '');
     await writeTextFile(filePath, updatedContent);
 
-    console.log(`✓ Added formula marker for '${formulaName}' to ${filePath.split('/').pop()}`);
+    console.log(`✓ Added formula marker for '${formulaName}' to ${getPathLeaf(filePath)}`);
     return { processed: true };
 
   } catch (error) {
     logger.error(`Failed to process root file: ${filePath}`, { error });
-    console.log(`✗ Failed to process ${filePath.split('/').pop()}: ${error}`);
+    console.log(`✗ Failed to process ${getPathLeaf(filePath)}: ${error}`);
     return { processed: false, reason: 'error' };
   }
 }

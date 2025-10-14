@@ -7,7 +7,7 @@ import { relative } from 'path';
 import { ensureDir, writeTextFile, exists, readTextFile } from './fs.js';
 import { getDetectedPlatforms } from '../core/platforms.js';
 import { resolveInstallTargets } from './platform-mapper.js';
-import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORMS, PLATFORM_DIRS, type UniversalSubdir } from '../constants/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import type { FormulaFile } from '../types/index.js';
 import { parseUniversalPath } from './platform-file.js';

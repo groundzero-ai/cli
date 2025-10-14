@@ -1,4 +1,4 @@
-import { join, dirname } from 'path';
+import { join, dirname, normalize } from 'path';
 import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../../constants/index.js';
 import { logger } from '../logger.js';
 import { exists, isDirectory } from '../fs.js';
@@ -10,6 +10,7 @@ import {
 } from '../../core/platforms.js';
 import { discoverFiles } from './file-processing.js';
 import type { DiscoveredFile } from '../../types/index.js';
+import { matchPlatformPattern, isExactPlatformMatch } from '../path-matching.js';
 
 // Import the shared type
 import type { Platformish } from './file-processing.js';
@@ -28,39 +29,39 @@ export interface PlatformSearchConfig {
 
 /**
  * Check if a path matches a platform pattern and extract platform info
+ * This function works across different filesystem types (Windows, macOS, Linux, etc.)
  */
 function checkPlatformMatch(normalizedPath: string, platform: Platformish, platformDir: string): { platform: string; relativePath: string; platformName: Platformish } | null {
-  // Check for absolute paths
-  const absPlatformPattern = `/${platformDir}/`;
-  let platformIndex = normalizedPath.indexOf(absPlatformPattern);
-  let isAbsolute = true;
+  // Use the cross-platform path matching utility
+  const match = matchPlatformPattern(normalizedPath, platformDir);
 
-  if (platformIndex === -1) {
-    // Check for relative paths
-    const relPlatformPattern = `${platformDir}/`;
-    platformIndex = normalizedPath.indexOf(relPlatformPattern);
-    isAbsolute = false;
+  if (match) {
+    return {
+      platform,
+      relativePath: match.relativePath,
+      platformName: platform
+    };
   }
 
-  if (platformIndex !== -1) {
-    const patternLength = isAbsolute ? absPlatformPattern.length - 1 : `${platformDir}/`.length - 1;
-    const relativePath = normalizedPath.substring(platformIndex + patternLength);
-    return { platform, relativePath: relativePath.startsWith('/') ? relativePath.substring(1) : relativePath, platformName: platform };
-  }
-
-  // Check for exact platform directory matches
-  if (normalizedPath === `/${platformDir}` || normalizedPath === platformDir || normalizedPath.endsWith(`/${platformDir}`)) {
-    return { platform, relativePath: '', platformName: platform };
+  // Check for exact platform directory matches using the utility
+  if (isExactPlatformMatch(normalizedPath, platformDir)) {
+    return {
+      platform,
+      relativePath: '',
+      platformName: platform
+    };
   }
 
   return null;
 }
 
+
 /**
  * Parse a directory path to determine if it's a platform-specific directory
  */
 export function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: Platformish } | null {
-  const normalizedPath = directoryPath.replace(/\\/g, '/'); // Normalize for cross-platform
+  // Use proper path normalization for cross-platform compatibility
+  const normalizedPath = normalize(directoryPath);
 
   // Check for AI directory first (special case)
   const aiMatch = checkPlatformMatch(normalizedPath, PLATFORM_DIRS.AI, PLATFORM_DIRS.AI);

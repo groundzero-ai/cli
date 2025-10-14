@@ -12,6 +12,7 @@ import type { FormulaFile } from '../types/index.js';
 import { getPlatformForRootFile } from './root-file-registry.js';
 import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
 import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from './root-file-extractor.js';
+import { getPathLeaf } from './path-normalization.js';
 
 /**
  * Result of root file sync operation
@@ -88,7 +89,7 @@ export function isRootFile(filePath: string): boolean {
     }
   }
 
-  const fileName = filePath.split('/').pop();
+  const fileName = getPathLeaf(filePath);
   return fileName ? rootFileNames.has(fileName) : false;
 }
 
@@ -107,7 +108,7 @@ async function syncSingleRootFile(
     skipped: []
   };
 
-  const sourceFileName = rootFile.path.split('/').pop()!;
+  const sourceFileName = getPathLeaf(rootFile.path);
   const sourcePlatform = getPlatformForRootFile(sourceFileName);
 
   // Extract the formula content from the source root file

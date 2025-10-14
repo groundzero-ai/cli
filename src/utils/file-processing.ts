@@ -12,6 +12,7 @@ import {
 } from './fs.js';
 import { calculateFileHash } from './hash-utils.js';
 import { mapPlatformFileToUniversal } from './platform-mapper.js';
+import { getRelativePathFromBase } from './path-normalization.js';
 import type { DiscoveredFile } from '../types/index.js';
 import type { Platform } from '../core/platforms.js';
 
@@ -47,7 +48,7 @@ export async function findFilesByExtension(
   for (const file of dirFiles) {
     if (file.endsWith(extension)) {
       const fullPath = join(dir, file);
-      const relativePath = fullPath.substring(baseDir.length + 1);
+      const relativePath = getRelativePathFromBase(fullPath, baseDir);
       files.push({ fullPath, relativePath });
     }
   }

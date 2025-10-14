@@ -4,14 +4,15 @@
  */
 
 import { join } from 'path';
-import { 
-  exists, 
+import {
+  exists,
   listFiles,
   readTextFile,
   remove,
   getStats
 } from './fs.js';
 import { logger } from './logger.js';
+import { getPathLeaf } from './path-normalization.js';
 import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import {
   getAllPlatforms,
@@ -131,9 +132,9 @@ export async function cleanupPlatformFiles(
   try {
     // Build subdir list: rules, commands, agents
     const subdirs: Array<{ dir: string; label: string; leaf: string }> = [];
-    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: UNIVERSAL_SUBDIRS.RULES, leaf: platformPaths.rulesDir.split('/').pop() || '' });
-    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: platformPaths.commandsDir.split('/').pop() || '' });
-    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: platformPaths.agentsDir.split('/').pop() || '' });
+    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: UNIVERSAL_SUBDIRS.RULES, leaf: getPathLeaf(platformPaths.rulesDir) });
+    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: getPathLeaf(platformPaths.commandsDir) });
+    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: getPathLeaf(platformPaths.agentsDir) });
 
     const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
@@ -269,8 +270,7 @@ export function getPlatformNameFromSource(sourceDir: string): string {
   }
 
   // Fallback: extract from path
-  const parts = sourceDir.split('/');
-  return parts[parts.length - 1] || 'unknown';
+  return getPathLeaf(sourceDir) || 'unknown';
 }
 
 

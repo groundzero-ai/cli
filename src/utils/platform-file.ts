@@ -6,6 +6,7 @@
 import { basename } from 'path';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORMS, PLATFORM_DIRS, type UniversalSubdir, type Platform } from '../constants/index.js';
+import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
 
 /**
  * Parse a registry or universal path to extract subdir and relative path info
@@ -21,8 +22,9 @@ export function parseUniversalPath(
   const universalSubdirs = Object.values(UNIVERSAL_SUBDIRS) as UniversalSubdir[];
 
   for (const subdir of universalSubdirs) {
-    if (path.startsWith(`${subdir}/`)) {
-      const remainingPath = path.substring(subdir.length + 1); // +1 for the slash
+    const parsed = parsePathWithPrefix(path, subdir);
+    if (parsed) {
+      const remainingPath = parsed.remaining;
 
       // Check if there's a platform suffix (e.g., auth.cursor.md)
       if (options.allowPlatformSuffix !== false) {
@@ -53,12 +55,14 @@ export function parseUniversalPath(
   }
 
   // Check if path starts with ai/ followed by universal subdirs (for AI directory files)
-  if (path.startsWith(`${PLATFORM_DIRS.AI}/`)) {
-    const aiPath = path.substring(PLATFORM_DIRS.AI.length + 1); // +1 for the slash
+  const aiParsed = parsePathWithPrefix(path, PLATFORM_DIRS.AI);
+  if (aiParsed) {
+    const aiPath = aiParsed.remaining;
 
     for (const subdir of universalSubdirs) {
-      if (aiPath.startsWith(`${subdir}/`)) {
-        const remainingPath = aiPath.substring(subdir.length + 1); // +1 for the slash
+      const subdirParsed = parsePathWithPrefix(aiPath, subdir);
+      if (subdirParsed) {
+        const remainingPath = subdirParsed.remaining;
 
         // Check if there's a platform suffix (e.g., auth.cursor.md)
         if (options.allowPlatformSuffix !== false) {
@@ -100,8 +104,7 @@ export function parseUniversalPath(
  * @returns Platform-specific filename like "auth.mdc"
  */
 export function getPlatformSpecificFilename(universalPath: string, platform: Platform): string {
-  const pathParts = universalPath.split('/');
-  const universalSubdir = pathParts[0];
+  const universalSubdir = getFirstPathComponent(universalPath);
   const registryFileName = basename(universalPath);
 
   const platformDef = getPlatformDefinition(platform);

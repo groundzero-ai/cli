@@ -215,22 +215,6 @@ export class FormulaManager {
       throw new InvalidFormulaError(`Failed to discover formula files: ${error}`);
     }
   }
-
-  /**
-   * Apply template variables to a formula's content
-   */
-  applyTemplateVariables(content: string, variables: Record<string, any>): string {
-    let result = content;
-    
-    // Simple template variable replacement ({{variable}})
-    // In a production system, you might want to use a more sophisticated template engine
-    for (const [key, value] of Object.entries(variables)) {
-      const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
-      result = result.replace(pattern, String(value));
-    }
-    
-    return result;
-  }
   
   /**
    * Extract template variables from formula files

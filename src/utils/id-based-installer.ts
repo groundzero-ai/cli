@@ -7,6 +7,7 @@
 import { join, dirname, relative } from 'path';
 import { exists, ensureDir, writeTextFile, remove } from './fs.js';
 import { logger } from './logger.js';
+import { getFirstPathComponent, getPathAfterFirstComponent, splitPath } from './path-normalization.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
 import type { InstallOptions } from '../types/index.js';
@@ -277,7 +278,7 @@ async function processNewFilesForPlatform(
 
     if (targetDir === null) {
       // Platform doesn't support this universal subdirectory
-      const universalSubdir = registryParentDir.split('/')[0];
+      const universalSubdir = getFirstPathComponent(registryParentDir);
       console.log(`⚠️  Skipping ${files.length} files in ${universalSubdir}/ - ${platform} platform does not support ${universalSubdir} subdirectory`);
       logger.debug(`Platform ${platform} does not support universal subdirectory: ${universalSubdir}`);
       return; // Skip processing this batch
@@ -303,9 +304,8 @@ async function mapRegistryPathToCwd(
   registryParentDir: string
 ): Promise<string | null> {
   // Extract the universal subdir and relative path
-  const parts = registryParentDir.split('/');
-  const universalSubdir = parts[0] as typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
-  const relativePath = parts.slice(1).join('/');
+  const universalSubdir = getFirstPathComponent(registryParentDir) as typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
+  const relativePath = getPathAfterFirstComponent(registryParentDir);
 
   // Use the first platform to determine the target directory
   const platform = platforms[0];

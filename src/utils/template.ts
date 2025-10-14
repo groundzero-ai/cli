@@ -37,21 +37,6 @@ export function hasTemplateVariables(content: string): boolean {
 }
 
 /**
- * Simple template variable replacement
- * Replaces {{ variableName }} with corresponding values
- */
-export function applyTemplateVariables(content: string, variables: Record<string, any>): string {
-  let result = content;
-  
-  for (const [key, value] of Object.entries(variables)) {
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
-    result = result.replace(pattern, String(value));
-  }
-  
-  return result;
-}
-
-/**
  * Validate that all required template variables are provided
  */
 export function validateTemplateVariables(content: string, variables: Record<string, any>): string[] {

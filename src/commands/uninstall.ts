@@ -18,6 +18,7 @@ import {
 } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
+import { normalizePathForProcessing } from '../utils/path-normalization.js';
 
 /**
  * Clean up platform-specific files for a formula across all detected platforms
@@ -43,7 +44,7 @@ async function cleanupPlatformFiles(
       formulaName,
       { dryRun: options.dryRun }
     );
-    cleanedByPlatform[platform] = result.files.map(p => relative(cwd, p).replace(/\\/g, '/'));
+    cleanedByPlatform[platform] = result.files.map(p => normalizePathForProcessing(relative(cwd, p)));
   }));
 
   return cleanedByPlatform;

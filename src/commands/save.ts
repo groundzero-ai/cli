@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, basename, dirname } from 'path';
+import { join, basename, dirname, isAbsolute } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
@@ -78,28 +78,24 @@ const LOG_PREFIXES = {
 /**
  * Parse formula inputs to handle three usage patterns:
  * 1. Explicit name + directory: formula-name /path/to/dir
- * 2. Directory only (legacy): /path/to/dir
- * 3. Formula name only (legacy): formula-name or formula-name@version
+ * 2. Directory only: /path/to/dir
+ * 3. Formula name only: formula-name or formula-name@version
  */
 function parseFormulaInputs(formulaName: string, directory?: string): {
   name: string;
   version?: string;
-  isDirectory: boolean;
   directoryPath?: string;
-  isExplicitPair: boolean;
 } {
-  // Pattern 1: Explicit name + directory (new functionality)
+  // Pattern 1: Explicit name + directory
   if (directory) {
     return {
       name: formulaName,
-      isDirectory: true,
-      directoryPath: directory,
-      isExplicitPair: true
+      directoryPath: directory
     };
   }
 
-  // Pattern 2: Directory path as first argument (legacy)
-  if (formulaName.startsWith('/')) {
+  // Pattern 2: Directory path as first argument
+  if (isAbsolute(formulaName) || formulaName.startsWith('./') || formulaName.startsWith('../')) {
     const directoryPath = formulaName;
     const name = basename(directoryPath);
 
@@ -109,20 +105,16 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
 
     return {
       name,
-      isDirectory: true,
-      directoryPath,
-      isExplicitPair: false
+      directoryPath
     };
   }
 
-  // Pattern 3: Formula name with optional version (legacy)
+  // Pattern 3: Formula name with optional version
   const atIndex = formulaName.lastIndexOf('@');
 
   if (atIndex === -1) {
     return {
-      name: formulaName,
-      isDirectory: false,
-      isExplicitPair: false
+      name: formulaName
     };
   }
 
@@ -135,9 +127,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
 
   return {
     name,
-    version,
-    isDirectory: false,
-    isExplicitPair: false
+    version
   };
 }
 
@@ -205,34 +195,6 @@ async function getOrCreateFormulaConfig(formulaDir: string, formulaName: string)
 }
 
 
-/**
- * Resolve the source directory based on input pattern and directory path
- * @param directoryPath - The directory path to resolve
- * @param isExplicitPair - Whether this is an explicit name + directory pair
- * @param isDirectory - Whether input was a directory path
- * @returns Promise resolving to the resolved source directory path
- * @throws ValidationError if directory path is required but not provided
- */
-async function resolveSourceDirectory(directoryPath: string | undefined, isExplicitPair: boolean, isDirectory: boolean): Promise<string> {
-  if (!directoryPath) {
-    throw new ValidationError('Directory path is required');
-  }
-
-  if (directoryPath.startsWith('/')) {
-    const absolutePath = directoryPath;
-    const relativePath = join(process.cwd(), directoryPath.substring(1));
-    // Use the path that exists, prefer absolute
-    if (await exists(absolutePath)) {
-      return absolutePath;
-    } else if (await exists(relativePath)) {
-      return relativePath;
-    } else {
-      return absolutePath; // Default to absolute
-    }
-  } else {
-    return join(process.cwd(), directoryPath);
-  }
-}
 
 
 /**
@@ -307,9 +269,9 @@ async function saveFormulaCommand(
   }
 
   // Parse inputs to determine the pattern being used
-  const { name, version: explicitVersion, isDirectory, directoryPath, isExplicitPair } = parseFormulaInputs(formulaName, directory);
+  const { name, version: explicitVersion, directoryPath } = parseFormulaInputs(formulaName, directory);
 
-  logger.debug(`Saving formula with name: ${name}`, { explicitVersion, isDirectory, directoryPath, isExplicitPair, options });
+  logger.debug(`Saving formula with name: ${name}`, { explicitVersion, directoryPath, options });
 
   // Initialize formula environment
   await ensureRegistryDirectories();
@@ -378,13 +340,8 @@ async function saveFormulaCommand(
     }
   }
 
-  // Determine source directory for file discovery
-  const sourceDir = (isExplicitPair || isDirectory) && directoryPath
-    ? await resolveSourceDirectory(directoryPath, isExplicitPair, isDirectory)
-    : formulaDir;
-
   // Discover and include MD files using appropriate logic
-  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, isExplicitPair, isDirectory, directoryPath, sourceDir);
+  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, directoryPath);
 
   // Discover all platform root files (AGENTS.md, CLAUDE.md, GEMINI.md, etc.) at project root
   const rootFilesDiscovered = await discoverAllRootFiles(cwd, formulaConfig.name);

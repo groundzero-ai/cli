@@ -1,6 +1,7 @@
 import { join, basename } from 'path';
 import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Platform } from '../core/platforms.js';
 import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir, PLATFORM_DIRS } from '../constants/index.js';
+import { normalizePathForProcessing, getRelativePathParts, findSubpathIndex } from './path-normalization.js';
 
 /**
  * Normalize platform names from command line input
@@ -50,7 +51,7 @@ export function mapUniversalToPlatform(
 export function mapPlatformFileToUniversal(
   absPath: string
 ): { platform: Platform; subdir: UniversalSubdir; relPath: string } | null {
-  const normalizedPath = absPath.replace(/\\/g, '/');
+  const normalizedPath = normalizePathForProcessing(absPath);
 
   // Check each platform
   for (const platform of Object.values(PLATFORMS) as Platform[]) {
@@ -61,13 +62,17 @@ export function mapPlatformFileToUniversal(
       const subdir = subdirName as UniversalSubdir;
       const platformSubdirPath = join(definition.rootDir, subdirDef.path);
 
-      // Check if the path starts with this platform subdir
-      if (normalizedPath.includes(`/${platformSubdirPath}/`) || normalizedPath.startsWith(`${platformSubdirPath}/`)) {
+      // Check if the path contains this platform subdir
+      const subdirIndex = findSubpathIndex(normalizedPath, platformSubdirPath);
+      if (subdirIndex !== -1) {
         // Extract the relative path within the subdir
-        const subdirIndex = normalizedPath.indexOf(`/${platformSubdirPath}/`);
-        const relPathStart = subdirIndex !== -1
-          ? subdirIndex + platformSubdirPath.length + 2 // +2 for the leading slash
-          : normalizedPath.indexOf(`${platformSubdirPath}/`) + platformSubdirPath.length + 1;
+        // Find where the subdir ends (either /subdir/ or subdir/)
+        const absPattern = `/${platformSubdirPath}/`;
+        const relPattern = `${platformSubdirPath}/`;
+        const isAbsPattern = normalizedPath.indexOf(absPattern) !== -1;
+
+        const patternLength = isAbsPattern ? absPattern.length : relPattern.length;
+        const relPathStart = subdirIndex + patternLength;
 
         let relPath = normalizedPath.substring(relPathStart);
 
@@ -153,7 +158,7 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
   }
 
   // Check if the first part is a known platform directory
-  const pathParts = registryPath.split('/');
+  const pathParts = getRelativePathParts(registryPath);
   const firstPart = pathParts[0];
 
   const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
