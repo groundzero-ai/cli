@@ -11,6 +11,7 @@ import { getFileMtime } from './file-processing.js';
 import { findFilesByExtension } from './file-processing.js';
 import { buildPlatformSearchConfig } from './platform-discovery.js';
 import type { DiscoveredFile } from '../../types/index.js';
+import { areFormulaNamesEquivalent } from '../formula-name-normalization.js';
 
 /**
  * Discover root-level AGENTS.md content designated for a specific formula.
@@ -141,7 +142,7 @@ export async function findFormulas(formulaName: string): Promise<Array<{ fullPat
         const content = await readTextFile(mdFile.fullPath);
         const frontmatter = parseMarkdownFrontmatter(content);
 
-        if (frontmatter?.formula?.name === formulaName) {
+        if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
           // Create a virtual formula.yml config based on frontmatter
           const config = {
             name: formulaName,
@@ -176,7 +177,7 @@ export async function findFormulas(formulaName: string): Promise<Array<{ fullPat
         try {
           const { parseFormulaYml } = await import('../formula-yml.js');
           const config = await parseFormulaYml(formulaYmlPath);
-          if (config.name === formulaName) {
+          if (areFormulaNamesEquivalent(config.name, formulaName)) {
             return {
               fullPath: formulaYmlPath,
               relativePath: join(PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaDir, FILE_PATTERNS.FORMULA_YML),

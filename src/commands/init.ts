@@ -9,6 +9,7 @@ import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulaDir } from '../utils/paths.js';
+import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
 
 /**
  * Initialize formula.yml command implementation
@@ -79,8 +80,11 @@ async function initFormulaCommand(): Promise<CommandResult> {
 async function initFormulaInFormulasDir(formulaName: string): Promise<CommandResult> {
   const cwd = process.cwd();
 
+  // Normalize formula name for consistent behavior
+  const normalizedFormulaName = normalizeFormulaName(formulaName);
+
   // Get the formula directory path (.groundzero/formulas/{formulaName})
-  const formulaDir = getLocalFormulaDir(cwd, formulaName);
+  const formulaDir = getLocalFormulaDir(cwd, normalizedFormulaName);
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
   logger.info(`Initializing formula.yml for '${formulaName}' in directory: ${formulaDir}`);
@@ -112,7 +116,7 @@ async function initFormulaInFormulasDir(formulaName: string): Promise<CommandRes
       await ensureDir(formulaDir);
 
       // Prompt for formula details (skip name prompt since it's provided)
-      formulaConfig = await promptFormulaDetailsForNamed(formulaName);
+      formulaConfig = await promptFormulaDetailsForNamed(normalizedFormulaName);
 
       // Create the formula.yml file
       await writeFormulaYml(formulaYmlPath, formulaConfig);

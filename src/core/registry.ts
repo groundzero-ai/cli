@@ -10,12 +10,13 @@ import {
   FormulaNotFoundError, 
   RegistryError 
 } from '../utils/errors.js';
-import { 
-  getRegistryDirectories, 
-  getFormulaVersionPath, 
+import {
+  getRegistryDirectories,
+  getFormulaVersionPath,
   getLatestFormulaVersion,
   listFormulaVersions,
-  hasFormulaVersion
+  hasFormulaVersion,
+  findFormulaByName
 } from './directory.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { 
@@ -130,21 +131,27 @@ export class RegistryManager {
    */
   async getFormulaMetadata(formulaName: string, version?: string): Promise<FormulaYml> {
     logger.debug(`Getting metadata for formula: ${formulaName}`, { version });
-    
+
     try {
+      // Find the actual formula name (handles case-insensitive lookup)
+      const actualFormulaName = await findFormulaByName(formulaName);
+      if (!actualFormulaName) {
+        throw new FormulaNotFoundError(formulaName);
+      }
+
       let targetVersion: string | null;
-      
+
       if (version) {
         // Check if it's a version range or exact version
         if (isExactVersion(version)) {
           targetVersion = version;
         } else {
           // It's a version range - resolve it to a specific version
-          const availableVersions = await listFormulaVersions(formulaName);
+          const availableVersions = await listFormulaVersions(actualFormulaName);
           if (availableVersions.length === 0) {
             throw new FormulaNotFoundError(formulaName);
           }
-          
+
           targetVersion = resolveVersionRange(version, availableVersions);
           if (!targetVersion) {
             throw new FormulaNotFoundError(
@@ -155,20 +162,20 @@ export class RegistryManager {
         }
       } else {
         // No version specified - get latest
-        targetVersion = await getLatestFormulaVersion(formulaName);
+        targetVersion = await getLatestFormulaVersion(actualFormulaName);
       }
-      
+
       if (!targetVersion) {
         throw new FormulaNotFoundError(formulaName);
       }
-      
-      const formulaPath = getFormulaVersionPath(formulaName, targetVersion);
+
+      const formulaPath = getFormulaVersionPath(actualFormulaName, targetVersion);
       const formulaYmlPath = join(formulaPath, 'formula.yml');
-      
+
       if (!(await exists(formulaYmlPath))) {
         throw new FormulaNotFoundError(formulaName);
       }
-      
+
       const metadata = await parseFormulaYml(formulaYmlPath);
       return metadata;
     } catch (error) {
@@ -202,8 +209,15 @@ export class RegistryManager {
    * Check if a formula exists (any version)
    */
   async hasFormula(formulaName: string): Promise<boolean> {
+    // First try direct lookup (works for normalized names)
     const latestVersion = await getLatestFormulaVersion(formulaName);
-    return latestVersion !== null;
+    if (latestVersion !== null) {
+      return true;
+    }
+
+    // If not found, try case-insensitive lookup
+    const foundFormula = await findFormulaByName(formulaName);
+    return foundFormula !== null;
   }
   
   /**

@@ -11,6 +11,7 @@ import { buildDependencyTree, findDanglingDependencies } from '../core/dependenc
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
+import { areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
 import {
   PLATFORM_DIRS,
   FILE_PATTERNS,
@@ -108,7 +109,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
     for (const section of sections) {
       if (config[section]) {
         const initialLength = config[section]!.length;
-        config[section] = config[section]!.filter(dep => dep.name !== formulaName);
+        config[section] = config[section]!.filter(dep => !areFormulaNamesEquivalent(dep.name, formulaName));
         if (config[section]!.length < initialLength) {
           removed = true;
           logger.info(`Removed ${formulaName} from ${section}`);

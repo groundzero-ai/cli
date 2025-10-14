@@ -7,6 +7,7 @@ import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } fr
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
+import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name-normalization.js';
 
 /**
  * Ensure local GroundZero directory structure exists
@@ -82,8 +83,8 @@ export async function addFormulaToYml(
     versionToWrite = createCaretRange(baseVersion);
   }
   
-  const dependency: FormulaDependency = { 
-    name: formulaName, 
+  const dependency: FormulaDependency = {
+    name: normalizeFormulaName(formulaName),
     version: versionToWrite
   };
   
@@ -145,7 +146,8 @@ export async function writeLocalFormulaMetadata(
   metadata: FormulaYml,
   readmeContent?: string
 ): Promise<void> {
-  const localFormulaDir = join(getLocalFormulasDir(cwd), formulaName);
+  const normalizedFormulaName = normalizeFormulaName(formulaName);
+  const localFormulaDir = join(getLocalFormulasDir(cwd), normalizedFormulaName);
   const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
   await ensureDir(localFormulaDir);
   await writeFormulaYml(localFormulaYmlPath, metadata);
@@ -172,12 +174,12 @@ async function findFormulaLocation(
     const config = await parseFormulaYml(formulaYmlPath);
     
     // Check in formulas array
-    if (config.formulas?.some(dep => dep.name === formulaName)) {
+    if (config.formulas?.some(dep => areFormulaNamesEquivalent(dep.name, formulaName))) {
       return DEPENDENCY_ARRAYS.FORMULAS;
     }
-    
+
     // Check in dev-formulas array
-    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => dep.name === formulaName)) {
+    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => areFormulaNamesEquivalent(dep.name, formulaName))) {
       return DEPENDENCY_ARRAYS.DEV_FORMULAS;
     }
     

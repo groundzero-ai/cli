@@ -8,6 +8,7 @@ import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { findFilesByExtension } from '../utils/discovery/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
+import { areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
 
 /**
  * Formula metadata from groundzero directory
@@ -80,7 +81,7 @@ export async function findFormulaDirectory(groundzeroPath: string, formulaName: 
       if (configPath) {
         try {
           const formulaConfig = await parseFormulaYml(configPath);
-          if (formulaConfig.name === formulaName) {
+          if (areFormulaNamesEquivalent(formulaConfig.name, formulaName)) {
             return subdirPath;
           }
         } catch (error) {
@@ -308,7 +309,7 @@ export async function checkExistingFormulaInMarkdownFiles(
           try {
             const content = await readTextFile(file.fullPath);
             const frontmatter: any = parseMarkdownFrontmatter(content);
-            if (frontmatter?.formula?.name === formulaName) {
+            if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
               const version: string | undefined = (typeof frontmatter.version === 'string' ? frontmatter.version : undefined)
                 || (typeof frontmatter.formula?.version === 'string' ? frontmatter.formula.version : undefined);
               logger.debug(`Found existing formula '${formulaName}' in ${file.fullPath}`, { version });

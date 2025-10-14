@@ -5,6 +5,7 @@ import { G0Directories } from '../types/index.js';
 import { PLATFORM_DIRS, FORMULA_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
+import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
 
 /**
  * Cross-platform directory resolution following platform conventions
@@ -96,10 +97,12 @@ export function getTempDirectory(operation: string): string {
 
 /**
  * Get the base path for a formula (contains all versions)
+ * Formula names are normalized to lowercase for consistent registry paths.
  */
 export function getFormulaPath(formulaName: string): string {
   const dirs = getRegistryDirectories();
-  return path.join(dirs.formulas, formulaName);
+  const normalizedName = normalizeFormulaName(formulaName);
+  return path.join(dirs.formulas, normalizedName);
 }
 
 /**
@@ -137,5 +140,35 @@ export async function getLatestFormulaVersion(formulaName: string): Promise<stri
 export async function hasFormulaVersion(formulaName: string, version: string): Promise<boolean> {
   const versionPath = getFormulaVersionPath(formulaName, version);
   return await exists(versionPath);
+}
+
+/**
+ * Find a formula by name, searching case-insensitively across registry directories.
+ * Returns the normalized formula name if found, null otherwise.
+ * If multiple formulas match the same normalized name, returns the first one found.
+ */
+export async function findFormulaByName(formulaName: string): Promise<string | null> {
+  const normalizedTarget = normalizeFormulaName(formulaName);
+  const dirs = getRegistryDirectories();
+
+  if (!(await exists(dirs.formulas))) {
+    return null;
+  }
+
+  const formulaDirs = await listDirectories(dirs.formulas);
+
+  // First try exact normalized match
+  if (formulaDirs.includes(normalizedTarget)) {
+    return normalizedTarget;
+  }
+
+  // Then try case-insensitive match
+  for (const dirName of formulaDirs) {
+    if (normalizeFormulaName(dirName) === normalizedTarget) {
+      return dirName; // Return the actual directory name as it exists on disk
+    }
+  }
+
+  return null;
 }
 

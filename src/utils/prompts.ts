@@ -3,6 +3,7 @@ import { basename } from 'path';
 import { FormulaYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
+import { normalizeFormulaName } from './formula-name-normalization.js';
 
 /**
  * Common prompt types and utilities for user interaction
@@ -133,7 +134,7 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     : [];
 
   const config: FormulaYml = {
-    name: response.name,
+    name: normalizeFormulaName(response.name),
     version: response.version,
     ...(response.description && { description: response.description }),
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
@@ -185,7 +186,7 @@ export async function promptFormulaDetailsForNamed(formulaName: string): Promise
     : [];
 
   const config: FormulaYml = {
-    name: formulaName,
+    name: normalizeFormulaName(formulaName),
     version: response.version,
     ...(response.description && { description: response.description }),
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),

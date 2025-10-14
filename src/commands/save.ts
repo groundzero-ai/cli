@@ -28,6 +28,7 @@ import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../
 import { getLocalFormulaYmlPath } from '../utils/paths.js';
 import { autoNormalizeDirectoryPath } from '../utils/path-normalization.js';
 import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
+import { normalizeFormulaName, areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -92,7 +93,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   if (directory) {
     validateFormulaName(formulaName);
     return {
-      name: formulaName,
+      name: normalizeFormulaName(formulaName),
       directoryPath: directory
     };
   }
@@ -103,7 +104,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   if (scopedMatch) {
     validateFormulaName(formulaName);
     return {
-      name: formulaName
+      name: normalizeFormulaName(formulaName)
     };
   }
 
@@ -122,7 +123,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
     validateFormulaName(name);
 
     return {
-      name,
+      name: normalizeFormulaName(name),
       directoryPath
     };
   }
@@ -133,7 +134,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   if (atIndex === -1) {
     validateFormulaName(normalizedInput);
     return {
-      name: normalizedInput
+      name: normalizeFormulaName(normalizedInput)
     };
   }
 
@@ -147,7 +148,7 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
   validateFormulaName(name);
 
   return {
-    name,
+    name: normalizeFormulaName(name),
     version
   };
 }
@@ -168,7 +169,7 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   
   // Create default formula config
   const formulaConfig: FormulaYml = {
-    name: formulaName,
+    name: normalizeFormulaName(formulaName),
     version: DEFAULT_VERSION
   };
   
@@ -198,7 +199,7 @@ async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formula
   if (await exists(rootFormulaPath)) {
     try {
       const rootConfig = await parseFormulaYml(rootFormulaPath);
-      if (rootConfig.name === formulaName) {
+      if (areFormulaNamesEquivalent(rootConfig.name, formulaName)) {
         logger.debug('Detected root formula match');
         console.log(`✓ Found root formula ${rootConfig.name}@${rootConfig.version}`);
         return {
@@ -704,7 +705,9 @@ async function saveFormulaToRegistry(
   silent?: boolean
 ): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
   try {
-    const targetPath = getFormulaVersionPath(config.name, config.version);
+    // Ensure formula name is normalized for consistent registry paths
+    const normalizedConfig = { ...config, name: normalizeFormulaName(config.name) };
+    const targetPath = getFormulaVersionPath(normalizedConfig.name, normalizedConfig.version);
     await ensureDir(targetPath);
     
     // Group files by target directory
@@ -733,9 +736,9 @@ async function saveFormulaToRegistry(
     await Promise.all(savePromises);
     
     if (!silent) {
-      logger.info(`Formula '${config.name}@${config.version}' saved to local registry`);
+      logger.info(`Formula '${normalizedConfig.name}@${normalizedConfig.version}' saved to local registry`);
     }
-    return { success: true, updatedConfig: config };
+    return { success: true, updatedConfig: normalizedConfig };
   } catch (error) {
     logger.error(`Failed to save formula: ${error}`);
     return { success: false, error: `Failed to save formula: ${error}` };

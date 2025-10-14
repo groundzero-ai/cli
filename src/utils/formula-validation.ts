@@ -9,7 +9,7 @@ export const SCOPED_FORMULA_REGEX = /^@([^\/]+)\/(.+)$/;
  * Error messages for formula name validation
  */
 const ERROR_MESSAGES = {
-  INVALID_FORMULA_NAME: 'Invalid formula name: %s. Formula names must be 1-214 characters, contain only lowercase letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>.'
+  INVALID_FORMULA_NAME: 'Invalid formula name: %s. Formula names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Formula names are case-insensitive and will be normalized to lowercase.'
 } as const;
 
 /**
