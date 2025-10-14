@@ -9,6 +9,7 @@ import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { extractFormulaFromTarball, verifyTarballIntegrity } from '../utils/tarball.js';
 import { parseFormulaRefExact } from '../utils/formula-ref.js';
+import { showBetaRegistryMessage } from '../utils/messages.js';
 
 /**
  * Pull formula command implementation
@@ -19,7 +20,9 @@ async function pullFormulaCommand(
 ): Promise<CommandResult> {
   const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
   logger.info(`Pulling formula '${parsedName}' from remote registry`, { options });
-  
+
+  showBetaRegistryMessage();
+
   try {
     // Ensure registry directories exist
     await ensureRegistryDirectories();

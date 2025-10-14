@@ -5,6 +5,7 @@ import { ensureG0Directories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { safePrompts } from '../utils/prompts.js';
+import { showApiKeySignupMessage } from '../utils/messages.js';
 
 /**
  * Configure command implementation for profile management
@@ -25,6 +26,8 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
 
     // Ensure directories exist
     await ensureG0Directories();
+
+    showApiKeySignupMessage();
 
     // Prompt for API key
     const response = await safePrompts([

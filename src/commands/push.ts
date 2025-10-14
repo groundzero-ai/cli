@@ -10,6 +10,7 @@ import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
 import { parseFormulaRefExact } from '../utils/formula-ref.js';
+import { showBetaRegistryMessage } from '../utils/messages.js';
 
 /**
  * Push formula command implementation
@@ -21,6 +22,8 @@ async function pushFormulaCommand(
   logger.info(`Pushing formula '${formulaInput}' to remote registry`, { options });
   const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
   let attemptedVersion: string | undefined;
+
+  showBetaRegistryMessage();
   
   try {
     // Ensure registry directories exist
