@@ -1,97 +1,165 @@
-# G0 GPM CLI
+# GroundZero Package Manager
 
-A basic CLI tool built with Node.js, Commander, and TypeScript.
+<a href="https://www.npmjs.com/package/mem0ai" target="blank">
+  <img src="https://img.shields.io/npm/v/mem0ai?style=flat-square" alt="Npm package">
+</a>
+<a href="https://"  target="blank">
+  <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="GroundZero Discord">
+</a>
+<br /><br />
 
-## Features
+GroundZero (g0) is the package manager for AI coding.
 
-- Built with TypeScript for type safety
-- Uses Commander.js for CLI argument parsing
-- Includes example commands and subcommands
-- Development and production build scripts
-- Executable binary configuration
+Save and sync rules, slash commands, agents, and more.  
+Build reusable formulas for use across multiple projects and AI coding platforms.
+
+Learn more in the [official documentation](https://groundzero.enulus.com/docs).
+
+Looking to discover, download, or publish formulas?  
+The GroundZero registry is currently in private beta, [signup for early access](https://tally.so/r/wzaerk). 
+
+> [!NOTE]  
+> For latest news and updates, follow the creator's X (Twitter) account
+> [@hyericlee](https://x.com/hyericlee)
+> or official [@groundzero_ai](https://x.com/groundzero_ai)
 
 ## Installation
 
+Curl
 ```bash
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
+# Curl link here
 ```
+
+npm
+```bash
+npm install #package here
+```
+## Use Cases
+
+### Reuse files across multiple codebases
+Reuse rules, slash commands, and more across multiple codebases.
+```bash title="Terminal"
+# In current codebase
+g0 save essentials
+# In another codebase
+g0 install essentials
+```  
+
+### Sync files across multiple platforms
+Automatically sync your rules, slash commands, and more across multiple platform.
+```bash title="Terminal"
+# Current codebase has .cursor, .claude, .opencode directories
+g0 save essentials .cursor/commands/essentials
+# GroundZero CLI automatically generates/syncs the same command files accross all platforms.
+
+# Before save:
+# .cursor/commands/essentials/clean-code.md
+
+# After save:
+# .cursor/commands/essentials/clean-code.md
+# .claude/commands/essentials/clean-code.md
+# .opencode/command/essentials/clean-code.md
+```  
+
+### Modular management of files
+Create domain specific formulas for modular reuse.
+```bash title="Terminal"
+# Create formulas
+g0 save essentials .cursor/rules/essentials
+g0 save essentials .cursor/commands/essentials
+g0 save scalable-typescript .cursor/rules/typescript
+g0 save scalable-nextjs .cursor/rules/nextjs
+g0 save scalable-nestjs .cursor/rules/nestjs
+g0 save mongodb .cursor/rules/mongodb
+
+# In your NextJS codebase
+g0 install essentials
+g0 install scalable-typescript
+g0 install scalable-nextjs
+
+# In your NestJS codebase
+g0 install essentials
+g0 install scalable-typescript
+g0 install scalable-nestjs
+g0 install mongodb
+```  
 
 ## Usage
 
-### Available Commands
+> [!TIP]  
+> Formulas are essential to how GroundZero works. We highly recommend reading [What are Formulas?](https://groundzero.enulus.com/docs/what-are-formulas) to understand how formulas work..
 
-- `greet <name> [--uppercase]` - Greet someone with optional uppercase formatting
-- `info` - Display information about this CLI
-- `config get <key>` - Get a configuration value
-- `config set <key> <value>` - Set a configuration value
+### Save files to a formula
+```bash title="Terminal"
+g0 save <formula-name> <directory>
+```  
+Save a set of files in a codebase under the specified directory as a formula for reuse and cross-platform sync.
 
-### Examples
+### List formulas
+```bash title="Terminal"
+g0 list
+```  
+Use the list command to show all formulas currently saved to the local registry.  
 
-```bash
-# Using npm start
-npm start -- greet "World" --uppercase
-npm start -- info
-npm start -- config get database-url
-npm start -- config set theme dark
+### Show formula details
+```bash title="Terminal"
+g0 show <formula-name>
+```  
+The show command outputs the details of the formula and lists all included files.
 
-# Development mode (runs TypeScript directly)
-npm run dev -- greet "Developer"
-npm run dev -- --help
+### Install a formula
+```bash title="Terminal"
+g0 install <formula-name>
+```  
+Use the install command to add all files under the specified formula to the codebase at cwd.
 
-# Development with watch mode
-npm run dev:watch
-```
+### Uninstall a formula
+```bash title="Terminal"
+g0 uninstall <formula-name>
+```  
+Use the uninstall command to remove all files for the specified formula from the codebase at cwd.
 
-## Development
+> [!TIP]  
+> Learn more by heading over to the [official docs](https://groundzero.enulus.com/docs).
 
-```bash
-# Run in development mode
-npm run dev
+## Supported Platforms
 
-# Run with watch mode (restarts on file changes)
-npm run dev:watch
+GroundZero performs installation and platform sync of files for supported AI coding platforms outlined by the table below.  
+Files and paths will be automatically converted to platform specific designations during `save` and `install`.
 
-# Build for production
-npm run build
+> [!NOTE]  
+> GroundZero only searches and includes markdown files under supported platform directories and the root `ai/` directory.
 
-# Clean build artifacts
-npm run clean
-```
+| Platform | Directory | Root file | Rules | Commands | Agents |
+| --- | --- | --- | --- | --- | --- |
+| Augment Code | .augment/ | | rules/ | commands/ |  |
+| Claude Code | .claude/ | CLAUDE.md | | commands/ | agents/ |
+| Codex | .codex/ | AGENTS.md | | prompts/ | |
+| Cursor | .cursor/ | AGENTS.md | rules/ | commands/ | |
+| Factory | .factory/ | AGENTS.md | | commands/ | droids/ |
+| Gemini CLI | .gemini/ | GEMINI.md | | commands/ | |
+| Kilo Code | .kilocode/ | AGENTS.md | rules/ | workflows/ | | 
+| Kiro | .kiro/ | | steering/ |  | |
+| OpenCode | .opencode/ | AGENTS.md | | command/ | agent/ |
+| Qwen Code | .qwen/ | QWEN.md | | commands/ | agents/ |
+| Roo | .roo/ | AGENTS.md | | commands/ | |
+| Warp | .warp/ | WARP.md | | |
+| Windsurf | .windsurf/ | | rules/ |  | |
 
-## Project Structure
+## Contributing
 
-```
-├── src/
-│   └── index.ts          # Main CLI source code
-├── bin/
-│   └── g0                # Executable script
-├── dist/                 # Compiled JavaScript (generated)
-├── package.json          # Project configuration
-├── tsconfig.json         # TypeScript configuration
-└── README.md            # This file
-```
+We would love your help building the future of package management for AI coding.  
 
-## Extending the CLI
+Feel free to create [PRs](https://github.com/groundzero-ai/gpm/pulls) and [Github issues](https://github.com/groundzero-ai/gpm/issues) for:
+- Bugs
+- Feature requests
+- Support for new platforms
+- Missing standard behavior
+- Documentation
 
-To add new commands:
+## Resources
 
-1. Open `src/index.ts`
-2. Add new command using the Commander.js API:
-
-```typescript
-program
-  .command('your-command')
-  .description('Your command description')
-  .argument('<arg>', 'argument description')
-  .option('-o, --option', 'option description')
-  .action((arg, options) => {
-    // Your command logic here
-    console.log(`Running command with arg: ${arg}`);
-  });
-```
-
-3. Rebuild the project: `npm run build`
+- [Official Website]()
+- [Documentation]()
+- [Discord]()
+- [X (Twitter)](https://x.com/groundzero_ai)

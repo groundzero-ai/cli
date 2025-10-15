@@ -1,6 +1,21 @@
 {
-  "name": "g0-gpm-cli",
+  "name": "",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "author": "",
+  "description": "GroundZero (g0) is the package manager for AI coding.",
+  "keywords": [
+    "cli",
+    "ai",
+    "coding",
+    "package-manager",
+    "rules",
+    "commands",
+    "agents",
+    "groundzero",
+    "g0",
+    "gpm"
+  ],
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -15,16 +30,6 @@
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [
-    "cli",
-    "commander",
-    "typescript",
-    "g0",
-    "gpm"
-  ],
-  "author": "",
-  "license": "ISC",
-  "description": "A basic CLI tool built with Commander and TypeScript",
   "dependencies": {
     "commander": "^14.0.0",
     "gray-matter": "^4.0.3",
