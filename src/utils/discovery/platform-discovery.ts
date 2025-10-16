@@ -128,7 +128,8 @@ export async function processPlatformSubdirectories(
   baseDir: string,
   formulaName: string,
   platformName: Platformish,
-  formulaDir?: string
+  formulaDir?: string,
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
   const definition = getPlatformDefinition(platformName as Platform);
   const allFiles: DiscoveredFile[] = [];
@@ -148,7 +149,7 @@ export async function processPlatformSubdirectories(
         'platform',
         formulaDir,
         true,
-        shouldIncludeMarkdownFile
+        isDirectoryMode
       );
       allFiles.push(...files);
     }
@@ -157,17 +158,6 @@ export async function processPlatformSubdirectories(
   return allFiles;
 }
 
-/**
- * Discover platform subdirectories (rules/commands/agents) within a specific source directory
- * This searches for universal subdirectory names regardless of platform context
- */
-export async function discoverPlatformSubdirsInDirectory(
-  sourceDir: string,
-  formulaName: string,
-  platformName: Platform
-): Promise<DiscoveredFile[]> {
-  return processPlatformSubdirectories(sourceDir, formulaName, platformName);
-}
 
 /**
  * Process files for a specific platform configuration
@@ -189,12 +179,12 @@ export async function processPlatformFiles(
       'platform',
       formulaDir,
       true,
-      shouldIncludeMarkdownFile
+      isDirectoryMode
     );
   }
 
   // Process platform subdirectories with universal registry paths
-  return processPlatformSubdirectories(config.rootDir, formulaName, config.platform, formulaDir);
+  return processPlatformSubdirectories(config.rootDir, formulaName, config.platform, formulaDir, isDirectoryMode);
 }
 
 /**
@@ -205,47 +195,21 @@ export function shouldIncludeMarkdownFile(
   frontmatter: any,
   sourceDir: Platformish,
   formulaName: string,
-  formulaDirRelativeToAi?: string,
   isDirectoryMode?: boolean
 ): boolean {
-  const mdFileDir = dirname(mdFile.relativePath);
-
-  // For AI directory: include files adjacent to formula.yml or with matching frontmatter
-  if (sourceDir === PLATFORM_DIRS.AI) {
-    if (frontmatter?.formula?.name === formulaName) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (matches formula name in frontmatter)`);
+  // For directory mode in platform directories, include files without conflicting frontmatter
+  if (isDirectoryMode) {
+    if (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName) {
+      logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
       return true;
     }
-
-    // For directory mode, skip the "adjacent to formula.yml" check since there's no formula.yml in source
-    if (!isDirectoryMode && mdFileDir === formulaDirRelativeToAi && (!frontmatter || !frontmatter.formula)) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (adjacent to formula.yml, no conflicting frontmatter)`);
-      return true;
-    }
-
-    // For directory mode, include files without conflicting frontmatter
-    if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
-      logger.debug(`Including ${mdFile.relativePath} from ai (directory mode, no conflicting frontmatter)`);
-      return true;
-    }
-
-    if (frontmatter?.formula?.name && frontmatter.formula.name !== formulaName) {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (frontmatter specifies different formula: ${frontmatter.formula.name})`);
-    } else {
-      logger.debug(`Skipping ${mdFile.relativePath} from ai (not adjacent to formula.yml and no matching frontmatter)`);
-    }
+    logger.debug(`Skipping ${mdFile.relativePath} from ${sourceDir} (directory mode, conflicting frontmatter)`);
     return false;
   }
 
-  // For command directories: only include files with matching frontmatter
+  // Otherwise, include files with matching frontmatter
   if (frontmatter?.formula?.name === formulaName) {
     logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (matches formula name in frontmatter)`);
-    return true;
-  }
-
-  // For directory mode in platform directories, include files without conflicting frontmatter
-  if (isDirectoryMode && (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName)) {
-    logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
     return true;
   }
 

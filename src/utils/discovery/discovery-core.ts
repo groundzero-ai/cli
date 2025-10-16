@@ -5,7 +5,7 @@ import {
   buildPlatformSearchConfig,
   processPlatformFiles,
   parsePlatformDirectory,
-  discoverPlatformSubdirsInDirectory
+  processPlatformSubdirectories
 } from './platform-discovery.js';
 import type { Platformish } from './file-processing.js';
 import { mapPlatformFileToUniversal } from '../platform-mapper.js';
@@ -109,9 +109,9 @@ export async function discoverFilesForPattern(
     
     // 2. Platform subdirectory discovery (rules/, commands/, agents/)
     if (platformInfo.platformName !== PLATFORM_DIRS.AI) {
-      const platformSubdirFiles = await discoverPlatformSubdirsInDirectory(
-        sourceDir, 
-        formulaName, 
+      const platformSubdirFiles = await processPlatformSubdirectories(
+        sourceDir,
+        formulaName,
         platformInfo.platformName as Platform
       );
       results.push(...platformSubdirFiles);

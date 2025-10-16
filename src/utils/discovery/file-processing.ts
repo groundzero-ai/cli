@@ -14,6 +14,7 @@ import { mapPlatformFileToUniversal } from '../platform-mapper.js';
 import { getRelativePathFromBase } from '../path-normalization.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import type { Platform } from '../../core/platforms.js';
+import { shouldIncludeMarkdownFile } from './platform-discovery.js';
 
 // Union type for modules that need to handle AI directory alongside platforms
 export type Platformish = Platform | typeof PLATFORM_DIRS.AI;
@@ -73,7 +74,7 @@ export async function processFileForDiscovery(
   registryPathPrefix: string,
   inclusionMode: 'directory' | 'platform',
   formulaDir?: string,
-  shouldIncludeMarkdownFile?: (file: { relativePath: string }, frontmatter: any, sourceDir: Platformish, formulaName: string, formulaDirRelativeToAi?: string, isDirectoryMode?: boolean) => boolean
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile | null> {
   try {
     const content = await readTextFile(file.fullPath);
@@ -85,9 +86,7 @@ export async function processFileForDiscovery(
       frontmatter = null;
     }
 
-    const shouldInclude = inclusionMode === 'directory'
-      ? (!frontmatter || !frontmatter.formula || frontmatter?.formula?.name === formulaName || !frontmatter?.formula?.name)
-      : shouldIncludeMarkdownFile ? shouldIncludeMarkdownFile(file, frontmatter, platformName, formulaName, formulaDir, inclusionMode === 'platform') : true;
+    const shouldInclude = shouldIncludeMarkdownFile(file, frontmatter, platformName, formulaName, isDirectoryMode);
 
     if (shouldInclude) {
       try {
@@ -146,7 +145,7 @@ export async function discoverFiles(
   inclusionMode: 'directory' | 'platform' = 'directory',
   formulaDir?: string,
   recursive: boolean = true,
-  shouldIncludeMarkdownFile?: (file: { relativePath: string }, frontmatter: any, sourceDir: Platformish, formulaName: string, formulaDirRelativeToAi?: string, isDirectoryMode?: boolean) => boolean
+  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile[]> {
   if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
     return [];
@@ -192,7 +191,7 @@ export async function discoverFiles(
 
   // Process files in parallel using the extracted helper
   const processPromises = allFiles.map(async (file) =>
-    processFileForDiscovery(file, formulaName, platformName, registryPathPrefix, inclusionMode, formulaDir, shouldIncludeMarkdownFile)
+    processFileForDiscovery(file, formulaName, platformName, registryPathPrefix, inclusionMode, formulaDir, isDirectoryMode)
   );
 
   const results = await Promise.all(processPromises);
