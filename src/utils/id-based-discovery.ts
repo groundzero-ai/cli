@@ -13,7 +13,7 @@ import { formulaManager } from '../core/formula.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, PLATFORM_DIRS, type Platform } from '../constants/index.js';
 import { findFilesByExtension } from './discovery/file-processing.js';
-import type { FileIdInfo } from '../types/index.js';
+import type { FileIdInfo, FormulaFile } from '../types/index.js';
 
 /**
  * Information about a registry file with its ID and adjacent files
@@ -186,6 +186,43 @@ export async function buildRegistryIdMap(
   }
   
   return registryMap;
+}
+
+/**
+ * Load platform-specific YAML override files from the registry for a formula version.
+ * Matches files in universal subdirs with pattern: "{subdir}/{base}.{platform}.yml"
+ */
+export async function loadRegistryYamlOverrides(
+  formulaName: string,
+  version: string
+): Promise<FormulaFile[]> {
+  const overrides: FormulaFile[] = [];
+
+  // Load formula from registry
+  const formula = await formulaManager.loadFormula(formulaName, version);
+
+  // Known platforms for suffix matching
+  const { PLATFORMS, UNIVERSAL_SUBDIRS } = await import('../constants/index.js');
+  const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
+  const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
+
+  for (const file of formula.files) {
+    const path = file.path;
+    // Must be in a universal subdir
+    if (!subdirs.some(sd => path.startsWith(sd + '/'))) continue;
+    // Must end with .yml and have a platform suffix before it
+    if (!path.endsWith('.yml')) continue;
+
+    const lastDot = path.lastIndexOf('.');
+    const secondLastDot = path.lastIndexOf('.', lastDot - 1);
+    if (secondLastDot === -1) continue;
+    const possiblePlatform = path.slice(secondLastDot + 1, lastDot);
+    if (!platformValues.includes(possiblePlatform)) continue;
+
+    overrides.push({ path: file.path, content: file.content, encoding: 'utf8' });
+  }
+
+  return overrides;
 }
 
 /**

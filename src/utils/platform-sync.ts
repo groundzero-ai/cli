@@ -11,7 +11,7 @@ import { FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import type { FormulaFile } from '../types/index.js';
 import { parseUniversalPath } from './platform-file.js';
-import { mergeFrontmatter } from './md-frontmatter.js';
+import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
 
 /**
  * Result of platform sync operation
@@ -31,21 +31,13 @@ function mergePlatformOverrideContent(
   relPath: string,
   formulaFiles: FormulaFile[]
 ): string {
-  try {
-    if (!relPath.endsWith(FILE_PATTERNS.MD_FILES)) return universalContent;
-
-    const base = relPath.slice(0, -FILE_PATTERNS.MD_FILES.length);
-    const ymlPath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
-    const matchingYml = formulaFiles.find(f => f.path === ymlPath);
-
-    if (matchingYml?.content?.trim()) {
-      return mergeFrontmatter(universalContent, matchingYml.content);
-    }
-  } catch {
-    // Fall back to universal content on error
-  }
-
-  return universalContent;
+  return mergePlatformYamlOverride(
+    universalContent,
+    targetPlatform as any,
+    universalSubdir,
+    relPath,
+    formulaFiles
+  );
 }
 
 

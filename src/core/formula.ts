@@ -219,6 +219,7 @@ export class FormulaManager {
     return [
       '*.md',
       '*.mdc',
+      '*.yml',
       'formula.yml'
     ];
   }

@@ -18,7 +18,9 @@ import {
   cleanupInvalidFormulaFiles,
   type RegistryFileInfo
 } from './id-based-discovery.js';
-import { getPlatformSpecificFilename } from './platform-file.js';
+import { getPlatformSpecificFilename, parseUniversalPath } from './platform-file.js';
+import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
+import { loadRegistryYamlOverrides } from './id-based-discovery.js';
 
 /**
  * Result of ID-based installation
@@ -70,6 +72,9 @@ export async function installPlatformFilesById(
     forceOverwrite
   });
 
+  // Load YAML overrides once per install (used lazily per platform)
+  const yamlOverrides = await loadRegistryYamlOverrides(formulaName, version);
+
   // Step 1: Build cwd ID map
   const cwdIdMap = await buildCwdIdMap(cwd, platforms, formulaName);
   logger.debug(`Found ${Array.from(cwdIdMap.values()).reduce((sum, arr) => sum + arr.length, 0)} files with valid IDs in cwd`);
@@ -112,7 +117,8 @@ export async function installPlatformFilesById(
         cwdIdMap,
         options,
         forceOverwrite,
-        result
+        result,
+        yamlOverrides
       );
     }
   }
@@ -133,7 +139,8 @@ async function processBatchOfFilesForPlatform(
   cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
   options: InstallOptions,
   forceOverwrite: boolean,
-  result: IdBasedInstallResult
+  result: IdBasedInstallResult,
+  yamlOverrides: import('../types/index.js').FormulaFile[]
 ): Promise<void> {
   // Separate files into those with matching IDs and new files
   const matchingFiles: RegistryFileInfo[] = [];
@@ -159,12 +166,12 @@ async function processBatchOfFilesForPlatform(
 
   // Process matching files (update/overwrite at current cwd location)
   for (const file of matchingFiles) {
-    await processMatchingFileForPlatform(file, platform, cwdIdMap, options, forceOverwrite, result, cwd);
+    await processMatchingFileForPlatform(file, platform, cwdIdMap, options, forceOverwrite, result, cwd, yamlOverrides);
   }
 
   // Process new files (install to adjacent file location or use registry path)
   if (newFiles.length > 0) {
-    await processNewFilesForPlatform(cwd, platform, parentDir, newFiles, cwdIdMap, options, result);
+    await processNewFilesForPlatform(cwd, platform, parentDir, newFiles, cwdIdMap, options, result, yamlOverrides);
   }
 }
 
@@ -180,7 +187,8 @@ async function processMatchingFileForPlatform(
   options: InstallOptions,
   forceOverwrite: boolean,
   result: IdBasedInstallResult,
-  cwd: string
+  cwd: string,
+  yamlOverrides: import('../types/index.js').FormulaFile[]
 ): Promise<void> {
   const cwdEntries = cwdIdMap.get(registryFile.id!);
   if (!cwdEntries || cwdEntries.length === 0) return;
@@ -213,8 +221,20 @@ async function processMatchingFileForPlatform(
     }
 
   try {
+    // Merge platform YAML override if present for this platform and path
+    const parsedUniversal = parseUniversalPath(registryFile.registryPath);
+    const mergedContent = parsedUniversal
+      ? mergePlatformYamlOverride(
+          registryFile.content,
+          platform,
+          parsedUniversal.universalSubdir,
+          parsedUniversal.relPath,
+          yamlOverrides
+        )
+      : registryFile.content;
+
     // Write updated content
-    await writeTextFile(currentPath, registryFile.content);
+    await writeTextFile(currentPath, mergedContent);
     
     // Rename if needed
     if (needsRename) {
@@ -247,7 +267,8 @@ async function processNewFilesForPlatform(
   files: RegistryFileInfo[],
   cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
   options: InstallOptions,
-  result: IdBasedInstallResult
+  result: IdBasedInstallResult,
+  yamlOverrides: import('../types/index.js').FormulaFile[]
 ): Promise<void> {
   // Collect all adjacent IDs from these files
   const allAdjacentIds = new Set<string>();
@@ -289,7 +310,7 @@ async function processNewFilesForPlatform(
 
   // Install each file to this platform
   for (const file of files) {
-    await installNewFile(cwd, targetDir, file, platform, options, result);
+    await installNewFile(cwd, targetDir, file, platform, options, result, yamlOverrides);
   }
 }
 
@@ -330,7 +351,8 @@ async function installNewFile(
   file: RegistryFileInfo,
   platform: Platform,
   options: InstallOptions,
-  result: IdBasedInstallResult
+  result: IdBasedInstallResult,
+  yamlOverrides: import('../types/index.js').FormulaFile[]
 ): Promise<void> {
   const platformSpecificFileName = getPlatformSpecificFilename(file.registryPath, platform);
   const targetPath = join(targetDir, platformSpecificFileName);
@@ -347,9 +369,21 @@ async function installNewFile(
   try {
     // Ensure directory exists
     await ensureDir(targetDir);
-    
+
+    // Merge platform YAML override if present
+    const parsedUniversal = parseUniversalPath(file.registryPath);
+    const mergedContent = parsedUniversal
+      ? mergePlatformYamlOverride(
+          file.content,
+          platform,
+          parsedUniversal.universalSubdir,
+          parsedUniversal.relPath,
+          yamlOverrides
+        )
+      : file.content;
+
     // Write file
-    await writeTextFile(targetPath, file.content);
+    await writeTextFile(targetPath, mergedContent);
     
     result.installed++;
     const relativePath = relative(cwd, targetPath);
