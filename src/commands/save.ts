@@ -29,6 +29,8 @@ import { getLocalFormulaYmlPath } from '../utils/paths.js';
 import { autoNormalizeDirectoryPath } from '../utils/path-normalization.js';
 import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
 import { normalizeFormulaName, areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
+import { PLATFORM_DIRS } from '../constants/index.js';
+import { splitPlatformFileFrontmatter } from '../utils/platform-frontmatter-split.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -259,17 +261,44 @@ async function processDiscoveredFiles(
   const rootFiles = discoveredFiles.filter(f => f.isRootFile);
   const normalFiles = discoveredFiles.filter(f => !f.isRootFile);
 
+  // Build root filenames set (for platform split eligibility checks)
+  const rootFilenamesSet = (() => {
+    const set = new Set<string>();
+    for (const platform of getAllPlatforms()) {
+      const def = getPlatformDefinition(platform);
+      if (def.rootFile) set.add(def.rootFile);
+    }
+    return set;
+  })();
+
+  // Separate files that should bypass conflict resolution to allow per-platform YAML splitting
+  const platformSplitFiles: DiscoveredFile[] = [];
+  const regularFiles: DiscoveredFile[] = [];
+
+  for (const file of normalFiles) {
+    const isPlatformDir = file.sourceDir !== PLATFORM_DIRS.AI;
+    const isRootLike = rootFilenamesSet.has(basename(file.fullPath));
+    const isForcedPlatformSpecific = file.forcePlatformSpecific === true;
+
+    if (isPlatformDir && !isRootLike && !isForcedPlatformSpecific) {
+      // This file will undergo platform frontmatter splitting; include as-is (no conflict resolution)
+      platformSplitFiles.push(file);
+    } else {
+      regularFiles.push(file);
+    }
+  }
+
   // Resolve root file conflicts separately
   const resolvedRootFiles = await resolveRootFileConflicts(rootFiles, formulaConfig.version, /* silent */ true);
 
-  // Resolve normal file conflicts
-  const resolvedNormalFiles = await resolvePlatformFileConflicts(normalFiles, formulaConfig.version, /* silent */ true);
+  // Resolve conflicts for regular files only
+  const resolvedRegularFiles = await resolvePlatformFileConflicts(regularFiles, formulaConfig.version, /* silent */ true);
 
-  // Combine resolved files
-  const resolvedFiles = [...resolvedRootFiles, ...resolvedNormalFiles];
+  // Combine: resolved root + resolved regular + platform-split (unresolved) files
+  const combinedFiles = [...resolvedRootFiles, ...resolvedRegularFiles, ...platformSplitFiles];
 
   // Create formula files array
-  return await createFormulaFilesUnified(formulaYmlPath, formulaConfig, resolvedFiles);
+  return await createFormulaFilesUnified(formulaYmlPath, formulaConfig, combinedFiles);
 }
 
 
@@ -529,9 +558,20 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
       };
     }
 
+    // Try platform frontmatter splitting first
+    const splitResult = await splitPlatformFileFrontmatter(
+      mdFile,
+      formulaConfig,
+      rootFilenamesSet,
+      LOG_PREFIXES.UPDATED
+    );
+
+    if (splitResult) {
+      return splitResult;
+    }
+
     const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name, ensureId: true });
 
-    // Update source file if content changed
     if (updatedContent !== originalContent) {
       await writeTextFile(mdFile.fullPath, updatedContent);
       console.log(`${LOG_PREFIXES.UPDATED} ${mdFile.relativePath}`);
@@ -545,7 +585,30 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
   });
 
   const results = await Promise.all(mdFilePromises);
-  return results.filter(Boolean) as FormulaFile[];
+  // Flatten any arrays returned (when YAML + MD are both returned)
+  const flattened: FormulaFile[] = [];
+  for (const r of results) {
+    if (!r) continue;
+    if (Array.isArray(r)) {
+      for (const f of r) if (f) flattened.push(f);
+    } else {
+      flattened.push(r as FormulaFile);
+    }
+  }
+
+  // Deduplicate universal .md files by path, but keep all .yml files
+  const deduped = new Map<string, FormulaFile>();
+  for (const file of flattened) {
+    if (!deduped.has(file.path)) {
+      deduped.set(file.path, file);
+      continue;
+    }
+    // Keep the first .md instance and allow distinct .yml files to accumulate
+    if (file.path.endsWith('.yml')) {
+      deduped.set(file.path, file);
+    }
+  }
+  return Array.from(deduped.values());
 }
 
 /**

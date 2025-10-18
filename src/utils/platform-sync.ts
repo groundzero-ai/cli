@@ -11,6 +11,7 @@ import { FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import type { FormulaFile } from '../types/index.js';
 import { parseUniversalPath } from './platform-file.js';
+import { mergeFrontmatter } from './md-frontmatter.js';
 
 /**
  * Result of platform sync operation
@@ -18,6 +19,33 @@ import { parseUniversalPath } from './platform-file.js';
 export interface PlatformSyncResult {
   created: string[];
   updated: string[];
+}
+
+/**
+ * Merge platform-specific YAML override with universal content
+ */
+function mergePlatformOverrideContent(
+  universalContent: string,
+  targetPlatform: string,
+  universalSubdir: string,
+  relPath: string,
+  formulaFiles: FormulaFile[]
+): string {
+  try {
+    if (!relPath.endsWith(FILE_PATTERNS.MD_FILES)) return universalContent;
+
+    const base = relPath.slice(0, -FILE_PATTERNS.MD_FILES.length);
+    const ymlPath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
+    const matchingYml = formulaFiles.find(f => f.path === ymlPath);
+
+    if (matchingYml?.content?.trim()) {
+      return mergeFrontmatter(universalContent, matchingYml.content);
+    }
+  } catch {
+    // Fall back to universal content on error
+  }
+
+  return universalContent;
 }
 
 
@@ -45,7 +73,9 @@ export async function postSavePlatformSync(
   }
 
   // Filter formula files to only those in universal subdirs (rules, commands, agents)
+  // Only include .md files, not YAML overrides
   const syncableFiles = formulaFiles.filter(file => {
+    if (!file.path.endsWith(FILE_PATTERNS.MD_FILES)) return false;
     const parsed = parseUniversalPath(file.path);
     return parsed !== null;
   });
@@ -94,14 +124,23 @@ export async function postSavePlatformSync(
           }
         }
 
+        // Optionally merge platform-specific YAML override
+        const finalContent = mergePlatformOverrideContent(
+          file.content,
+          target.platform,
+          parsedPath.universalSubdir,
+          parsedPath.relPath,
+          formulaFiles
+        );
+
         // Write the file (overwrite if exists to ensure IDs are propagated)
-        await writeTextFile(target.absFile, file.content, 'utf8');
+        await writeTextFile(target.absFile, finalContent, 'utf8');
 
         // Record as created or updated based on whether contents changed
         const relativePath = relative(cwd, target.absFile);
         if (fileExists) {
           // Only mark as updated if contents actually changed
-          if (existingContent !== file.content) {
+          if (existingContent !== finalContent) {
             result.updated.push(relativePath);
             logger.debug(`Updated synced file: ${target.absFile}`);
           } else {

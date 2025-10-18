@@ -286,3 +286,166 @@ export function removeFormulaFrontmatter(content: string): string {
   return '---' + nl + updatedFrontmatter + nl + '---' + nl + markdownContent;
 }
 
+/**
+ * Extract non-formula frontmatter as a YAML string (preserving comments and ordering).
+ * Returns an empty string if no non-formula frontmatter exists.
+ */
+export function extractNonFormulaFrontmatter(content: string): string {
+  const nl = detectNewline(content);
+  const bounds = findFrontmatterBounds(content, nl);
+  if (!bounds.has) return '';
+
+  const frontmatterContent = content.slice(bounds.start, bounds.end);
+  const lines = frontmatterContent.split(nl);
+
+  // Locate formula block
+  let formulaIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === 'formula:') {
+      formulaIndex = i;
+      break;
+    }
+  }
+
+  if (formulaIndex === -1) {
+    // No formula block: entire frontmatter is non-formula
+    return frontmatterContent.trimEnd();
+  }
+
+  const formulaIndent = lines[formulaIndex].slice(0, lines[formulaIndex].indexOf('f'));
+  const childIndent = formulaIndent + '  ';
+
+  // Identify formula block end (including child lines)
+  let blockStart = formulaIndex;
+  let blockEnd = formulaIndex + 1;
+  while (blockEnd < lines.length && lines[blockEnd].startsWith(childIndent)) {
+    blockEnd++;
+  }
+
+  // Remove the formula comment line directly above if present
+  let removeCommentAt = -1;
+  if (blockStart > 0 && lines[blockStart - 1].trim() === '# GroundZero formula') {
+    removeCommentAt = blockStart - 1;
+  }
+
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i === removeCommentAt) continue;
+    if (i >= blockStart && i < blockEnd) continue; // skip formula block
+    kept.push(lines[i]);
+  }
+
+  // Trim trailing blank lines
+  while (kept.length > 0 && kept[kept.length - 1].trim() === '') kept.pop();
+
+  return kept.join(nl).trimEnd();
+}
+
+/**
+ * Remove all non-formula frontmatter keys, keeping only the GroundZero comment and formula block.
+ * If no frontmatter exists, returns the content unchanged.
+ */
+export function removeNonFormulaFrontmatter(content: string): string {
+  const nl = detectNewline(content);
+  const bounds = findFrontmatterBounds(content, nl);
+  if (!bounds.has) return content;
+
+  const frontmatterContent = content.slice(bounds.start, bounds.end);
+  const markdownContentStart = bounds.end + (nl + '---' + nl).length;
+  const markdownContent = content.slice(markdownContentStart);
+
+  const lines = frontmatterContent.split(nl);
+
+  // Find formula block
+  let formulaIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === 'formula:') {
+      formulaIndex = i;
+      break;
+    }
+  }
+
+  if (formulaIndex === -1) {
+    // No formula block -> drop entire frontmatter
+    return markdownContent;
+  }
+
+  const formulaIndent = lines[formulaIndex].slice(0, lines[formulaIndex].indexOf('f'));
+  const childIndent = formulaIndent + '  ';
+
+  // Identify formula block bounds
+  let blockEnd = formulaIndex + 1;
+  while (blockEnd < lines.length && lines[blockEnd].startsWith(childIndent)) {
+    blockEnd++;
+  }
+
+  const kept: string[] = [];
+  // Ensure comment is present above
+  kept.push('# GroundZero formula');
+  // Push formula block
+  kept.push(lines[formulaIndex]);
+  for (let i = formulaIndex + 1; i < blockEnd; i++) kept.push(lines[i]);
+
+  const updatedFrontmatter = kept.join(nl);
+  return '---' + nl + updatedFrontmatter + nl + '---' + nl + markdownContent;
+}
+
+/**
+ * Merge platform non-formula YAML frontmatter with content containing only formula frontmatter.
+ * The merged result places non-formula YAML first (preserving provided comments), then the
+ * GroundZero formula comment and formula block.
+ */
+export function mergeFrontmatter(formulaOnlyContent: string, nonFormulaYaml: string): string {
+  const nl = detectNewline(formulaOnlyContent);
+  const bounds = findFrontmatterBounds(formulaOnlyContent, nl);
+
+  // If no formula frontmatter, just prepend non-formula YAML as frontmatter
+  if (!bounds.has) {
+    const trimmed = (nonFormulaYaml || '').trim();
+    if (!trimmed) return formulaOnlyContent;
+    return '---' + nl + trimmed + nl + '---' + nl + formulaOnlyContent;
+  }
+
+  const frontmatterContent = formulaOnlyContent.slice(bounds.start, bounds.end);
+  const markdownContentStart = bounds.end + (nl + '---' + nl).length;
+  const markdownContent = formulaOnlyContent.slice(markdownContentStart);
+
+  const fmLines = frontmatterContent.split(nl);
+  // Extract the formula block and its optional comment
+  let formulaIndex = -1;
+  for (let i = 0; i < fmLines.length; i++) {
+    if (fmLines[i].trim() === 'formula:') {
+      formulaIndex = i;
+      break;
+    }
+  }
+
+  if (formulaIndex === -1) {
+    // Unexpected (formula-only should contain formula), fallback to prepend non-formula
+    const trimmed = (nonFormulaYaml || '').trim();
+    if (!trimmed) return formulaOnlyContent;
+    return '---' + nl + trimmed + nl + '---' + nl + formulaOnlyContent;
+  }
+
+  const formulaIndent = fmLines[formulaIndex].slice(0, fmLines[formulaIndex].indexOf('f'));
+  const childIndent = formulaIndent + '  ';
+  let blockEnd = formulaIndex + 1;
+  while (blockEnd < fmLines.length && fmLines[blockEnd].startsWith(childIndent)) blockEnd++;
+
+  // Determine if a comment exists above
+  const hasComment = formulaIndex > 0 && fmLines[formulaIndex - 1].trim() === '# GroundZero formula';
+  const formulaBlock: string[] = [];
+  if (hasComment) formulaBlock.push('# GroundZero formula');
+  formulaBlock.push(fmLines[formulaIndex]);
+  for (let i = formulaIndex + 1; i < blockEnd; i++) formulaBlock.push(fmLines[i]);
+
+  const nonFormula = (nonFormulaYaml || '').trim();
+  const mergedFrontmatter = nonFormula
+    ? nonFormula + nl + formulaBlock.join(nl)
+    : formulaBlock.join(nl);
+
+  return formulaOnlyContent.slice(0, bounds.start - ('---'.length + nl.length)) +
+    '---' + nl + mergedFrontmatter + nl + '---' + nl + markdownContent;
+}
+
