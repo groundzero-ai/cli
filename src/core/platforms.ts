@@ -194,11 +194,6 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
     rootDir: PLATFORM_DIRS.QWEN,
     rootFile: FILE_PATTERNS.QWEN_MD,
     subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
       [UNIVERSAL_SUBDIRS.AGENTS]: {
         path: 'agents',
         readExts: [FILE_PATTERNS.MD_FILES],
@@ -275,7 +270,9 @@ export function getPlatformDefinition(name: Platform): PlatformDefinition {
  * Get all platforms
  */
 export function getAllPlatforms(): Platform[] {
-  return Object.values(PLATFORMS) as Platform[];
+  const allPlatforms = Object.values(PLATFORMS) as Platform[];
+  // Temporarily disable GEMINI platform
+  return allPlatforms.filter(platform => platform !== PLATFORMS.GEMINI);
 }
 
 /**
