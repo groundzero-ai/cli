@@ -11,7 +11,7 @@ import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml 
 import { FILE_PATTERNS } from '../constants/index.js';
 
 import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
-import { getTargetDirectory, getTargetFilePath } from '../utils/platform-utils.js';
+import { resolveTargetDirectory, resolveTargetFilePath } from '../utils/platform-mapper.js';
 import { resolvePlatformFileConflicts } from '../utils/platform-conflict-resolution.js';
 import { resolveRootFileConflicts } from '../utils/root-conflict-resolution.js';
 import { discoverFilesForPattern } from '../utils/discovery/discovery-core.js';
@@ -714,7 +714,7 @@ async function saveFormulaToRegistry(
     const directoryGroups = new Map<string, FormulaFile[]>();
     
     for (const file of files) {
-      const targetDir = getTargetDirectory(targetPath, file.path);
+      const targetDir = resolveTargetDirectory(targetPath, file.path);
       if (!directoryGroups.has(targetDir)) {
         directoryGroups.set(targetDir, []);
       }
@@ -726,7 +726,7 @@ async function saveFormulaToRegistry(
       await ensureDir(dir);
       
       const filePromises = dirFiles.map(async (file) => {
-        const filePath = getTargetFilePath(dir, file.path);
+        const filePath = resolveTargetFilePath(dir, file.path);
         await writeTextFile(filePath, file.content, file.encoding as BufferEncoding || UTF8_ENCODING);
       });
       

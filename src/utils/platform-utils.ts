@@ -274,19 +274,4 @@ export function getPlatformNameFromSource(sourceDir: string): string {
 }
 
 
-/**
- * Get the appropriate target directory for saving a file based on its registry path
- * Delegates to centralized platform mapping for consistency
- */
-export function getTargetDirectory(targetPath: string, registryPath: string): string {
-  return resolveTargetDirectory(targetPath, registryPath);
-}
-
-/**
- * Get the appropriate target file path for saving
- * Delegates to centralized platform mapping for consistency
- */
-export function getTargetFilePath(targetDir: string, registryPath: string): string {
-  return resolveTargetFilePath(targetDir, registryPath);
-}
 
