@@ -1,4 +1,4 @@
-import { join, isAbsolute, dirname } from 'path';
+import { join } from 'path';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORM_DIRS } from '../../constants/index.js';
 import { discoverFiles } from './file-processing.js';
 import {
@@ -12,7 +12,6 @@ import { mapPlatformFileToUniversal } from '../platform-mapper.js';
 import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import { normalizePathForProcessing } from '../path-normalization.js';
-import { isFile } from '../fs.js';
 import { discoverFromIndexYmlRecursive } from './index-yml-discovery.js';
 
 /**
@@ -89,77 +88,20 @@ async function discoverDirectMdFilesWithOptions(
  */
 export async function discoverFilesForPattern(
   formulaDir: string,
-  formulaName: string,
-  directoryPath?: string
+  formulaName: string
 ): Promise<DiscoveredFile[]> {
-  // No directory path: use unified discovery from formula directory
-  if (!directoryPath) {
-    const unified = await discoverMdFilesUnified(formulaDir, formulaName);
-    // Also attempt index.yml discovery at project root and platform roots
-    const cwd = process.cwd();
-    const indexAtRoot = await discoverFromIndexYmlRecursive(cwd, formulaName);
-    const platformConfigs = await buildPlatformSearchConfig(cwd);
-    const indexAtPlatformsResults = await Promise.all(platformConfigs.map(async (cfg) => {
-      // cfg.rootDir is relative (e.g., 'cursor'), make absolute
-      const absRoot = join(cwd, cfg.rootDir);
-      return discoverFromIndexYmlRecursive(absRoot, formulaName);
-    }));
-    const indexAtPlatforms = indexAtPlatformsResults.flat();
-    return dedupeDiscoveredFilesPreferUniversal([...unified, ...indexAtRoot, ...indexAtPlatforms]);
-  }
-
-  // Directory or file path provided: normalize to directory
-  const sourcePathAbs = isAbsolute(directoryPath) ? directoryPath : join(process.cwd(), directoryPath);
-  const sourceDir = (await isFile(sourcePathAbs)) ? dirname(sourcePathAbs) : sourcePathAbs;
-  const platformInfo = parsePlatformDirectory(sourceDir);
-  const results: DiscoveredFile[] = [];
-
-  if (platformInfo) {
-    // Platform-specific directory: search for files recursively AND platform subdirectories
-    
-    // 1. Recursive file discovery in the platform directory
-    const recursiveFiles = await discoverDirectMdFilesWithOptions(sourceDir, formulaName, platformInfo, true);
-    results.push(...recursiveFiles);
-    
-    // 2. Platform subdirectory discovery (rules/, commands/, agents/)
-    if (platformInfo.platformName !== PLATFORM_DIRS.AI) {
-      const platformSubdirFiles = await processPlatformSubdirectories(
-        sourceDir,
-        formulaName,
-        platformInfo.platformName as Platform
-      );
-      results.push(...platformSubdirFiles);
-    }
-
-    // Exclude accidental ai/ mappings when using a platform-specific directory
-    const filteredResults = results.filter((f) => {
-      const normalizedRegistryPath = normalizePathForProcessing(f.registryPath);
-      return !(normalizedRegistryPath === PLATFORM_DIRS.AI || normalizedRegistryPath.startsWith(`${PLATFORM_DIRS.AI}/`));
-    });
-
-    // 3. Index.yml discovery within the platform directory (recursive)
-    const indexFiles = await discoverFromIndexYmlRecursive(sourceDir, formulaName);
-
-    // Add global frontmatter matches and dedupe
-    const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
-    filteredResults.push(...indexFiles, ...globalFiles);
-    return dedupeDiscoveredFilesPreferUniversal(filteredResults);
-  }
-
-  // Non-platform directory: search for platform subdirectories + direct files
-  const platformSubdirFiles = await discoverMdFilesUnified(formulaDir, formulaName, undefined, true);
-  results.push(...platformSubdirFiles);
-
-  const directFiles = await discoverDirectMdFilesWithOptions(sourceDir, formulaName, null, false);
-  results.push(...directFiles);
-
-  // Index.yml discovery for non-platform directory (recursive)
-  const indexFiles = await discoverFromIndexYmlRecursive(sourceDir, formulaName);
-
-  // Add global frontmatter matches and dedupe
-  const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
-  results.push(...indexFiles, ...globalFiles);
-  return dedupeDiscoveredFilesPreferUniversal(results);
+  const unified = await discoverMdFilesUnified(formulaDir, formulaName);
+  // Also attempt index.yml discovery at project root and platform roots
+  const cwd = process.cwd();
+  const indexAtRoot = await discoverFromIndexYmlRecursive(cwd, formulaName);
+  const platformConfigs = await buildPlatformSearchConfig(cwd);
+  const indexAtPlatformsResults = await Promise.all(platformConfigs.map(async (cfg) => {
+    // cfg.rootDir is relative (e.g., 'cursor'), make absolute
+    const absRoot = join(cwd, cfg.rootDir);
+    return discoverFromIndexYmlRecursive(absRoot, formulaName);
+  }));
+  const indexAtPlatforms = indexAtPlatformsResults.flat();
+  return dedupeDiscoveredFilesPreferUniversal([...unified, ...indexAtRoot, ...indexAtPlatforms]);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, basename, dirname, isAbsolute } from 'path';
+import { join, dirname, basename } from 'path';
 import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
@@ -26,7 +26,6 @@ import { postSavePlatformSync } from '../utils/platform-sync.js';
 import { syncRootFiles } from '../utils/root-file-sync.js';
 import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../utils/root-file-extractor.js';
 import { getLocalFormulaYmlPath } from '../utils/paths.js';
-import { autoNormalizeDirectoryPath } from '../utils/path-normalization.js';
 import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
 import { normalizeFormulaName, areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
 import { PLATFORM_DIRS } from '../constants/index.js';
@@ -82,24 +81,14 @@ const LOG_PREFIXES = {
 
 /**
  * Parse formula inputs to handle three usage patterns:
- * 1. Explicit name + directory: formula-name /path/to/dir
- * 2. Directory only: /path/to/dir
- * 3. Formula name only: formula-name or formula-name@version
+ * Only support formula name input patterns now:
+ * - formula-name
+ * - formula-name@version
  */
-function parseFormulaInputs(formulaName: string, directory?: string): {
+function parseFormulaInputs(formulaName: string): {
   name: string;
   version?: string;
-  directoryPath?: string;
 } {
-  // Pattern 1: Explicit name + directory
-  if (directory) {
-    validateFormulaName(formulaName);
-    return {
-      name: normalizeFormulaName(formulaName),
-      directoryPath: directory
-    };
-  }
-
   // Check if this looks like a scoped formula name (@scope/name)
   // Handle this before path normalization to avoid treating it as a directory
   const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
@@ -110,38 +99,18 @@ function parseFormulaInputs(formulaName: string, directory?: string): {
     };
   }
 
-  // Auto-normalize potential directory paths
-  const normalizedInput = autoNormalizeDirectoryPath(formulaName);
-
-  // Pattern 2: Directory path as first argument (now catches auto-normalized paths)
-  if (isAbsolute(normalizedInput) || normalizedInput.startsWith('./') || normalizedInput.startsWith('../')) {
-    const directoryPath = normalizedInput;
-    const name = basename(directoryPath);
-
-    if (!name) {
-      throw new ValidationError(`Invalid directory path: ${formulaName}`);
-    }
-
-    validateFormulaName(name);
-
-    return {
-      name: normalizeFormulaName(name),
-      directoryPath
-    };
-  }
-
-  // Pattern 3: Formula name with optional version
-  const atIndex = normalizedInput.lastIndexOf('@');
+  // Formula name with optional version
+  const atIndex = formulaName.lastIndexOf('@');
 
   if (atIndex === -1) {
-    validateFormulaName(normalizedInput);
+    validateFormulaName(formulaName);
     return {
-      name: normalizeFormulaName(normalizedInput)
+      name: normalizeFormulaName(formulaName)
     };
   }
 
-  const name = normalizedInput.substring(0, atIndex);
-  const version = normalizedInput.substring(atIndex + 1);
+  const name = formulaName.substring(0, atIndex);
+  const version = formulaName.substring(atIndex + 1);
 
   if (!name || !version) {
     throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_SYNTAX.replace('%s', formulaName));
@@ -301,16 +270,14 @@ async function processDiscoveredFiles(
 
 /**
  * Main implementation of the save formula command
- * Handles three usage patterns: explicit name+directory, directory-only, and formula name
- * @param formulaName - Formula name or directory path
- * @param directory - Optional directory path when using explicit name+directory pattern
+ * Now only supports specifying the formula name (optionally with @version)
+ * @param formulaName - Formula name (optionally name@version)
  * @param versionType - Optional version type ('stable')
  * @param options - Command options (force, bump, etc.)
  * @returns Promise resolving to command result
  */
 async function saveFormulaCommand(
   formulaName: string,
-  directory?: string,
   versionType?: string,
   options?: SaveOptions
 ): Promise<CommandResult> {
@@ -333,7 +300,7 @@ async function saveFormulaCommand(
 
     // Pre-save all included formulas first (skip linking to avoid premature writes)
     for (const dep of uniqueNames) {
-      const res = await saveFormulaCommand(dep, undefined, undefined, {
+      const res = await saveFormulaCommand(dep, undefined, {
         force: options?.force,
         bump: options?.bump,
         skipProjectLink: true
@@ -345,9 +312,9 @@ async function saveFormulaCommand(
   }
 
   // Parse inputs to determine the pattern being used
-  const { name, version: explicitVersion, directoryPath } = parseFormulaInputs(formulaName, directory);
+  const { name, version: explicitVersion } = parseFormulaInputs(formulaName);
 
-  logger.debug(`Saving formula with name: ${name}`, { explicitVersion, directoryPath, options });
+  logger.debug(`Saving formula with name: ${name}`, { explicitVersion, options });
 
   // Initialize formula environment
   await ensureRegistryDirectories();
@@ -428,7 +395,7 @@ async function saveFormulaCommand(
   }
 
   // Discover and include MD files using appropriate logic
-  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name, directoryPath);
+  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name);
 
   // Discover all platform root files (AGENTS.md, CLAUDE.md, GEMINI.md, etc.) at project root
   const rootFilesDiscovered = await discoverAllRootFiles(cwd, formulaConfig.name);
@@ -830,36 +797,24 @@ async function saveFormulaToRegistry(
 export function setupSaveCommand(program: Command): void {
   program
     .command('save')
-    .argument('<formula-name>', 'formula name or directory path (/path/to/dir)')
-    .argument('[directory]', 'directory path to save from (optional, /path/to/dir)')
+    .argument('<formula-name>', 'formula name (optionally formula-name@version)')
     .argument('[version-type]', 'version type: stable (optional)')
-    .description('Save a formula to local registry. \n' +
-      'Usage patterns:\n' +
-      '  g0 save <formula-name> <directory>    # Save MD files from directory to named formula\n' +
-      '  g0 save <formula-name>                # Save MD files for existing formula\n' +
-      '  g0 save /path/to/dir                  # Save directory as formula (auto-named)\n' +
+    .description('Save a formula to local registry.\n' +
+      'Usage:\n' +
+      '  g0 save <formula-name>                # Detects files and saves to registry\n' +
+      '  g0 save <formula-name> stable        # Save as stable version (with optional --bump)\n' +
       'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
     .option('--include <names...>', 'Include formulas into main formula.yml')
     .option('--include-dev <names...>', 'Include dev formulas into main formula.yml')
-    .action(withErrorHandling(async (formulaName: string, directory?: string, versionType?: string, options?: SaveOptions) => {
-      // Smart argument detection: 'stable' as second argument is treated as version type
-      let actualDirectory = directory;
-      let actualVersionType = versionType;
-
-      if (directory === 'stable' && !versionType) {
-        // Second argument is 'stable' - treat as version type
-        actualVersionType = directory;
-        actualDirectory = undefined;
-      }
-
+    .action(withErrorHandling(async (formulaName: string, versionType?: string, options?: SaveOptions) => {
       // Validate version type argument
-      if (actualVersionType && actualVersionType !== VERSION_TYPE_STABLE) {
-        throw new ValidationError(ERROR_MESSAGES.INVALID_VERSION_TYPE.replace('%s', actualVersionType).replace('%s', VERSION_TYPE_STABLE));
+      if (versionType && versionType !== VERSION_TYPE_STABLE) {
+        throw new ValidationError(ERROR_MESSAGES.INVALID_VERSION_TYPE.replace('%s', versionType).replace('%s', VERSION_TYPE_STABLE));
       }
 
-      const result = await saveFormulaCommand(formulaName, actualDirectory, actualVersionType, options);
+      const result = await saveFormulaCommand(formulaName, versionType, options);
       if (!result.success) {
         throw new Error(result.error || 'Save operation failed');
       }
