@@ -29,9 +29,20 @@ export async function installAiFiles(
     // Get formula from registry
     const formula = await formulaManager.loadFormula(formulaName, version);
 
-    // Filter to only install AI directory files (those starting with ai/)
+    // Filter to only install AI directory files (those starting with ai/) using AI include patterns
     const aiPrefix = `${PLATFORM_DIRS.AI}/`;
-    const filesToInstall = formula.files.filter(file => file.path.startsWith(aiPrefix));
+    const includePatterns = formulaManager.getAiIncludePatterns();
+    const filesToInstall = formula.files
+      .filter(file => file.path.startsWith(aiPrefix))
+      .filter(file => {
+        if (!includePatterns || includePatterns.length === 0) return true;
+        const aiRelPath = file.path.slice(aiPrefix.length);
+        // Simple glob-like matching consistent with fs.walkFiles
+        return includePatterns.some(pattern => {
+          const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\?/g, '.'));
+          return regex.test(aiRelPath);
+        });
+      });
 
     if (filesToInstall.length === 0) {
       logger.debug(`No AI directory files to install for ${formulaName}@${version || 'latest'}`);

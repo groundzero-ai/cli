@@ -187,8 +187,8 @@ export class FormulaManager {
     const files: FormulaFile[] = [];
     
     try {
-      // Get default include patterns to filter for specific file types
-      const includePatterns = this.getDefaultIncludePatterns();
+      // Get formula file patterns to filter for specific file types
+      const includePatterns = this.getFormulaFilePatterns();
       
       // Get all files recursively in the formula directory
       for await (const fullPath of walkFiles(formulaPath, includePatterns)) {
@@ -210,17 +210,25 @@ export class FormulaManager {
     }
   }
   
-  
-  
   /**
-   * Get default include patterns
+   * Get formula file patterns
    */
-  private getDefaultIncludePatterns(): string[] {
+  private getFormulaFilePatterns(): string[] {
     return [
       '*.md',
       '*.mdc',
       '*.yml',
       'formula.yml'
+    ];
+  }
+
+  /**
+   * Get include patterns for AI directory installation.
+   * Only markdown files should be considered for copying to ai/.
+   */
+  public getAiIncludePatterns(): string[] {
+    return [
+      '*.md'
     ];
   }
   

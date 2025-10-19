@@ -7,8 +7,8 @@ import { generateEntityId, isValidEntityId } from './entity-id.js';
 export interface MarkdownFrontmatter {
   formula?: {
     name: string;
-    platformSpecific?: boolean;
     id?: string;
+    platformSpecific?: boolean;
   };
 }
 
