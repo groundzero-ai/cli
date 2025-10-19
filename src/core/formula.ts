@@ -1,5 +1,6 @@
 import { join, relative, dirname } from 'path';
 import { Formula, FormulaFile } from '../types/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import { 
   exists, 
   walkFiles, 
@@ -187,11 +188,9 @@ export class FormulaManager {
     const files: FormulaFile[] = [];
     
     try {
-      // Get formula file patterns to filter for specific file types
-      const includePatterns = this.getFormulaFilePatterns();
-      
+      // Include all file types (no filtering)
       // Get all files recursively in the formula directory
-      for await (const fullPath of walkFiles(formulaPath, includePatterns)) {
+      for await (const fullPath of walkFiles(formulaPath)) {
         const relativePath = relative(formulaPath, fullPath);
         const content = await readTextFile(fullPath);
 
@@ -210,27 +209,6 @@ export class FormulaManager {
     }
   }
   
-  /**
-   * Get formula file patterns
-   */
-  private getFormulaFilePatterns(): string[] {
-    return [
-      '*.md',
-      '*.mdc',
-      '*.yml',
-      'formula.yml'
-    ];
-  }
-
-  /**
-   * Get include patterns for AI directory installation.
-   * Only markdown files should be considered for copying to ai/.
-   */
-  public getAiIncludePatterns(): string[] {
-    return [
-      '*.md'
-    ];
-  }
   
 }
 

@@ -2,9 +2,9 @@ import matter from 'gray-matter';
 import { generateEntityId, isValidEntityId } from './entity-id.js';
 
 /**
- * Interface for markdown frontmatter
+ * Interface for formula marker YAML
  */
-export interface MarkdownFrontmatter {
+export interface FormulaMarkerYml {
   formula?: {
     name: string;
     id?: string;
@@ -15,7 +15,7 @@ export interface MarkdownFrontmatter {
 /**
  * Parse YAML frontmatter from markdown file content
  */
-export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter | null {
+export function parseMarkdownFrontmatter(content: string): FormulaMarkerYml | null {
   try {
     const parsed = matter(content);
     
@@ -24,7 +24,7 @@ export function parseMarkdownFrontmatter(content: string): MarkdownFrontmatter |
       return null;
     }
     
-    const frontmatter = parsed.data as MarkdownFrontmatter;
+    const frontmatter = parsed.data as FormulaMarkerYml;
     
     // Validate formula name field - must be defined and non-empty
     if (frontmatter.formula?.name === undefined || frontmatter.formula.name === '') {

@@ -1,4 +1,4 @@
-import { join, isAbsolute } from 'path';
+import { join, isAbsolute, dirname } from 'path';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORM_DIRS } from '../../constants/index.js';
 import { discoverFiles } from './file-processing.js';
 import {
@@ -12,6 +12,8 @@ import { mapPlatformFileToUniversal } from '../platform-mapper.js';
 import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import { normalizePathForProcessing } from '../path-normalization.js';
+import { isFile } from '../fs.js';
+import { discoverFromIndexYmlRecursive } from './index-yml-discovery.js';
 
 /**
  * Get file patterns for a given platform info
@@ -92,12 +94,24 @@ export async function discoverFilesForPattern(
 ): Promise<DiscoveredFile[]> {
   // No directory path: use unified discovery from formula directory
   if (!directoryPath) {
-    return discoverMdFilesUnified(formulaDir, formulaName);
+    const unified = await discoverMdFilesUnified(formulaDir, formulaName);
+    // Also attempt index.yml discovery at project root and platform roots
+    const cwd = process.cwd();
+    const indexAtRoot = await discoverFromIndexYmlRecursive(cwd, formulaName);
+    const platformConfigs = await buildPlatformSearchConfig(cwd);
+    const indexAtPlatformsResults = await Promise.all(platformConfigs.map(async (cfg) => {
+      // cfg.rootDir is relative (e.g., 'cursor'), make absolute
+      const absRoot = join(cwd, cfg.rootDir);
+      return discoverFromIndexYmlRecursive(absRoot, formulaName);
+    }));
+    const indexAtPlatforms = indexAtPlatformsResults.flat();
+    return dedupeDiscoveredFilesPreferUniversal([...unified, ...indexAtRoot, ...indexAtPlatforms]);
   }
 
-  // Directory path provided: discover files from that directory
-  const sourceDir = isAbsolute(directoryPath) ? directoryPath : join(process.cwd(), directoryPath);
-  const platformInfo = parsePlatformDirectory(directoryPath);
+  // Directory or file path provided: normalize to directory
+  const sourcePathAbs = isAbsolute(directoryPath) ? directoryPath : join(process.cwd(), directoryPath);
+  const sourceDir = (await isFile(sourcePathAbs)) ? dirname(sourcePathAbs) : sourcePathAbs;
+  const platformInfo = parsePlatformDirectory(sourceDir);
   const results: DiscoveredFile[] = [];
 
   if (platformInfo) {
@@ -123,9 +137,12 @@ export async function discoverFilesForPattern(
       return !(normalizedRegistryPath === PLATFORM_DIRS.AI || normalizedRegistryPath.startsWith(`${PLATFORM_DIRS.AI}/`));
     });
 
+    // 3. Index.yml discovery within the platform directory (recursive)
+    const indexFiles = await discoverFromIndexYmlRecursive(sourceDir, formulaName);
+
     // Add global frontmatter matches and dedupe
     const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
-    filteredResults.push(...globalFiles);
+    filteredResults.push(...indexFiles, ...globalFiles);
     return dedupeDiscoveredFilesPreferUniversal(filteredResults);
   }
 
@@ -136,9 +153,12 @@ export async function discoverFilesForPattern(
   const directFiles = await discoverDirectMdFilesWithOptions(sourceDir, formulaName, null, false);
   results.push(...directFiles);
 
+  // Index.yml discovery for non-platform directory (recursive)
+  const indexFiles = await discoverFromIndexYmlRecursive(sourceDir, formulaName);
+
   // Add global frontmatter matches and dedupe
   const globalFiles = await discoverMdFilesUnified(formulaDir, formulaName);
-  results.push(...globalFiles);
+  results.push(...indexFiles, ...globalFiles);
   return dedupeDiscoveredFilesPreferUniversal(results);
 }
 
@@ -146,9 +166,10 @@ export async function discoverFilesForPattern(
  * Dedupe discovered files by source fullPath, preferring universal subdirs over ai
  */
 export function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): DiscoveredFile[] {
-  const preference = (registryPath: string): number => {
+  const preference = (file: DiscoveredFile): number => {
+    if (file.discoveredViaIndexYml) return 100; // Highest priority
     // Normalize registry path to use forward slashes for consistent comparison
-    const normalizedPath = normalizePathForProcessing(registryPath);
+    const normalizedPath = normalizePathForProcessing(file.registryPath);
 
     if (normalizedPath.startsWith(`${UNIVERSAL_SUBDIRS.RULES}/`) || normalizedPath === UNIVERSAL_SUBDIRS.RULES) return 3;
     if (normalizedPath.startsWith(`${UNIVERSAL_SUBDIRS.COMMANDS}/`) || normalizedPath === UNIVERSAL_SUBDIRS.COMMANDS) return 3;
@@ -164,7 +185,7 @@ export function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): D
       map.set(file.fullPath, file);
       continue;
     }
-    if (preference(file.registryPath) > preference(existing.registryPath)) {
+    if (preference(file) > preference(existing)) {
       map.set(file.fullPath, file);
     }
   }

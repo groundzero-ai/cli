@@ -1,7 +1,7 @@
 import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { CONFLICT_RESOLUTION, PLATFORM_DIRS, type Platform } from '../constants/index.js';
+import { CONFLICT_RESOLUTION, PLATFORM_DIRS, FILE_PATTERNS, type Platform } from '../constants/index.js';
 import { logger } from './logger.js';
 import { formulaManager } from '../core/formula.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
@@ -29,20 +29,9 @@ export async function installAiFiles(
     // Get formula from registry
     const formula = await formulaManager.loadFormula(formulaName, version);
 
-    // Filter to only install AI directory files (those starting with ai/) using AI include patterns
+    // Filter to only install AI directory files (those starting with ai/) - allow all file types
     const aiPrefix = `${PLATFORM_DIRS.AI}/`;
-    const includePatterns = formulaManager.getAiIncludePatterns();
-    const filesToInstall = formula.files
-      .filter(file => file.path.startsWith(aiPrefix))
-      .filter(file => {
-        if (!includePatterns || includePatterns.length === 0) return true;
-        const aiRelPath = file.path.slice(aiPrefix.length);
-        // Simple glob-like matching consistent with fs.walkFiles
-        return includePatterns.some(pattern => {
-          const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\?/g, '.'));
-          return regex.test(aiRelPath);
-        });
-      });
+    const filesToInstall = formula.files.filter(file => file.path.startsWith(aiPrefix))
 
     if (filesToInstall.length === 0) {
       logger.debug(`No AI directory files to install for ${formulaName}@${version || 'latest'}`);

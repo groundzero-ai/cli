@@ -246,9 +246,6 @@ async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formula
   }
 }
 
-
-
-
 /**
  * Process discovered files: resolve conflicts and create formula files array
  */
@@ -517,10 +514,10 @@ async function createFormulaYmlFile(formulaYmlPath: string, formulaConfig: Formu
 }
 
 /**
- * Process discovered markdown files and return formula file entries
+ * Process discovered files and return formula file entries
  */
-async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: DiscoveredFile[]): Promise<FormulaFile[]> {
-  // Process discovered MD files in parallel
+async function processFiles(formulaConfig: FormulaYml, discoveredFiles: DiscoveredFile[]): Promise<FormulaFile[]> {
+  // Process discovered files in parallel
   // Build dynamic set of platform root filenames from platform definitions
   const rootFilenamesSet = (() => {
     const set = new Set<string>();
@@ -531,12 +528,12 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
     return set;
   })();
 
-  const mdFilePromises = discoveredFiles.map(async (mdFile) => {
-    const originalContent = await readTextFile(mdFile.fullPath);
+  const filePromises = discoveredFiles.map(async (file) => {
+    const originalContent = await readTextFile(file.fullPath);
 
     // Special handling for root files: ensure marker id and include markers in registry content
     // Supports AGENTS.md and platform-native root files
-    if (rootFilenamesSet.has(basename(mdFile.fullPath))) {
+    if (file.fullPath.endsWith(FILE_PATTERNS.MD_FILES) && rootFilenamesSet.has(basename(file.fullPath))) {
       const ensured = ensureRootMarkerIdAndExtract(originalContent, formulaConfig.name);
       if (!ensured) {
         return null as any;
@@ -544,23 +541,41 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
 
       // If source content changed (id added/updated), write it back to the workspace
       if (ensured.updatedContent !== originalContent) {
-        await writeTextFile(mdFile.fullPath, ensured.updatedContent);
-        console.log(`${LOG_PREFIXES.UPDATED} ${mdFile.relativePath}`);
+        await writeTextFile(file.fullPath, ensured.updatedContent);
+        console.log(`${LOG_PREFIXES.UPDATED} ${file.relativePath}`);
       }
 
       const openMarker = buildOpenMarker(formulaConfig.name, ensured.id);
       const wrapped = `${openMarker}\n${ensured.sectionBody}\n${CLOSE_MARKER}\n`;
 
       return {
-        path: mdFile.registryPath,
+        path: file.registryPath,
         content: wrapped,
+        encoding: UTF8_ENCODING
+      };
+    }
+
+    // If discovered via index.yml, do not modify frontmatter; include content as-is
+    if (file.discoveredViaIndexYml) {
+      return {
+        path: file.registryPath,
+        content: originalContent,
+        encoding: UTF8_ENCODING
+      };
+    }
+
+    // Only markdown files proceed with frontmatter logic
+    if (!file.fullPath.endsWith(FILE_PATTERNS.MD_FILES)) {
+      return {
+        path: file.registryPath,
+        content: originalContent,
         encoding: UTF8_ENCODING
       };
     }
 
     // Try platform frontmatter splitting first
     const splitResult = await splitPlatformFileFrontmatter(
-      mdFile,
+      file,
       formulaConfig,
       rootFilenamesSet,
       LOG_PREFIXES.UPDATED
@@ -573,18 +588,18 @@ async function processMarkdownFiles(formulaConfig: FormulaYml, discoveredFiles: 
     const updatedContent = updateMarkdownWithFormulaFrontmatter(originalContent, { name: formulaConfig.name, ensureId: true });
 
     if (updatedContent !== originalContent) {
-      await writeTextFile(mdFile.fullPath, updatedContent);
-      console.log(`${LOG_PREFIXES.UPDATED} ${mdFile.relativePath}`);
+      await writeTextFile(file.fullPath, updatedContent);
+      console.log(`${LOG_PREFIXES.UPDATED} ${file.relativePath}`);
     }
 
     return {
-      path: mdFile.registryPath,
+      path: file.registryPath,
       content: updatedContent,
       encoding: UTF8_ENCODING
     };
   });
 
-  const results = await Promise.all(mdFilePromises);
+  const results = await Promise.all(filePromises);
   // Flatten any arrays returned (when YAML + MD are both returned)
   const flattened: FormulaFile[] = [];
   for (const r of results) {
@@ -636,9 +651,9 @@ async function createFormulaFilesUnified(
     });
   }
 
-  // Process discovered MD files
-  const processedMdFiles = await processMarkdownFiles(formulaConfig, discoveredFiles);
-  formulaFiles.push(...processedMdFiles);
+  // Process discovered files of all types
+  const processedFiles = await processFiles(formulaConfig, discoveredFiles);
+  formulaFiles.push(...processedFiles);
 
   return formulaFiles;
 }
