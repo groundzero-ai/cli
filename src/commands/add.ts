@@ -1,8 +1,9 @@
 import { Command } from 'commander';
-import { basename, extname } from 'path';
+import { basename, extname, join } from 'path';
+import * as yaml from 'js-yaml';
 import { safePrompts } from '../utils/prompts.js';
 import { CommandResult } from '../types/index.js';
-import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
+import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter, type FormulaMarkerYml } from '../utils/md-frontmatter.js';
 import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../utils/fs.js';
 import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
@@ -64,6 +65,48 @@ async function promptFormulaOverride(
 function isMarkdownFile(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
   return ext === FILE_PATTERNS.MD_FILES || ext === FILE_PATTERNS.MDC_FILES;
+}
+
+/**
+ * Read and parse index.yml file
+ */
+async function readIndexYml(filePath: string): Promise<FormulaMarkerYml | null> {
+  try {
+    const content = await readTextFile(filePath);
+    const parsed = yaml.load(content) as any;
+    return parsed || null;
+  } catch (error) {
+    logger.warn(`Failed to parse index.yml at ${filePath}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Build YAML content with GroundZero formula comment
+ */
+function buildIndexYmlContent(marker: FormulaMarkerYml): string {
+  const lines: string[] = ['# GroundZero formula'];
+
+  if (marker.formula?.name) {
+    lines.push(`formula:`);
+    lines.push(`  name: ${marker.formula.name}`);
+    if (marker.formula.id) {
+      lines.push(`  id: ${marker.formula.id}`);
+    }
+    if (marker.formula.platformSpecific) {
+      lines.push(`  platformSpecific: true`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Write formula marker to index.yml file
+ */
+async function writeIndexYml(filePath: string, marker: FormulaMarkerYml): Promise<void> {
+  const yamlContent = buildIndexYmlContent(marker);
+  await writeTextFile(filePath, yamlContent);
 }
 
 /**
@@ -155,6 +198,93 @@ async function processMarkdownFile(
 }
 
 /**
+ * Handle adding formula to a directory by operating on index.yml
+ */
+async function addFormulaToDirectory(formulaName: string, targetPath: string): Promise<AddCommandResult> {
+  const indexPath = join(targetPath, 'index.yml');
+
+  if (await exists(indexPath)) {
+    const parsed = await readIndexYml(indexPath);
+    const existingName = parsed?.formula?.name;
+
+    if (existingName === formulaName) {
+      // Same formula: update without prompt to ensure latest formatting
+      await writeIndexYml(indexPath, {
+        formula: {
+          name: existingName,
+          id: parsed?.formula?.id,
+          platformSpecific: parsed?.formula?.platformSpecific
+        }
+      });
+      console.log(`✓ Updated index.yml (same formula, refreshed formatting)`);
+      return {
+        success: true,
+        filesProcessed: 1,
+        filesSkipped: 0,
+        data: {
+          formulaName,
+          targetPath,
+          indexPath
+        }
+      };
+    }
+
+    if (existingName && existingName !== formulaName) {
+      // Different formula: prompt for override
+      const decision = await promptFormulaOverride(indexPath, existingName, formulaName);
+
+      if (decision === 'skip') {
+        console.log(`⊝ Skipped index.yml (keeping existing formula '${existingName}')`);
+        return {
+          success: true,
+          filesProcessed: 0,
+          filesSkipped: 1,
+          data: {
+            formulaName,
+            targetPath,
+            indexPath
+          }
+        };
+      } else {
+        // Overwrite
+        await writeIndexYml(indexPath, {
+          formula: {
+            name: formulaName,
+            id: parsed?.formula?.id,
+            platformSpecific: parsed?.formula?.platformSpecific
+          }
+        });
+        console.log(`✓ Updated index.yml (overrode '${existingName}' with '${formulaName}')`);
+        return {
+          success: true,
+          filesProcessed: 1,
+          filesSkipped: 0,
+          data: {
+            formulaName,
+            targetPath,
+            indexPath
+          }
+        };
+      }
+    }
+  }
+
+  // No existing index.yml: create new one
+  await writeIndexYml(indexPath, { formula: { name: formulaName } });
+  console.log(`✓ Created index.yml with formula '${formulaName}'`);
+  return {
+    success: true,
+    filesProcessed: 1,
+    filesSkipped: 0,
+    data: {
+      formulaName,
+      targetPath,
+      indexPath
+    }
+  };
+}
+
+/**
  * Main add command implementation
  */
 async function addFormulaCommand(
@@ -187,13 +317,16 @@ async function addFormulaCommand(
       };
     }
 
-    // Handle regular markdown files (existing logic)
+    if (isDir) {
+      // Handle directory: operate on index.yml only
+      return await addFormulaToDirectory(formulaName, targetPath);
+    }
+
+    // Handle regular markdown files (existing logic for single files)
     const markdownFiles = await getMarkdownFiles(targetPath);
 
     // Show what we're about to process
-    if (isDir) {
-      console.log(`Found ${markdownFiles.length} markdown file(s) in directory: ${targetPath}`);
-    }
+    console.log(`Found ${markdownFiles.length} markdown file(s) in: ${targetPath}`);
 
     let filesProcessed = 0;
     let filesSkipped = 0;
