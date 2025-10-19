@@ -33,7 +33,7 @@ import {
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
-import { installFormula, processResolvedFormulas } from '../utils/install-orchestrator.js';
+import { installAiFiles, processResolvedFormulas } from '../utils/install-orchestrator.js';
 import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
 import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
@@ -188,7 +188,7 @@ async function handleDryRunMode(
       continue;
     }
     
-    const dryRunResult = await installFormula(resolved.name, targetDir, options, resolved.version, true);
+    const dryRunResult = await installAiFiles(resolved.name, targetDir, options, resolved.version, true);
     
     if (dryRunResult.skipped) {
       console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
