@@ -44,7 +44,7 @@ async function recursivelyListAllFiles(dir: string, baseDir: string): Promise<Ar
 function computeRegistryPathForIndexDiscovery(
   baseDir: string,
   file: { fullPath: string; relativePath: string }
-): string {
+): string | null {
   // Try universal mapping for platform subdirs
   const mapping = mapPlatformFileToUniversal(file.fullPath);
   if (mapping) {
@@ -54,8 +54,8 @@ function computeRegistryPathForIndexDiscovery(
   // Determine platform context from baseDir of index.yml
   const platformInfo = parsePlatformDirectory(baseDir);
   if (platformInfo && platformInfo.platformName !== PLATFORM_DIRS.AI) {
-    // Prefix with platform dir and keep structure relative to index.yml location
-    return join(String(platformInfo.platformName), file.relativePath);
+    // File is in a platform directory but not in a supported subdir - ignore it
+    return null;
   }
 
   if (platformInfo && platformInfo.platformName === PLATFORM_DIRS.AI) {
@@ -105,6 +105,12 @@ export async function discoverFromIndexYmlRecursive(baseDir: string, formulaName
         const mtime = await getFileMtime(f.fullPath);
         const contentHash = await calculateFileHash(text);
         let registryPath = computeRegistryPathForIndexDiscovery(dir, f);
+
+        // Skip files that should be ignored (unsupported platform subdirs)
+        if (registryPath === null) {
+          continue;
+        }
+
         if (registryPath.startsWith('/')) registryPath = registryPath.slice(1);
         const discovered: DiscoveredFile = {
           fullPath: f.fullPath,
