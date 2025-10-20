@@ -58,9 +58,8 @@ export const FILE_PATTERNS = {
   MDC_FILES: '.mdc',
   TOML_FILES: '.toml',
   FORMULA_YML: 'formula.yml',
+  INDEX_YML: 'index.yml',
   README_MD: 'README.md',
-  GROUNDZERO_MDC: 'groundzero.mdc',
-  GROUNDZERO_MD: 'groundzero.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',
   CLAUDE_MD: 'CLAUDE.md',

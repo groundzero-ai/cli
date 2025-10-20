@@ -1,5 +1,6 @@
 import matter from 'gray-matter';
 import { generateEntityId, isValidEntityId } from './entity-id.js';
+import { GROUNDZERO_FORMULA_COMMENT } from './index-yml.js';
 
 /**
  * Interface for formula marker YAML
@@ -122,7 +123,7 @@ function buildNewFrontmatter(
     lines.push(`  platformSpecific: true`);
   }
   const formulaBlock = lines.length > 0 ? `formula:${nl}${lines.join(nl)}` : 'formula:';
-  return `---${nl}# GroundZero formula${nl}${formulaBlock}${nl}---${nl}${nl}${content}`;
+  return `---${nl}${GROUNDZERO_FORMULA_COMMENT}${nl}${formulaBlock}${nl}---${nl}${nl}${content}`;
 }
 
 function updateFormulaBlockInText(
@@ -148,11 +149,11 @@ function updateFormulaBlockInText(
     }
   }
 
-  // Ensure # GroundZero formula comment exists above formula:
+  // Ensure GroundZero formula comment exists above formula:
   if (formulaIndex !== -1) {
-    const hasCommentAbove = formulaIndex > 0 && lines[formulaIndex - 1].trim() === '# GroundZero formula';
+    const hasCommentAbove = formulaIndex > 0 && lines[formulaIndex - 1].trim() === GROUNDZERO_FORMULA_COMMENT;
     if (!hasCommentAbove) {
-      lines.splice(formulaIndex, 0, '# GroundZero formula');
+      lines.splice(formulaIndex, 0, GROUNDZERO_FORMULA_COMMENT);
       formulaIndex++; // Adjust index since we inserted a line
     }
   }
@@ -161,7 +162,7 @@ function updateFormulaBlockInText(
 
   if (formulaIndex === -1) {
     // Append new formula block at the end of frontmatter
-    const insert: string[] = ['# GroundZero formula', 'formula:'];
+    const insert: string[] = [GROUNDZERO_FORMULA_COMMENT, 'formula:'];
     if (shouldUpdateName) insert.push(`${childIndent}name: ${updateObject.name}`);
     if (shouldUpdatePlatform) insert.push(`${childIndent}platformSpecific: true`);
     // Ensure we keep original frontmatter content as-is and append

@@ -11,6 +11,7 @@ import { LOG_PREFIXES, UTF8_ENCODING } from "./constants.js";
 import { buildOpenMarker, CLOSE_MARKER, ensureRootMarkerIdAndExtract } from "../../utils/root-file-extractor.js";
 import { splitPlatformFileFrontmatter } from "../../utils/platform-frontmatter-split.js";
 import { updateMarkdownWithFormulaFrontmatter } from "../../utils/md-frontmatter.js";
+import { updateIndexYml } from "../../utils/index-yml.js";
 import { FormulaYmlInfo } from "./formula-yml-generator.js";
 
 /**
@@ -55,7 +56,20 @@ async function processFiles(formulaConfig: FormulaYml, discoveredFiles: Discover
       };
     }
 
-    // If discovered via index.yml, do not modify frontmatter; include content as-is
+    if (basename(file.fullPath) === FILE_PATTERNS.INDEX_YML) {
+      const ensured = updateIndexYml(originalContent, { ensureId: true });
+      if (ensured.updated) {
+        await writeTextFile(file.fullPath, ensured.content);
+        console.log(`${LOG_PREFIXES.UPDATED} ${file.relativePath}`);
+      }
+      return {
+        path: file.registryPath,
+        content: ensured.updated ? ensured.content : originalContent,
+        encoding: UTF8_ENCODING
+      };
+    }
+
+    // If discovered via index.yml, ensure index.yml has a valid id; otherwise include content as-is
     if (file.discoveredViaIndexYml) {
       return {
         path: file.registryPath,
