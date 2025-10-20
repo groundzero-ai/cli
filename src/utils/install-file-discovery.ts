@@ -1,8 +1,7 @@
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { formulaManager } from '../core/formula.js';
-import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import { isValidEntityId } from './entity-id.js';
-import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, PLATFORM_DIRS, type Platform } from '../constants/index.js';
+import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, type Platform } from '../constants/index.js';
 import type { FormulaFile } from '../types/index.js';
 import {
   buildRegistryIdMap,
@@ -12,7 +11,6 @@ import {
   discoverRegistryIndexYmlDirs,
   readRegistryDirectoryRecursive,
   readRegistryIndexId,
-  type IndexYmlInstallResult
 } from './index-yml-based-installer.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 

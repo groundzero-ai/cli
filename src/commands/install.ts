@@ -31,12 +31,11 @@ import {
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
-import { installAiFiles, processResolvedFormulas, installAiFilesFromList } from '../utils/install-orchestrator.js';
+import { installAiFiles, installAiFilesFromList } from '../utils/install-orchestrator.js';
 import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
 import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
-import { installRootFiles } from '../utils/root-file-installer.js';
-import { installIndexYmlFiles, installIndexYmlDirectories } from '../utils/index-yml-based-installer.js';
+import { installIndexYmlDirectories } from '../utils/index-yml-based-installer.js';
 import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
 import { installPlatformFilesByIdWithMap } from '../utils/id-based-installer.js';
 import { installRootFilesFromMap } from '../utils/root-file-installer.js';
