@@ -5,7 +5,7 @@ import { getFormulaVersionPath } from '../core/directory.js';
 import { readIndexYml } from '../core/discovery/index-files-discovery.js';
 import { writeIfChanged } from '../core/install/file-updater.js';
 import { getPlatformDefinition, getDetectedPlatforms, type Platform } from '../core/platforms.js';
-import { UNIVERSAL_SUBDIRS } from '../constants/index.js';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
 import type { InstallOptions } from '../types/index.js';
 import { readFile as fsReadFile, writeFile as fsWriteFile } from 'fs/promises';
 import * as fs from 'fs/promises';
@@ -55,14 +55,14 @@ export async function discoverRegistryIndexYmlDirs(
 
   async function recurse(dir: string, rel: string, acc: string[]): Promise<void> {
     const files = await listFiles(dir);
-    if (files.includes('index.yml')) {
+    if (files.includes(FILE_PATTERNS.INDEX_YML)) {
       try {
-        const marker = await readIndexYml(join(dir, 'index.yml'));
+        const marker = await readIndexYml(join(dir, FILE_PATTERNS.INDEX_YML));
         if (marker && marker.formula?.name === formulaName) {
           acc.push(rel === '' ? '.' : rel);
         }
       } catch (err) {
-        logger.warn(`Failed to read index.yml at ${join(dir, 'index.yml')}: ${err}`);
+        logger.warn(`Failed to read index.yml at ${join(dir, FILE_PATTERNS.INDEX_YML)}: ${err}`);
       }
     }
 
@@ -119,7 +119,7 @@ export async function readRegistryIndexId(
   dirRelToRoot: string
 ): Promise<string | null> {
   const base = getFormulaVersionPath(formulaName, version);
-  const indexPath = join(base, dirRelToRoot, 'index.yml');
+  const indexPath = join(base, dirRelToRoot, FILE_PATTERNS.INDEX_YML);
   try {
     const marker = await readIndexYml(indexPath);
     const id = marker?.formula?.id as string | undefined;
@@ -131,7 +131,7 @@ export async function readRegistryIndexId(
 }
 
 async function getIndexIdFromCwdDir(dirAbsPath: string): Promise<string | null> {
-  const indexPath = join(dirAbsPath, 'index.yml');
+  const indexPath = join(dirAbsPath, FILE_PATTERNS.INDEX_YML);
   if (!(await exists(indexPath))) return null;
   try {
     const marker = await readIndexYml(indexPath);
@@ -152,7 +152,7 @@ async function buildCwdIndexYmlIdMap(
   async function recurseDirs(baseDir: string, platform: Platform, universalSubdir: UniversalSubdir): Promise<void> {
     // If index.yml exists here, record it
     const files = await listFiles(baseDir).catch(() => [] as string[]);
-    if (files.includes('index.yml')) {
+    if (files.includes(FILE_PATTERNS.INDEX_YML)) {
       const id = await getIndexIdFromCwdDir(baseDir);
       if (id) {
         const entry: CwdIndexDirEntry = { id, platform, universalSubdir, dirAbsPath: baseDir };
@@ -232,7 +232,7 @@ async function writeFilesForSinglePlatform(
     try {
       let targetFileName: string;
       const lower = file.relativePath.toLowerCase();
-      if (lower.endsWith('.md')) {
+      if (lower.endsWith(FILE_PATTERNS.MD_FILES)) {
         const withoutExt = file.relativePath.replace(/\.[^.]+$/, '');
         targetFileName = withoutExt + subdirDef.writeExt;
       } else {
@@ -241,7 +241,7 @@ async function writeFilesForSinglePlatform(
       const absDir = join(cwd, def.rootDir, subdirDef.path, targetRelDir);
       const absFile = join(absDir, targetFileName);
 
-      const outcome = lower.endsWith('index.yml') || lower.endsWith('.md')
+      const outcome = lower.endsWith(FILE_PATTERNS.INDEX_YML) || lower.endsWith(FILE_PATTERNS.MD_FILES)
         ? await writeIfChanged(absFile, file.content.toString('utf8'))
         : await (async () => {
             await ensureDir(dirname(absFile));
@@ -340,7 +340,7 @@ async function installIndexYmlDirectory(
         // - Otherwise preserve original extension
         let targetFileName: string;
         const lower = file.relativePath.toLowerCase();
-        if (lower.endsWith('.md')) {
+        if (lower.endsWith(FILE_PATTERNS.MD_FILES)) {
           const withoutExt = file.relativePath.replace(/\.[^.]+$/, '');
           targetFileName = withoutExt + subdirDef.writeExt;
         } else {
@@ -349,7 +349,7 @@ async function installIndexYmlDirectory(
         const absDir = join(cwd, def.rootDir, subdirDef.path, relDirPath);
         const absFile = join(absDir, targetFileName);
 
-        const outcome = lower.endsWith('index.yml') || lower.endsWith('.md')
+        const outcome = lower.endsWith(FILE_PATTERNS.INDEX_YML) || lower.endsWith(FILE_PATTERNS.MD_FILES)
           ? await writeIfChanged(absFile, file.content.toString('utf8'))
           : await writeIfChangedBinary(absFile, file.content);
         const relPath = relative(cwd, absFile);

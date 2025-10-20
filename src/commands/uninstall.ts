@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, relative } from 'path';
+import { join, relative, dirname } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -425,6 +425,33 @@ async function uninstallFormulaCommand(
     
     // Remove or update root files by stripping formula sections
     const rootRemoval = await applyRootFileRemovals(cwd, formulasToRemove);
+
+    // Final pass: remove empty directories left after file deletions
+    const dirsToClean = new Set<string>();
+
+    // From platform file deletions
+    for (const files of Object.values(platformCleanup)) {
+      for (const relPath of files) {
+        const absolutePath = relPath.startsWith('/') ? relPath : join(cwd, relPath);
+        dirsToClean.add(dirname(absolutePath));
+      }
+    }
+
+    // From root file deletions
+    for (const deleted of rootRemoval.deleted) {
+      const absolutePath = deleted.startsWith('/') ? deleted : join(cwd, deleted);
+      dirsToClean.add(dirname(absolutePath));
+    }
+
+    // Also tidy formula directories root and groundzero path
+    dirsToClean.add(formulasDir);
+    dirsToClean.add(groundzeroPath);
+
+    for (const dir of dirsToClean) {
+      if (await exists(dir)) {
+        await removeEmptyDirectories(dir);
+      }
+    }
 
     // Remove all formulas being uninstalled from formula.yml
     const ymlRemovalResults: Record<string, boolean> = {};

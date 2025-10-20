@@ -201,7 +201,7 @@ async function processMarkdownFile(
  * Handle adding formula to a directory by operating on index.yml
  */
 async function tagFormulaToDirectory(formulaName: string, targetPath: string): Promise<TagCommandResult> {
-  const indexPath = join(targetPath, 'index.yml');
+  const indexPath = join(targetPath, FILE_PATTERNS.INDEX_YML);
 
   if (await exists(indexPath)) {
     const parsed = await readIndexYml(indexPath);
