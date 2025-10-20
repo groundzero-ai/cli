@@ -28,6 +28,14 @@ type RegistryDirFile = {
   content: Buffer;
 };
 
+export type { RegistryDirFile };
+
+export interface IndexYmlDirectory {
+  dirRelToRoot: string;
+  registryId: string | null;
+  files: RegistryDirFile[];
+}
+
 type CwdIndexDirEntry = {
   id: string;
   platform: Platform;
@@ -105,7 +113,7 @@ export async function readRegistryDirectoryRecursive(
   return results;
 }
 
-async function readRegistryIndexId(
+export async function readRegistryIndexId(
   formulaName: string,
   version: string,
   dirRelToRoot: string
@@ -382,7 +390,9 @@ export async function installIndexYmlFiles(
     updatedFiles: []
   };
 
-  const indexDirs = await discoverRegistryIndexYmlDirs(formulaName, version);
+  // Discover and process parent directories before their children
+  const indexDirs = (await discoverRegistryIndexYmlDirs(formulaName, version))
+    .sort((a, b) => a.split('/').length - b.split('/').length);
   if (indexDirs.length === 0) {
     return allResults;
   }
@@ -393,6 +403,28 @@ export async function installIndexYmlFiles(
 
   // Build CWD ID map once
   const cwdIdMap = await buildCwdIndexYmlIdMap(cwd, mergedPlatforms);
+
+  // Track processed registry dir prefixes per platform to avoid double-processing children
+  const processedByPlatform = new Map<Platform, Set<string>>();
+  function getProcessedSet(platform: Platform): Set<string> {
+    let set = processedByPlatform.get(platform);
+    if (!set) {
+      set = new Set<string>();
+      processedByPlatform.set(platform, set);
+    }
+    return set;
+  }
+  function isCovered(platform: Platform, dirRel: string): boolean {
+    const set = processedByPlatform.get(platform);
+    if (!set) return false;
+    for (const prefix of set) {
+      if (dirRel === prefix || dirRel.startsWith(prefix + '/')) return true;
+    }
+    return false;
+  }
+  function markProcessed(platform: Platform, dirRel: string): void {
+    getProcessedSet(platform).add(dirRel);
+  }
 
   for (const dirRel of indexDirs) {
     // Parse universal subdir and relative dir under it
@@ -413,6 +445,10 @@ export async function installIndexYmlFiles(
     if (registryId) {
       // Try ID-based matching per platform
       for (const platform of mergedPlatforms) {
+        // Skip if a parent registry directory already handled this subtree for this platform
+        if (isCovered(platform, dirRel)) {
+          continue;
+        }
         const def = getPlatformDefinition(platform);
         const subdirDef = def.subdirs[universalSubdir];
         if (!subdirDef) {
@@ -433,6 +469,8 @@ export async function installIndexYmlFiles(
           }
 
           await writeFilesForSinglePlatform(cwd, universalSubdir, targetRel, registryFiles, platform, options, allResults);
+          // Mark this registry directory as processed for this platform
+          markProcessed(platform, dirRel);
           continue; // Done with this platform for this dir
         }
 
@@ -464,12 +502,14 @@ export async function installIndexYmlFiles(
           await clearDirectory(targetBaseDir);
         }
         await writeFilesForSinglePlatform(cwd, universalSubdir, rest, registryFiles, platform, options, allResults);
+        markProcessed(platform, dirRel);
       }
       continue; // go to next registry dir
     }
 
     // No registry ID present -> pure path-based install for all platforms
     for (const platform of mergedPlatforms) {
+      if (isCovered(platform, dirRel)) continue;
       const def = getPlatformDefinition(platform);
       const subdirDef = def.subdirs[universalSubdir];
       if (!subdirDef) continue;
@@ -497,6 +537,147 @@ export async function installIndexYmlFiles(
         await clearDirectory(targetBaseDir);
       }
       await writeFilesForSinglePlatform(cwd, universalSubdir, rest, registryFiles, platform, options, allResults);
+      markProcessed(platform, dirRel);
+    }
+  }
+
+  return allResults;
+}
+
+
+/**
+ * Install pre-discovered index.yml directories (no discovery step here)
+ */
+export async function installIndexYmlDirectories(
+  cwd: string,
+  directories: IndexYmlDirectory[],
+  platforms: Platform[],
+  options: InstallOptions
+): Promise<IndexYmlInstallResult> {
+  const allResults: IndexYmlInstallResult = {
+    installed: 0,
+    updated: 0,
+    skipped: 0,
+    files: [],
+    installedFiles: [],
+    updatedFiles: []
+  };
+
+  // Determine platforms to consider (specified first, then detected uniques)
+  const detected = await getDetectedPlatforms(cwd);
+  const mergedPlatforms: Platform[] = Array.from(new Set([...(platforms || []), ...(detected as Platform[])]));
+
+  // Build CWD ID map once
+  const cwdIdMap = await buildCwdIndexYmlIdMap(cwd, mergedPlatforms);
+
+  // Track processed registry dir prefixes per platform to avoid double-processing children
+  const processedByPlatform = new Map<Platform, Set<string>>();
+  function getProcessedSet(platform: Platform): Set<string> {
+    let set = processedByPlatform.get(platform);
+    if (!set) {
+      set = new Set<string>();
+      processedByPlatform.set(platform, set);
+    }
+    return set;
+  }
+  function isCovered(platform: Platform, dirRel: string): boolean {
+    const set = processedByPlatform.get(platform);
+    if (!set) return false;
+    for (const prefix of set) {
+      if (dirRel === prefix || dirRel.startsWith(prefix + '/')) return true;
+    }
+    return false;
+  }
+  function markProcessed(platform: Platform, dirRel: string): void {
+    getProcessedSet(platform).add(dirRel);
+  }
+
+  for (const entry of directories) {
+    const dirRel = entry.dirRelToRoot;
+    const registryId = entry.registryId;
+    const parts = dirRel.split('/');
+    const first = parts[0];
+    const rest = parts.slice(1).join('/');
+    const universalSubdir = (first === '.' ? '' : first) as UniversalSubdir;
+
+    if (!universalSubdir || !Object.values(UNIVERSAL_SUBDIRS).includes(universalSubdir)) {
+      logger.debug(`Skipping index.yml directory not under a universal subdir: ${dirRel}`);
+      continue;
+    }
+
+    if (registryId) {
+      // Try ID-based matching per platform first
+      for (const platform of mergedPlatforms) {
+        if (isCovered(platform, dirRel)) continue;
+        const def = getPlatformDefinition(platform);
+        const subdirDef = def.subdirs[universalSubdir];
+        if (!subdirDef) continue;
+
+        const entries = cwdIdMap.get(registryId)?.filter(e => e.platform === platform && e.universalSubdir === universalSubdir) || [];
+        if (entries.length > 0) {
+          const entryMatch = entries[0];
+          const baseDir = join(cwd, def.rootDir, subdirDef.path);
+          const targetRel = relative(baseDir, entryMatch.dirAbsPath);
+
+          if (!options.dryRun) {
+            await clearDirectory(entryMatch.dirAbsPath);
+          }
+          await writeFilesForSinglePlatform(cwd, universalSubdir, targetRel, entry.files, platform, options, allResults);
+          markProcessed(platform, dirRel);
+          continue;
+        }
+
+        // No ID match -> path-based overwrite prompt
+        const targetBaseDir = join(cwd, def.rootDir, subdirDef.path, rest);
+        const targetExists = await exists(targetBaseDir);
+        let proceed = true;
+        if (targetExists) {
+          const targetId = await getIndexIdFromCwdDir(targetBaseDir);
+          if (!targetId || targetId !== registryId) {
+            if (options.force) {
+              proceed = true;
+            } else {
+              const rel = relative(cwd, targetBaseDir);
+              proceed = await promptUserForOverwrite(`Directory ${rel} exists with no or different index.yml id. Overwrite`);
+            }
+          }
+        }
+        if (!proceed) continue;
+        if (!options.dryRun && targetExists) {
+          await clearDirectory(targetBaseDir);
+        }
+        await writeFilesForSinglePlatform(cwd, universalSubdir, rest, entry.files, platform, options, allResults);
+        markProcessed(platform, dirRel);
+      }
+      continue;
+    }
+
+    // No registry ID present -> pure path-based install for all platforms
+    for (const platform of mergedPlatforms) {
+      if (isCovered(platform, dirRel)) continue;
+      const def = getPlatformDefinition(platform);
+      const subdirDef = def.subdirs[universalSubdir];
+      if (!subdirDef) continue;
+      const targetBaseDir = join(cwd, def.rootDir, subdirDef.path, rest);
+      const targetExists = await exists(targetBaseDir);
+      let proceed = true;
+      if (targetExists) {
+        const targetId = await getIndexIdFromCwdDir(targetBaseDir);
+        if (!targetId) {
+          if (options.force) {
+            proceed = true;
+          } else {
+            const rel = relative(cwd, targetBaseDir);
+            proceed = await promptUserForOverwrite(`Directory ${rel} exists without index.yml. Overwrite`);
+          }
+        }
+      }
+      if (!proceed) continue;
+      if (!options.dryRun && targetExists) {
+        await clearDirectory(targetBaseDir);
+      }
+      await writeFilesForSinglePlatform(cwd, universalSubdir, rest, entry.files, platform, options, allResults);
+      markProcessed(platform, dirRel);
     }
   }
 

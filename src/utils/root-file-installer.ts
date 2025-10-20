@@ -89,6 +89,45 @@ export async function installRootFiles(
   return result;
 }
 
+/**
+ * Variant that installs root files from a preloaded map of path -> content
+ */
+export async function installRootFilesFromMap(
+  cwd: string,
+  formulaName: string,
+  rootFilesMap: Map<string, string>,
+  detectedPlatforms: Platform[]
+): Promise<RootFileInstallResult> {
+  const result: RootFileInstallResult = { installed: [], skipped: [], updated: [] };
+  if (rootFilesMap.size === 0) return result;
+
+  for (const platform of detectedPlatforms) {
+    const platformDef = getPlatformDefinition(platform);
+    if (!platformDef.rootFile) continue;
+
+    // Prefer platform-specific, otherwise use AGENTS.md if present
+    let content = rootFilesMap.get(platformDef.rootFile);
+    let sourceFileName = platformDef.rootFile;
+    if (!content && rootFilesMap.has(FILE_PATTERNS.AGENTS_MD)) {
+      content = rootFilesMap.get(FILE_PATTERNS.AGENTS_MD)!;
+      sourceFileName = FILE_PATTERNS.AGENTS_MD;
+    }
+    if (!content) continue;
+
+    try {
+      const wasUpdated = await installSingleRootFile(cwd, platformDef.rootFile, formulaName, content);
+      if (wasUpdated) result.updated.push(platformDef.rootFile);
+      else result.installed.push(platformDef.rootFile);
+      logger.debug(`Installed root file ${platformDef.rootFile} for ${formulaName} (from ${sourceFileName})`);
+    } catch (error) {
+      logger.error(`Failed to install root file ${platformDef.rootFile}: ${error}`);
+      result.skipped.push(platformDef.rootFile);
+    }
+  }
+
+  return result;
+}
+
 
 /**
  * Install or update a single root file at cwd root.

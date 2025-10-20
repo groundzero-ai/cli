@@ -31,12 +31,15 @@ import {
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
-import { installAiFiles, processResolvedFormulas } from '../utils/install-orchestrator.js';
+import { installAiFiles, processResolvedFormulas, installAiFilesFromList } from '../utils/install-orchestrator.js';
 import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
 import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { installRootFiles } from '../utils/root-file-installer.js';
-import { installIndexYmlFiles } from '../utils/index-yml-based-installer.js';
+import { installIndexYmlFiles, installIndexYmlDirectories } from '../utils/index-yml-based-installer.js';
+import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
+import { installPlatformFilesByIdWithMap } from '../utils/id-based-installer.js';
+import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -372,31 +375,120 @@ async function installFormulaCommand(
 
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 
-  // Now process resolved formulas with platform information for ID-based installation
-  const { installedCount, skippedCount, groundzeroResults } = await processResolvedFormulas(
-    finalResolvedFormulas,
-    targetDir,
-    options,
-    conflictResult.forceOverwriteFormulas,
-    finalPlatforms as Platform[]
-  );
+  // Prepare containers for file tracking
+  const allAddedFiles: string[] = [];
+  const allUpdatedFiles: string[] = [];
 
-  // Install root files from registry for all formulas in dependency tree
+  // Phase 1: Discover and categorize files for each formula
+  const categorizedByFormula = new Map<string, Awaited<ReturnType<typeof discoverAndCategorizeFiles>>>();
+  for (const resolved of finalResolvedFormulas) {
+    const categorized = await discoverAndCategorizeFiles(
+      resolved.name,
+      resolved.version,
+      finalPlatforms as Platform[]
+    );
+    categorizedByFormula.set(resolved.name, categorized);
+  }
+
+  // Phase 2a: ID-based files (priority)
+  let installedCount = 0;
+  let skippedCount = 0;
+  const groundzeroResults: Array<{ name: string; filesInstalled: number; filesUpdated: number; installedFiles: string[]; updatedFiles: string[]; overwritten: boolean }> = [];
+  for (const resolved of finalResolvedFormulas) {
+    const categorized = categorizedByFormula.get(resolved.name)!;
+    if (categorized.idBasedFiles.size === 0) continue;
+    try {
+      const platformResult = await installPlatformFilesByIdWithMap(
+        cwd,
+        resolved.name,
+        resolved.version,
+        finalPlatforms as Platform[],
+        categorized.idBasedFiles,
+        options,
+        conflictResult.forceOverwriteFormulas.has(resolved.name)
+      );
+      if (platformResult.installed > 0 || platformResult.updated > 0) {
+        installedCount++;
+        groundzeroResults.push({
+          name: resolved.name,
+          filesInstalled: platformResult.installed,
+          filesUpdated: platformResult.updated,
+          installedFiles: platformResult.installedFiles,
+          updatedFiles: platformResult.updatedFiles,
+          overwritten: platformResult.updated > 0
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed ID-based install for ${resolved.name}: ${error}`);
+      skippedCount++;
+    }
+  }
+
+  // Phase 2b: Index.yml directories (excluding files already claimed by ID-based)
+  let indexInstalledTotal = 0;
+  let indexUpdatedTotal = 0;
+  for (const resolved of finalResolvedFormulas) {
+    const categorized = categorizedByFormula.get(resolved.name)!;
+    if (categorized.indexYmlDirs.length === 0) continue;
+    const indexResult = await installIndexYmlDirectories(
+      cwd,
+      categorized.indexYmlDirs,
+      finalPlatforms as Platform[],
+      options
+    );
+    indexInstalledTotal += indexResult.installed;
+    indexUpdatedTotal += indexResult.updated;
+    allAddedFiles.push(...indexResult.installedFiles);
+    allUpdatedFiles.push(...indexResult.updatedFiles);
+  }
+
+  // Phase 2c: Path-based remaining files
+  for (const resolved of finalResolvedFormulas) {
+    const categorized = categorizedByFormula.get(resolved.name)!;
+    const aiLikeFiles = categorized.pathBasedFiles.filter(f => f.path.startsWith('ai/'));
+    if (aiLikeFiles.length === 0) continue;
+    const aiResult = await installAiFilesFromList(
+      cwd,
+      targetDir,
+      aiLikeFiles,
+      options,
+      conflictResult.forceOverwriteFormulas.has(resolved.name)
+    );
+    if (!aiResult.skipped && aiResult.installedCount > 0) {
+      installedCount++;
+      const relativeInstalledFiles = aiResult.files.map(filePath => filePath.replace(cwd + '/', ''));
+      const existing = groundzeroResults.find(r => r.name === resolved.name);
+      if (existing) {
+        existing.filesInstalled += aiResult.installedCount;
+        existing.installedFiles.push(...relativeInstalledFiles);
+        existing.overwritten = existing.overwritten || aiResult.overwritten;
+      } else {
+        groundzeroResults.push({
+          name: resolved.name,
+          filesInstalled: aiResult.installedCount,
+          filesUpdated: 0,
+          installedFiles: relativeInstalledFiles,
+          updatedFiles: [],
+          overwritten: aiResult.overwritten
+        });
+      }
+    }
+  }
+
+  // Phase 2d: Root files
   const allRootFileResults = {
     installed: new Set<string>(),
     updated: new Set<string>(),
     skipped: new Set<string>()
   };
-
   for (const resolved of finalResolvedFormulas) {
-    const rootFileResult = await installRootFiles(
+    const categorized = categorizedByFormula.get(resolved.name)!;
+    const rootFileResult = await installRootFilesFromMap(
       cwd,
       resolved.name,
-      resolved.version,
+      categorized.rootFiles,
       finalPlatforms as Platform[]
     );
-
-    // Aggregate results (deduplicate using Sets)
     rootFileResult.installed.forEach(file => allRootFileResults.installed.add(file));
     rootFileResult.updated.forEach(file => allRootFileResults.updated.add(file));
     rootFileResult.skipped.forEach(file => allRootFileResults.skipped.add(file));
@@ -420,32 +512,11 @@ async function installFormulaCommand(
   }
   
   
-  // Collect all added and updated files
-  const allAddedFiles: string[] = [];
-  const allUpdatedFiles: string[] = [];
-
   // Add AI files from groundzero results
   groundzeroResults.forEach(result => {
     allAddedFiles.push(...result.installedFiles);
     allUpdatedFiles.push(...result.updatedFiles);
   });
-
-  // Install index.yml-associated directories for all formulas (directory-level installs)
-  let indexInstalledTotal = 0;
-  let indexUpdatedTotal = 0;
-  for (const resolved of finalResolvedFormulas) {
-    const indexResult = await installIndexYmlFiles(
-      cwd,
-      resolved.name,
-      resolved.version,
-      finalPlatforms,
-      options
-    );
-    indexInstalledTotal += indexResult.installed;
-    indexUpdatedTotal += indexResult.updated;
-    allAddedFiles.push(...indexResult.installedFiles);
-    allUpdatedFiles.push(...indexResult.updatedFiles);
-  }
 
 
   // Calculate total groundzero files

@@ -97,6 +97,56 @@ export async function installAiFiles(
 }
 
 /**
+ * Install AI files from a pre-filtered list of formula files (avoids re-loading registry)
+ */
+export async function installAiFilesFromList(
+  cwd: string,
+  targetDir: string,
+  files: { path: string; content: string }[],
+  options: InstallOptions,
+  forceOverwrite: boolean = false
+): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
+  try {
+    if (files.length === 0) {
+      return { installedCount: 0, files: [], overwritten: false, skipped: true };
+    }
+
+    const aiPrefix = `${PLATFORM_DIRS.AI}/`;
+
+    // Pre-create dirs
+    const directories = new Set<string>();
+    const targets = await Promise.all(files.map(async (file) => {
+      const aiRelPath = file.path.startsWith(aiPrefix) ? file.path.slice(aiPrefix.length) : file.path;
+      const targetPath = join(PLATFORM_DIRS.AI, targetDir || '.', aiRelPath);
+      directories.add(dirname(targetPath));
+      const existsFlag = await exists(targetPath);
+      return { file, targetPath, existsFlag };
+    }));
+
+    const hasOverwritten = targets.some(t => t.existsFlag) && (options.force === true || forceOverwrite === true);
+
+    // Skip if conflicts and not forced
+    if (targets.some(t => t.existsFlag) && !hasOverwritten) {
+      return { installedCount: 0, files: [], overwritten: false, skipped: true };
+    }
+
+    await Promise.all(Array.from(directories).map(d => ensureDir(d)));
+
+    const installedFiles: string[] = [];
+    await Promise.all(targets.map(async ({ file, targetPath }) => {
+      await writeTextFile(targetPath, file.content);
+      installedFiles.push(targetPath);
+      logger.debug(`Installed AI file: ${targetPath}`);
+    }));
+
+    return { installedCount: installedFiles.length, files: installedFiles, overwritten: hasOverwritten, skipped: false };
+  } catch (error) {
+    logger.error(`Failed to install AI files from list: ${error}`);
+    return { installedCount: 0, files: [], overwritten: false, skipped: true };
+  }
+}
+
+/**
  * Process resolved formulas for installation
  */
 export async function processResolvedFormulas(

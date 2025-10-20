@@ -130,6 +130,74 @@ export async function installPlatformFilesById(
 }
 
 /**
+ * Variant that accepts a pre-discovered registry ID map to avoid duplicate discovery.
+ */
+export async function installPlatformFilesByIdWithMap(
+  cwd: string,
+  formulaName: string,
+  version: string,
+  platforms: Platform[],
+  registryIdMap: Map<string, RegistryFileInfo>,
+  options: InstallOptions,
+  forceOverwrite: boolean = false
+): Promise<IdBasedInstallResult> {
+  const result: IdBasedInstallResult = {
+    installed: 0,
+    updated: 0,
+    renamed: 0,
+    cleaned: 0,
+    deleted: 0,
+    skipped: 0,
+    files: [],
+    installedFiles: [],
+    updatedFiles: []
+  };
+
+  logger.debug(`Installing platform files by ID (pre-discovered) for ${formulaName}@${version}`, {
+    platforms,
+    prediscovered: registryIdMap.size
+  });
+
+  // Load YAML overrides once per install (used lazily per platform)
+  const yamlOverrides = await loadRegistryYamlOverrides(formulaName, version);
+
+  // Step 1: Build cwd ID map
+  const cwdIdMap = await buildCwdIdMap(cwd, platforms, formulaName);
+
+  // Step 3: Clean up invalid files in cwd
+  const cleanupResult = await cleanupInvalidFormulaFiles(cwd, platforms, formulaName, registryIdMap);
+  result.cleaned = cleanupResult.cleaned.length;
+  result.deleted = cleanupResult.deleted.length;
+
+  // Step 4: Process each platform separately
+  for (const platform of platforms) {
+    const filesByDir = new Map<string, RegistryFileInfo[]>();
+    for (const [, fileInfo] of registryIdMap) {
+      const parentDir = fileInfo.parentDir;
+      if (!filesByDir.has(parentDir)) filesByDir.set(parentDir, []);
+      filesByDir.get(parentDir)!.push(fileInfo);
+    }
+
+    for (const [parentDir, files] of filesByDir) {
+      await processBatchOfFilesForPlatform(
+        cwd,
+        platform,
+        parentDir,
+        files,
+        cwdIdMap,
+        options,
+        forceOverwrite,
+        result,
+        yamlOverrides
+      );
+    }
+  }
+
+  logger.info(`ID-based installation (pre-discovered) complete: ${result.installed} installed, ${result.updated} updated, ${result.renamed} renamed, ${result.skipped} skipped`);
+  return result;
+}
+
+/**
  * Process a batch of files from the same parent directory in the registry for a specific platform
  */
 async function processBatchOfFilesForPlatform(
