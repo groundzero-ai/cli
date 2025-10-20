@@ -9,7 +9,6 @@ import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
-  PLATFORMS,
   CONFLICT_RESOLUTION,
   type Platform
 } from '../constants/index.js';
@@ -17,6 +16,7 @@ import {
   createPlatformDirectories
 } from '../core/platforms.js';
 import { normalizePlatforms } from '../utils/platform-mapper.js';
+import { resolvePlatforms } from '../core/install/platform-resolution.js';
 import {
   getLocalFormulaYmlPath,
   getAIDir,
@@ -24,8 +24,6 @@ import {
 } from '../utils/paths.js';
 import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } from '../utils/formula-management.js';
 import {
-  detectPlatforms,
-  promptForPlatformSelection,
   displayInstallationSummary,
   displayInstallationResults,
   parseFormulaInput
@@ -37,6 +35,8 @@ import { installAiFiles, processResolvedFormulas } from '../utils/install-orches
 import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
 import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
+import { installRootFiles } from '../utils/root-file-installer.js';
+import { installIndexYmlFiles } from '../utils/index-yml-based-installer.js';
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -254,20 +254,11 @@ async function installFormulaCommand(
   // Auto-create basic formula.yml if it doesn't exist
   await createBasicFormulaYml(cwd);
 
-  // If platforms are specified, validate and prepare directories ahead of detection
+  // Prepare platform directories early if user specified platforms
   const specifiedPlatforms = normalizePlatforms(options.platforms);
-  if (specifiedPlatforms && specifiedPlatforms.length > 0) {
-    // Validate against known platforms
-    const knownPlatforms = new Set<string>(Object.values(PLATFORMS));
-    for (const p of specifiedPlatforms) {
-      if (!knownPlatforms.has(p)) {
-        return { success: false, error: `platform ${p} not found` };
-      }
-    }
-    // Create platform directories unless dry-run
-    if (!options.dryRun) {
-      await createPlatformDirectories(cwd, specifiedPlatforms as Platform[]);
-    }
+  if (specifiedPlatforms && specifiedPlatforms.length > 0 && !options.dryRun) {
+    const earlyPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: false });
+    await createPlatformDirectories(cwd, earlyPlatforms as Platform[]);
   }
   
   // Resolve complete dependency tree first, with conflict handling and persistence
@@ -376,13 +367,8 @@ async function installFormulaCommand(
   // Get main formula for formula.yml updates and display
   const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
 
-  // Detect platforms and create directories (prefer specified if provided)
-  let finalPlatforms = await detectPlatforms(cwd);
-  if (specifiedPlatforms && specifiedPlatforms.length > 0) {
-    finalPlatforms = specifiedPlatforms;
-  } else if (finalPlatforms.length === 0) {
-    finalPlatforms = await promptForPlatformSelection();
-  }
+  // Resolve platforms (specified > detected > prompt)
+  const finalPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: true });
 
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 
@@ -396,7 +382,6 @@ async function installFormulaCommand(
   );
 
   // Install root files from registry for all formulas in dependency tree
-  const { installRootFiles } = await import('../utils/root-file-installer.js');
   const allRootFileResults = {
     installed: new Set<string>(),
     updated: new Set<string>(),
@@ -445,9 +430,26 @@ async function installFormulaCommand(
     allUpdatedFiles.push(...result.updatedFiles);
   });
 
+  // Install index.yml-associated directories for all formulas (directory-level installs)
+  let indexInstalledTotal = 0;
+  let indexUpdatedTotal = 0;
+  for (const resolved of finalResolvedFormulas) {
+    const indexResult = await installIndexYmlFiles(
+      cwd,
+      resolved.name,
+      resolved.version,
+      finalPlatforms,
+      options
+    );
+    indexInstalledTotal += indexResult.installed;
+    indexUpdatedTotal += indexResult.updated;
+    allAddedFiles.push(...indexResult.installedFiles);
+    allUpdatedFiles.push(...indexResult.updatedFiles);
+  }
+
 
   // Calculate total groundzero files
-  const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled + result.filesUpdated, 0);
+  const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled + result.filesUpdated, 0) + indexInstalledTotal + indexUpdatedTotal;
   
   // Display results
   displayInstallationResults(

@@ -1,16 +1,17 @@
 import { basename, dirname, join } from "path";
-import { FILE_PATTERNS, PLATFORM_DIRS } from "../../constants";
+
+import { FILE_PATTERNS, PLATFORM_DIRS } from "../../constants/index.js";
 import { DiscoveredFile, FormulaFile, FormulaYml } from "../../types";
-import { getAllPlatforms, getPlatformDefinition } from "../platforms";
-import { resolveRootFileConflicts } from "../../utils/root-conflict-resolution";
-import { resolvePlatformFileConflicts } from "../../utils/platform-conflict-resolution";
-import { writeFormulaYml } from "../../utils/formula-yml";
-import { exists, readTextFile, writeTextFile } from "../../utils/fs";
-import { LOG_PREFIXES, UTF8_ENCODING } from "./constants";
-import { buildOpenMarker, CLOSE_MARKER, ensureRootMarkerIdAndExtract } from "../../utils/root-file-extractor";
-import { splitPlatformFileFrontmatter } from "../../utils/platform-frontmatter-split";
-import { updateMarkdownWithFormulaFrontmatter } from "../../utils/md-frontmatter";
-import { FormulaYmlInfo } from "./formula-yml-generator";
+import { getAllPlatforms, getPlatformDefinition } from "../platforms.js";
+import { resolveRootFileConflicts } from "../../utils/root-conflict-resolution.js";
+import { resolvePlatformFileConflicts } from "../../utils/platform-conflict-resolution.js";
+import { writeFormulaYml } from "../../utils/formula-yml.js";
+import { exists, readTextFile, writeTextFile } from "../../utils/fs.js";
+import { LOG_PREFIXES, UTF8_ENCODING } from "./constants.js";
+import { buildOpenMarker, CLOSE_MARKER, ensureRootMarkerIdAndExtract } from "../../utils/root-file-extractor.js";
+import { splitPlatformFileFrontmatter } from "../../utils/platform-frontmatter-split.js";
+import { updateMarkdownWithFormulaFrontmatter } from "../../utils/md-frontmatter.js";
+import { FormulaYmlInfo } from "./formula-yml-generator.js";
 
 /**
  * Process discovered files and return formula file entries

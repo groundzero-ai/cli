@@ -1,17 +1,14 @@
-import { join, dirname, isAbsolute, basename } from 'path';
+import { join } from 'path';
 import * as yaml from 'js-yaml';
-import { exists, isDirectory, isFile, listDirectories, listFiles, readTextFile } from '../../utils/fs.js';
+import { exists, isDirectory, listDirectories, listFiles, readTextFile } from '../../utils/fs.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { getFileMtime, Platformish } from '../../utils/discovery/file-processing.js';
-import { parsePlatformDirectory, PlatformSearchConfig } from '../../core/discovery/platform-discovery.js';
-import { mapPlatformFileToUniversal } from '../../utils/platform-mapper.js';
-import { PLATFORM_DIRS } from '../../constants/index.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import { logger } from '../../utils/logger.js';
 import type { FormulaMarkerYml } from '../../utils/md-frontmatter.js';
 import { obtainSourceDirAndRegistryPath } from './file-discovery.js';
 
-async function readIndexYml(path: string): Promise<FormulaMarkerYml | null> {
+export async function readIndexYml(path: string): Promise<FormulaMarkerYml | null> {
   try {
     const content = await readTextFile(path);
     const parsed = yaml.load(content) as any;
@@ -41,32 +38,6 @@ async function recursivelyListAllFiles(dir: string, baseDir: string): Promise<Ar
 
   return results;
 }
-
-function computeRegistryPathForIndexDiscovery(
-  baseDir: string,
-  file: { fullPath: string; relativePath: string }
-): string | null {
-  // Try universal mapping for platform subdirs
-  const mapping = mapPlatformFileToUniversal(file.fullPath);
-  if (mapping) {
-    return join(mapping.subdir, mapping.relPath);
-  }
-
-  // Determine platform context from baseDir of index.yml
-  const platformInfo = parsePlatformDirectory(baseDir);
-  if (platformInfo && platformInfo.platformName !== PLATFORM_DIRS.AI) {
-    // File is in a platform directory but not in a supported subdir - ignore it
-    return null;
-  }
-
-  if (platformInfo && platformInfo.platformName === PLATFORM_DIRS.AI) {
-    return join(PLATFORM_DIRS.AI, file.relativePath);
-  }
-
-  // Non-platform context: keep relative structure
-  return file.relativePath;
-}
-
 
 async function findMatchingIndexYmlDirsRecursive(rootDir: string, formulaName: string): Promise<string[]> {
   const matches: string[] = [];

@@ -7,7 +7,7 @@ import {
 import type { DiscoveredFile } from '../../types/index.js';
 
 // Import the shared type
-import { buildPlatformSearchConfig, PlatformSearchConfig } from './platform-discovery';
+import { buildPlatformSearchConfig, PlatformSearchConfig } from './platform-discovery.js';
 import { discoverFiles } from './file-discovery.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 

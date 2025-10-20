@@ -1,16 +1,16 @@
 import { join } from "path";
-import { FILE_PATTERNS } from "../../constants";
+import { FILE_PATTERNS } from "../../constants/index.js";
 import { FormulaYml } from "../../types";
-import { areFormulaNamesEquivalent, normalizeFormulaName } from "../../utils/formula-name-normalization";
-import { parseFormulaYml, writeFormulaYml } from "../../utils/formula-yml";
-import { ensureDir, exists } from "../../utils/fs";
-import { logger } from "../../utils/logger";
-import { getLocalFormulaDir, getLocalFormulaYmlPath } from "../../utils/paths";
-import { ValidationError } from "../../utils/errors";
-import { createBasicFormulaYml, ensureLocalGroundZeroStructure } from "../../utils/formula-management";
-import { hasFormulaVersion } from "../directory";
-import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from "./constants";
-import { determineTargetVersion } from "./formula-yml-versioning";
+import { areFormulaNamesEquivalent, normalizeFormulaName } from "../../utils/formula-name-normalization.js";
+import { parseFormulaYml, writeFormulaYml } from "../../utils/formula-yml.js";
+import { ensureDir, exists } from "../../utils/fs.js";
+import { logger } from "../../utils/logger.js";
+import { getLocalFormulaDir, getLocalFormulaYmlPath } from "../../utils/paths.js";
+import { ValidationError } from "../../utils/errors.js";
+import { createBasicFormulaYml, ensureLocalGroundZeroStructure } from "../../utils/formula-management.js";
+import { hasFormulaVersion } from "../directory.js";
+import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from "./constants.js";
+import { determineTargetVersion } from "./formula-yml-versioning.js";
 
 export type FormulaYmlInfo = {
   fullPath: string;

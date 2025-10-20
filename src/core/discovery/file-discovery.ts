@@ -1,11 +1,11 @@
 import { DiscoveredFile } from "../../types"
-import { Platformish } from "../../utils/discovery/file-processing"
-import { exists, isDirectory } from "../../utils/fs"
-import { discoverMdFiles } from "./md-files-discovery"
-import { discoverIndexYmlMarkedFiles } from "./index-files-discovery"
-import { PLATFORM_DIRS } from "../../constants"
-import { getPlatformDefinition } from "../platforms"
-import { mapPlatformFileToUniversal } from "../../utils/platform-mapper"
+import { Platformish } from "../../utils/discovery/file-processing.js"
+import { exists, isDirectory } from "../../utils/fs.js"
+import { discoverMdFiles } from "./md-files-discovery.js"
+import { discoverIndexYmlMarkedFiles } from "./index-files-discovery.js"
+import { PLATFORM_DIRS } from "../../constants/index.js"
+import { getPlatformDefinition } from "../platforms.js"
+import { mapPlatformFileToUniversal } from "../../utils/platform-mapper.js"
 import { join } from "path"
 
 export async function obtainSourceDirAndRegistryPath(

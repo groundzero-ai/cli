@@ -1,6 +1,6 @@
-import { ValidationError } from "../../utils/errors";
-import { extractBaseVersion, generateLocalVersion, isLocalVersion } from "../../utils/version-generator";
-import { ERROR_MESSAGES, LOG_PREFIXES, DEFAULT_VERSION, VERSION_TYPE_STABLE } from "./constants";
+import { ValidationError } from "../../utils/errors.js";
+import { extractBaseVersion, generateLocalVersion, isLocalVersion } from "../../utils/version-generator.js";
+import { ERROR_MESSAGES, LOG_PREFIXES, DEFAULT_VERSION, VERSION_TYPE_STABLE } from "./constants.js";
 
 const BUMP_TYPES = {
   PATCH: 'patch',

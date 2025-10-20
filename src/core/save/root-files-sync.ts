@@ -4,15 +4,15 @@
  */
 
 import { relative } from 'path';
-import { ensureDir, writeTextFile, exists, readTextFile } from './fs.js';
-import { getDetectedPlatforms, getPlatformDefinition, getAllPlatforms } from '../core/platforms.js';
-import { type Platform } from '../constants/index.js';
-import { logger } from './logger.js';
-import type { FormulaFile } from '../types/index.js';
-import { getPlatformForRootFile } from './root-file-registry.js';
-import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
-import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from './root-file-extractor.js';
-import { getPathLeaf } from './path-normalization.js';
+import { ensureDir, writeTextFile, exists, readTextFile } from '../../utils/fs.js';
+import { getDetectedPlatforms, getPlatformDefinition, getAllPlatforms } from '../platforms.js';
+import { type Platform } from '../../constants/index.js';
+import { logger } from '../../utils/logger.js';
+import type { FormulaFile } from '../../types/index.js';
+import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
+import { mergeFormulaContentIntoRootFile } from '../../utils/root-file-merger.js';
+import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
+import { getPathLeaf } from '../../utils/path-normalization.js';
 
 /**
  * Result of root file sync operation

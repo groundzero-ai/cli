@@ -8,7 +8,7 @@ import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../
 import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS } from '../constants/index.js';
-import { isRootFile } from '../utils/root-file-sync.js';
+import { isRootFile } from '../core/save/root-files-sync.js';
 import { addFormulaToRootFile } from '../utils/root-file-operations.js';
 
 /**

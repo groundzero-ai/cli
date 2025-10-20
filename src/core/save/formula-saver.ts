@@ -1,11 +1,11 @@
 import { FormulaFile, FormulaYml } from "../../types";
-import { normalizeFormulaName } from "../../utils/formula-name-normalization";
-import { ensureDir, writeTextFile } from "../../utils/fs";
-import { logger } from "../../utils/logger";
-import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platform-mapper";
-import { getFormulaVersionPath } from "../directory";
-import { UTF8_ENCODING } from "./constants";
-import { FormulaYmlInfo } from "./formula-yml-generator";
+import { normalizeFormulaName } from "../../utils/formula-name-normalization.js";
+import { ensureDir, writeTextFile } from "../../utils/fs.js";
+import { logger } from "../../utils/logger.js";
+import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platform-mapper.js";
+import { getFormulaVersionPath } from "../directory.js";
+import { UTF8_ENCODING } from "./constants.js";
+import { FormulaYmlInfo } from "./formula-yml-generator.js";
 
 /**
  * Save formula to local registry

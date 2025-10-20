@@ -27,12 +27,8 @@ export function mergePlatformYamlOverride(
     if (!relPath.endsWith(FILE_PATTERNS.MD_FILES)) return universalContent;
 
     const base = relPath.slice(0, -FILE_PATTERNS.MD_FILES.length);
-    const candidates = [
-      `${universalSubdir}/${base}.${targetPlatform}.yml`,
-      // Legacy double-dot variant from earlier bug
-      `${universalSubdir}/${base}..${targetPlatform}.yml`
-    ];
-    const matchingYml = formulaFiles.find(f => candidates.includes(f.path));
+    const overridePath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
+    const matchingYml = formulaFiles.find(f => f.path === overridePath);
 
     if (matchingYml?.content?.trim()) {
       return mergeFrontmatter(universalContent, matchingYml.content);

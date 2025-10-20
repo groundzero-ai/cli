@@ -10,13 +10,14 @@ import { logger } from './logger.js';
 import { getFirstPathComponent, getPathAfterFirstComponent } from './path-normalization.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
-import type { InstallOptions } from '../types/index.js';
+import type { FormulaFile, InstallOptions } from '../types/index.js';
 import {
   buildCwdIdMap,
   buildRegistryIdMap,
   resolveInstallPathFromAdjacent,
   cleanupInvalidFormulaFiles,
-  type RegistryFileInfo
+  type RegistryFileInfo,
+  CwdIdMapEntry
 } from './id-based-discovery.js';
 import { getPlatformSpecificFilename, parseUniversalPath } from './platform-file.js';
 import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
@@ -136,11 +137,11 @@ async function processBatchOfFilesForPlatform(
   platform: Platform,
   parentDir: string,
   files: RegistryFileInfo[],
-  cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
+  cwdIdMap: Map<string, CwdIdMapEntry[]>,
   options: InstallOptions,
   forceOverwrite: boolean,
   result: IdBasedInstallResult,
-  yamlOverrides: import('../types/index.js').FormulaFile[]
+  yamlOverrides: FormulaFile[]
 ): Promise<void> {
   // Separate files into those with matching IDs and new files
   const matchingFiles: RegistryFileInfo[] = [];
@@ -183,12 +184,12 @@ async function processBatchOfFilesForPlatform(
 async function processMatchingFileForPlatform(
   registryFile: RegistryFileInfo,
   platform: Platform,
-  cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
+  cwdIdMap: Map<string, CwdIdMapEntry[]>,
   options: InstallOptions,
   forceOverwrite: boolean,
   result: IdBasedInstallResult,
   cwd: string,
-  yamlOverrides: import('../types/index.js').FormulaFile[]
+  yamlOverrides: FormulaFile[]
 ): Promise<void> {
   const cwdEntries = cwdIdMap.get(registryFile.id!);
   if (!cwdEntries || cwdEntries.length === 0) return;
@@ -265,10 +266,10 @@ async function processNewFilesForPlatform(
   platform: Platform,
   registryParentDir: string,
   files: RegistryFileInfo[],
-  cwdIdMap: Map<string, import('./id-based-discovery.js').CwdIdMapEntry[]>,
+  cwdIdMap: Map<string, CwdIdMapEntry[]>,
   options: InstallOptions,
   result: IdBasedInstallResult,
-  yamlOverrides: import('../types/index.js').FormulaFile[]
+  yamlOverrides: FormulaFile[]
 ): Promise<void> {
   // Collect all adjacent IDs from these files
   const allAdjacentIds = new Set<string>();
@@ -352,7 +353,7 @@ async function installNewFile(
   platform: Platform,
   options: InstallOptions,
   result: IdBasedInstallResult,
-  yamlOverrides: import('../types/index.js').FormulaFile[]
+  yamlOverrides: FormulaFile[]
 ): Promise<void> {
   const platformSpecificFileName = getPlatformSpecificFilename(file.registryPath, platform);
   const targetPath = join(targetDir, platformSpecificFileName);

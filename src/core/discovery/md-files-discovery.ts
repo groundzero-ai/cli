@@ -1,15 +1,12 @@
-import { FILE_PATTERNS, PLATFORM_DIRS } from "../../constants";
+import { FILE_PATTERNS } from "../../constants/index.js";
 import { DiscoveredFile } from "../../types";
-import { getFileMtime, Platformish } from "../../utils/discovery/file-processing";
-import { exists, isDirectory, readTextFile } from "../../utils/fs";
-import { findFilesByExtension } from "../../utils/discovery/file-processing";
-import { parseMarkdownFrontmatter } from "../../utils/md-frontmatter";
-import { logger } from "../../utils/logger";
-import { calculateFileHash } from "../../utils/hash-utils";
-import { mapPlatformFileToUniversal } from "../../utils/platform-mapper";
-import { join } from "path";
-import { getPlatformDefinition } from "../platforms";
-import { obtainSourceDirAndRegistryPath } from "./file-discovery";
+import { getFileMtime, Platformish } from "../../utils/discovery/file-processing.js";
+import { exists, isDirectory, readTextFile } from "../../utils/fs.js";
+import { findFilesByExtension } from "../../utils/discovery/file-processing.js";
+import { parseMarkdownFrontmatter } from "../../utils/md-frontmatter.js";
+import { logger } from "../../utils/logger.js";
+import { calculateFileHash } from "../../utils/hash-utils.js";
+import { obtainSourceDirAndRegistryPath } from "./file-discovery.js";
 
 /**
  * Determine if a markdown file should be included based on frontmatter rules

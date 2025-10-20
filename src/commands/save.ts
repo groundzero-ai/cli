@@ -1,30 +1,22 @@
-import { UTF8_ENCODING, VERSION_TYPE_STABLE } from './../core/save/constants';
+import { VERSION_TYPE_STABLE } from './../core/save/constants.js';
 import { Command } from 'commander';
-import { join } from 'path';
-import { SaveOptions, CommandResult, FormulaYml, FormulaFile } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
-import { ensureRegistryDirectories, getFormulaVersionPath } from '../core/directory.js';
+import { SaveOptions, CommandResult } from '../types/index.js';
+import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { ensureLocalGroundZeroStructure, createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
-import { FILE_PATTERNS } from '../constants/index.js';
-
-import { resolveTargetDirectory, resolveTargetFilePath } from '../utils/platform-mapper.js';
+import { addFormulaToYml } from '../utils/formula-management.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
-import { exists, writeTextFile, ensureDir } from '../utils/fs.js';
-import { postSavePlatformSync } from '../utils/platform-sync.js';
-import { syncRootFiles } from '../utils/root-file-sync.js';
-import { getLocalFormulaYmlPath } from '../utils/paths.js';
+import { performPlatformSync } from '../core/save/platform-sync.js';
 import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
-import { normalizeFormulaName, areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
+import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
 import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
 import { createFormulaFiles } from '../core/save/formula-file-generator.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
-import { extractBaseVersion } from '../utils/version-generator';
-import {  getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator';
-import { saveFormulaToRegistry } from '../core/save/formula-saver';
+import { extractBaseVersion } from '../utils/version-generator.js';
+import {  getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
+import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
 
 /**
  * Parse formula inputs to handle three usage patterns:
@@ -70,98 +62,6 @@ function parseFormulaInputs(formulaName: string): {
     version
   };
 }
-
-/**
- * Create formula.yml automatically in a directory without user prompts
- * Reuses init command logic but makes it non-interactive
- */
-async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
-  const cwd = process.cwd();
-  
-  // Ensure the target directory exists (including formulas subdirectory)
-  await ensureLocalGroundZeroStructure(cwd);
-  await ensureDir(formulaDir);
-  
-  // Create formula.yml in the formula directory (not the main .groundzero directory)
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
-  
-  // Create default formula config
-  const formulaConfig: FormulaYml = {
-    name: normalizeFormulaName(formulaName),
-    version: DEFAULT_VERSION
-  };
-  
-  // Create the formula.yml file
-  await writeFormulaYml(formulaYmlPath, formulaConfig);
-  console.log(`${LOG_PREFIXES.CREATED} ${formulaDir}`);
-  console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
-  console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
-  
-  return {
-    fullPath: formulaYmlPath,
-    config: formulaConfig,
-    isNewFormula: true
-  };
-}
-
-/**
- * Get or create formula configuration in the specified directory
- * @param cwd - Current working directory
- * @param formulaDir - Directory where formula.yml should be located
- * @param formulaName - Name of the formula
- * @returns Formula configuration info
- */
-async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean; isRootFormula: boolean }> {
-  // Check if this is a root formula
-  const rootFormulaPath = getLocalFormulaYmlPath(cwd);
-  if (await exists(rootFormulaPath)) {
-    try {
-      const rootConfig = await parseFormulaYml(rootFormulaPath);
-      if (areFormulaNamesEquivalent(rootConfig.name, formulaName)) {
-        logger.debug('Detected root formula match');
-        console.log(`✓ Found root formula ${rootConfig.name}@${rootConfig.version}`);
-        return {
-          fullPath: rootFormulaPath,
-          config: rootConfig,
-          isNewFormula: false,
-          isRootFormula: true
-        };
-      }
-    } catch (error) {
-      // If root formula.yml is invalid, continue to sub-formula logic
-      logger.warn(`Failed to parse root formula.yml: ${error}`);
-    }
-  }
-
-  // Not a root formula - use sub-formula logic
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
-
-  // Check if formula.yml already exists
-  if (await exists(formulaYmlPath)) {
-    logger.debug('Found existing formula.yml, parsing...');
-    try {
-      const formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
-
-      return {
-        fullPath: formulaYmlPath,
-        config: formulaConfig,
-        isNewFormula: false,
-        isRootFormula: false
-      };
-    } catch (error) {
-      throw new ValidationError(ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace('%s', formulaYmlPath).replace('%s', String(error)));
-    }
-  } else {
-    logger.debug('No formula.yml found, creating automatically...');
-    const result = await createFormulaYmlInDirectory(formulaDir, formulaName);
-    return {
-      ...result,
-      isRootFormula: false
-    };
-  }
-}
-
 
 /**
  * Main implementation of the save formula command
@@ -219,7 +119,6 @@ async function saveFormulaCommand(
   const formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, explicitVersion, versionType, options?.bump);
   const formulaConfig = formulaInfo.config;
   const isRootFormula = formulaInfo.isRootFormula;
-  const formulaYmlPath = formulaInfo.fullPath;
 
   // Inject includes into this formula's own formula.yml (dependencies)
   if (hasIncludes) {
@@ -286,10 +185,7 @@ async function saveFormulaCommand(
   }
 
   // Sync universal files across detected platforms
-  const syncResult = await postSavePlatformSync(cwd, formulaFiles);
-
-  // Sync root files across detected platforms
-  const rootSyncResult = await syncRootFiles(cwd, formulaFiles, formulaConfig.name);
+  const syncResult = await performPlatformSync(cwd, formulaConfig.name, formulaFiles);
 
   // Finalize the save operation
   // Don't add root formula to itself as a dependency
@@ -309,11 +205,11 @@ async function saveFormulaCommand(
   }
 
   // Display platform sync results
-  const totalCreated = syncResult.created.length + rootSyncResult.created.length;
-  const totalUpdated = syncResult.updated.length + rootSyncResult.updated.length;
+  const totalCreated = syncResult.created.length;
+  const totalUpdated = syncResult.updated.length;
 
   if (totalCreated > 0) {
-    const allCreated = [...syncResult.created, ...rootSyncResult.created].sort((a, b) => a.localeCompare(b));
+    const allCreated = [...syncResult.created].sort((a, b) => a.localeCompare(b));
     console.log(`✓ Platform sync created ${totalCreated} files:`);
     for (const createdFile of allCreated) {
       console.log(`   ├── ${createdFile}`);
@@ -321,7 +217,7 @@ async function saveFormulaCommand(
   }
 
   if (totalUpdated > 0) {
-    const allUpdated = [...syncResult.updated, ...rootSyncResult.updated].sort((a, b) => a.localeCompare(b));
+    const allUpdated = [...syncResult.updated].sort((a, b) => a.localeCompare(b));
     console.log(`✓ Platform sync updated ${totalUpdated} files:`);
     for (const updatedFile of allUpdated) {
       console.log(`   ├── ${updatedFile}`);

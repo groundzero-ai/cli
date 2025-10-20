@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
-import { isRootFile } from '../utils/root-file-sync.js';
+import { isRootFile } from '../core/save/root-files-sync.js';
 import { transformRootFileContent } from '../utils/root-file-transformer.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
