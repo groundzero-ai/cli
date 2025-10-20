@@ -110,27 +110,24 @@ async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formula
   }
 }
 
-
-
-export async function getOrCreateFormulaYml(
+export async function getOrCreateFormulaYmlInfo(
   cwd: string,
   name: string,
   explicitVersion?: string,
   versionType?: string,
   bump?: 'patch' | 'minor' | 'major',
   force?: boolean
-): Promise<FormulaYml> {
+): Promise<FormulaYmlInfo> {
   await createBasicFormulaYml(cwd);
 
   // Get formula configuration based on input pattern
   const formulaDir = getLocalFormulaDir(cwd, name);
   const formulaInfo = await getOrCreateFormulaConfig(cwd, formulaDir, name);
-  let formulaConfig = formulaInfo.config;
 
   logger.debug(`Found formula.yml at: ${formulaInfo.fullPath}`);
 
   // Determine target version
-  const targetVersion = await determineTargetVersion(explicitVersion, versionType, bump, formulaInfo.isNewFormula ? undefined : formulaConfig.version);
+  const targetVersion = await determineTargetVersion(explicitVersion, versionType, bump, formulaInfo.isNewFormula ? undefined : formulaInfo.config.version);
 
   // Check if version already exists (unless force is used)
   if (!force) {
@@ -141,7 +138,7 @@ export async function getOrCreateFormulaYml(
   }
 
   // Update formula config with new version
-  formulaConfig = { ...formulaConfig, version: targetVersion };
+  formulaInfo.config = { ...formulaInfo.config, version: targetVersion };
 
-  return formulaConfig;
+  return formulaInfo;
 }
