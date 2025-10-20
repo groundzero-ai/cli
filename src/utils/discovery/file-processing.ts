@@ -13,8 +13,8 @@ import { calculateFileHash } from '../hash-utils.js';
 import { mapPlatformFileToUniversal } from '../platform-mapper.js';
 import { getRelativePathFromBase } from '../path-normalization.js';
 import type { DiscoveredFile } from '../../types/index.js';
-import type { Platform } from '../../core/platforms.js';
-import { shouldIncludeMarkdownFile } from './platform-discovery.js';
+import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
+import { shouldIncludeMarkdownFile } from '../../core/discovery/md-files-discovery.js';
 
 // Union type for modules that need to handle AI directory alongside platforms
 export type Platformish = Platform | typeof PLATFORM_DIRS.AI;
@@ -34,7 +34,7 @@ export async function getFileMtime(filePath: string): Promise<number> {
  */
 export async function findFilesByExtension(
   dir: string,
-  extension: string,
+  extensions: string[] = [],
   baseDir: string = dir
 ): Promise<Array<{ fullPath: string; relativePath: string }>> {
   if (!(await exists(dir)) || !(await isDirectory(dir))) {
@@ -42,11 +42,14 @@ export async function findFilesByExtension(
   }
 
   const files: Array<{ fullPath: string; relativePath: string }> = [];
+  const normalizedExtensions = extensions.map(extension => extension.startsWith('.') ? extension : `.${extension}`);
 
   // Check current directory files
   const dirFiles = await listFiles(dir);
   for (const file of dirFiles) {
-    if (file.endsWith(extension)) {
+    // If no extension is provided, include all files
+    // Otherwise, include only files with the specified extension
+    if (normalizedExtensions.length === 0 || normalizedExtensions.some(extension => file.endsWith(extension))) {
       const fullPath = join(dir, file);
       const relativePath = getRelativePathFromBase(fullPath, baseDir);
       files.push({ fullPath, relativePath });
@@ -56,7 +59,7 @@ export async function findFilesByExtension(
   // Recursively search subdirectories
   const subdirs = await listDirectories(dir);
   const subFilesPromises = subdirs.map(subdir =>
-    findFilesByExtension(join(dir, subdir), extension, baseDir)
+    findFilesByExtension(join(dir, subdir), extensions, baseDir)
   );
   const subFiles = await Promise.all(subFilesPromises);
   files.push(...subFiles.flat());
@@ -65,16 +68,13 @@ export async function findFilesByExtension(
 }
 
 /**
- * Process a single file for discovery - common logic used by multiple discovery methods
+ * Process a single markdown file for discovery - common logic used by multiple discovery methods
  */
-export async function processFileForDiscovery(
+export async function processMdFileForDiscovery(
   file: { fullPath: string; relativePath: string },
   formulaName: string,
-  platformName: Platformish,
+  platform: Platformish,
   registryPathPrefix: string,
-  inclusionMode: 'directory' | 'platform',
-  formulaDir?: string,
-  isDirectoryMode?: boolean
 ): Promise<DiscoveredFile | null> {
   try {
     const content = await readTextFile(file.fullPath);
@@ -86,7 +86,7 @@ export async function processFileForDiscovery(
       frontmatter = null;
     }
 
-    const shouldInclude = shouldIncludeMarkdownFile(file, frontmatter, platformName, formulaName, isDirectoryMode);
+    const shouldInclude = shouldIncludeMarkdownFile(file, frontmatter, platform, formulaName);
 
     if (shouldInclude) {
       try {
@@ -95,7 +95,7 @@ export async function processFileForDiscovery(
 
         // Compute registry path using new universal mapping
         let registryPath: string;
-        if (inclusionMode === 'platform' && platformName !== PLATFORM_DIRS.AI && frontmatter?.formula?.name === formulaName) {
+        if (platform !== 'ai') {
           // Universal file from platform directory - use the mapper to get universal path
           const mapping = mapPlatformFileToUniversal(file.fullPath);
           if (mapping) {
@@ -109,10 +109,11 @@ export async function processFileForDiscovery(
           registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
         }
 
+        const sourceDir = platform === 'ai' ? PLATFORM_DIRS.AI : getPlatformDefinition(platform).rootDir;
         const result: DiscoveredFile = {
           fullPath: file.fullPath,
           relativePath: file.relativePath,
-          sourceDir: platformName,
+          sourceDir,
           registryPath,
           mtime,
           contentHash
@@ -131,69 +132,4 @@ export async function processFileForDiscovery(
     logger.warn(`Failed to read ${file.relativePath}: ${error}`);
   }
   return null;
-}
-
-/**
- * Discover markdown files in a directory with specified patterns and inclusion rules
- */
-export async function discoverFiles(
-  directoryPath: string,
-  formulaName: string,
-  platformName: Platformish,
-  registryPathPrefix: string = '',
-  filePatterns: string[] = [FILE_PATTERNS.MD_FILES],
-  inclusionMode: 'directory' | 'platform' = 'directory',
-  formulaDir?: string,
-  recursive: boolean = true,
-  isDirectoryMode?: boolean
-): Promise<DiscoveredFile[]> {
-  if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
-    return [];
-  }
-
-  // Find files with the specified patterns
-  const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
-
-  if (recursive) {
-    // Recursive search using findFilesByExtension
-    for (const pattern of filePatterns) {
-      const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
-      const files = await findFilesByExtension(directoryPath, extension, directoryPath);
-      allFiles.push(...files);
-    }
-  } else {
-    // Shallow search - only immediate directory files
-    const dirFiles = await listFiles(directoryPath);
-    for (const file of dirFiles) {
-      // Skip directories - we only want immediate files
-      const filePath = join(directoryPath, file);
-      if (await isDirectory(filePath)) {
-        continue;
-      }
-
-      // Check if file matches patterns
-      let matchesPattern = false;
-      for (const pattern of filePatterns) {
-        const extension = pattern.startsWith('.') ? pattern : `.${pattern}`;
-        if (file.endsWith(extension)) {
-          matchesPattern = true;
-          break;
-        }
-      }
-
-      if (matchesPattern) {
-        const fullPath = filePath;
-        const relativePath = file; // since we're only in the immediate directory
-        allFiles.push({ fullPath, relativePath });
-      }
-    }
-  }
-
-  // Process files in parallel using the extracted helper
-  const processPromises = allFiles.map(async (file) =>
-    processFileForDiscovery(file, formulaName, platformName, registryPathPrefix, inclusionMode, formulaDir, isDirectoryMode)
-  );
-
-  const results = await Promise.all(processPromises);
-  return results.filter((result): result is DiscoveredFile => result !== null);
 }

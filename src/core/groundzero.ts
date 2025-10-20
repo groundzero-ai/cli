@@ -303,21 +303,19 @@ export async function checkExistingFormulaInMarkdownFiles(
   // Search each target directory for files with supported extensions
   for (const target of targets) {
     try {
-      for (const ext of target.exts) {
-        const files = await findFilesByExtension(target.dir, ext, target.dir);
-        for (const file of files) {
-          try {
-            const content = await readTextFile(file.fullPath);
-            const frontmatter: any = parseMarkdownFrontmatter(content);
-            if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
-              const version: string | undefined = (typeof frontmatter.version === 'string' ? frontmatter.version : undefined)
-                || (typeof frontmatter.formula?.version === 'string' ? frontmatter.formula.version : undefined);
-              logger.debug(`Found existing formula '${formulaName}' in ${file.fullPath}`, { version });
-              return { found: true, version, location: file.fullPath };
-            }
-          } catch (readErr) {
-            logger.debug(`Failed to read or parse ${file.fullPath}: ${readErr}`);
+      const files = await findFilesByExtension(target.dir, target.exts);
+      for (const file of files) {
+        try {
+          const content = await readTextFile(file.fullPath);
+          const frontmatter: any = parseMarkdownFrontmatter(content);
+          if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
+            const version: string | undefined = (typeof frontmatter.version === 'string' ? frontmatter.version : undefined)
+              || (typeof frontmatter.formula?.version === 'string' ? frontmatter.formula.version : undefined);
+            logger.debug(`Found existing formula '${formulaName}' in ${file.fullPath}`, { version });
+            return { found: true, version, location: file.fullPath };
           }
+        } catch (readErr) {
+          logger.debug(`Failed to read or parse ${file.fullPath}: ${readErr}`);
         }
       }
     } catch (dirErr) {

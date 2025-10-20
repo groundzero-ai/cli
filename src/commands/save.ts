@@ -14,8 +14,6 @@ import { generateLocalVersion, isLocalVersion, extractBaseVersion } from '../uti
 import { resolveTargetDirectory, resolveTargetFilePath } from '../utils/platform-mapper.js';
 import { resolvePlatformFileConflicts } from '../utils/platform-conflict-resolution.js';
 import { resolveRootFileConflicts } from '../utils/root-conflict-resolution.js';
-import { discoverFilesForPattern } from '../utils/discovery/discovery-core.js';
-import { discoverAllRootFiles, findFormulas } from '../utils/discovery/formula-discovery.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { createCaretRange } from '../utils/version-ranges.js';
@@ -30,6 +28,7 @@ import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-vali
 import { normalizeFormulaName, areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
 import { PLATFORM_DIRS } from '../constants/index.js';
 import { splitPlatformFileFrontmatter } from '../utils/platform-frontmatter-split.js';
+import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
 
 // Constants
 const UTF8_ENCODING = 'utf8' as const;
@@ -292,10 +291,11 @@ async function saveFormulaCommand(
     // Validate existence first
     const uniqueNames = new Set<string>([...includeList, ...includeDevList]);
     for (const dep of uniqueNames) {
-      const matches = await findFormulas(dep);
-      if (!matches || matches.length === 0) {
-        throw new ValidationError(`${dep} not found, please create or install it first.`);
-      }
+      // TODO: Bad logic, needs to be refactored
+      // const matches = await findFormulas(dep);
+      // if (!matches || matches.length === 0) {
+      //   throw new ValidationError(`${dep} not found, please create or install it first.`);
+      // }
     }
 
     // Pre-save all included formulas first (skip linking to avoid premature writes)
@@ -395,13 +395,7 @@ async function saveFormulaCommand(
   }
 
   // Discover and include MD files using appropriate logic
-  let discoveredFiles = await discoverFilesForPattern(formulaDir, formulaConfig.name);
-
-  // Discover all platform root files (AGENTS.md, CLAUDE.md, GEMINI.md, etc.) at project root
-  const rootFilesDiscovered = await discoverAllRootFiles(cwd, formulaConfig.name);
-  if (rootFilesDiscovered.length > 0) {
-    discoveredFiles.push(...rootFilesDiscovered);
-  }
+  const discoveredFiles = await discoverFormulaFiles(formulaConfig.name);
 
   // Process discovered files and create formula files array
   const formulaFiles = await processDiscoveredFiles(formulaYmlPath, formulaConfig, discoveredFiles);

@@ -1,14 +1,15 @@
 import { join, dirname, isAbsolute, basename } from 'path';
 import * as yaml from 'js-yaml';
-import { exists, isDirectory, isFile, listDirectories, listFiles, readTextFile } from '../fs.js';
-import { calculateFileHash } from '../hash-utils.js';
-import { getFileMtime } from './file-processing.js';
-import { parsePlatformDirectory } from './platform-discovery.js';
-import { mapPlatformFileToUniversal } from '../platform-mapper.js';
+import { exists, isDirectory, isFile, listDirectories, listFiles, readTextFile } from '../../utils/fs.js';
+import { calculateFileHash } from '../../utils/hash-utils.js';
+import { getFileMtime, Platformish } from '../../utils/discovery/file-processing.js';
+import { parsePlatformDirectory, PlatformSearchConfig } from '../../core/discovery/platform-discovery.js';
+import { mapPlatformFileToUniversal } from '../../utils/platform-mapper.js';
 import { PLATFORM_DIRS } from '../../constants/index.js';
 import type { DiscoveredFile } from '../../types/index.js';
-import { logger } from '../logger.js';
-import type { FormulaMarkerYml } from '../md-frontmatter.js';
+import { logger } from '../../utils/logger.js';
+import type { FormulaMarkerYml } from '../../utils/md-frontmatter.js';
+import { obtainSourceDirAndRegistryPath } from './file-discovery.js';
 
 async function readIndexYml(path: string): Promise<FormulaMarkerYml | null> {
   try {
@@ -88,9 +89,12 @@ async function findMatchingIndexYmlDirsRecursive(rootDir: string, formulaName: s
   return matches;
 }
 
-export async function discoverFromIndexYmlRecursive(baseDir: string, formulaName: string): Promise<DiscoveredFile[]> {
-  const resolved = isAbsolute(baseDir) ? baseDir : join(process.cwd(), baseDir);
-  const rootDir = (await isFile(resolved) && basename(resolved) === 'index.yml') ? dirname(resolved) : resolved;
+export async function discoverIndexYmlMarkedFiles(
+  rootDir: string,
+  formulaName: string,
+  platform: Platformish,
+  registryPathPrefix: string
+): Promise<DiscoveredFile[]> {
 
   const candidateDirs = await findMatchingIndexYmlDirsRecursive(rootDir, formulaName);
   if (candidateDirs.length === 0) return [];
@@ -101,21 +105,15 @@ export async function discoverFromIndexYmlRecursive(baseDir: string, formulaName
     const files = await recursivelyListAllFiles(dir, dir);
     for (const f of files) {
       try {
-        const text = await readTextFile(f.fullPath);
+        const content = await readTextFile(f.fullPath);
         const mtime = await getFileMtime(f.fullPath);
-        const contentHash = await calculateFileHash(text);
-        let registryPath = computeRegistryPathForIndexDiscovery(dir, f);
+        const contentHash = await calculateFileHash(content);
+        const { sourceDir, registryPath } = await obtainSourceDirAndRegistryPath(f, platform, registryPathPrefix);
 
-        // Skip files that should be ignored (unsupported platform subdirs)
-        if (registryPath === null) {
-          continue;
-        }
-
-        if (registryPath.startsWith('/')) registryPath = registryPath.slice(1);
         const discovered: DiscoveredFile = {
           fullPath: f.fullPath,
           relativePath: f.relativePath,
-          sourceDir: PLATFORM_DIRS.AI,
+          sourceDir,
           registryPath,
           mtime,
           contentHash,
@@ -131,5 +129,4 @@ export async function discoverFromIndexYmlRecursive(baseDir: string, formulaName
   }
   return Array.from(dedupByFullPath.values());
 }
-
 

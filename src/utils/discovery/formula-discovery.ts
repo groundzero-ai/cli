@@ -9,7 +9,7 @@ import { getAllPlatforms, getPlatformDefinition } from '../../core/platforms.js'
 import { extractFormulaContentFromRootFile } from '../root-file-extractor.js';
 import { getFileMtime } from './file-processing.js';
 import { findFilesByExtension } from './file-processing.js';
-import { buildPlatformSearchConfig } from './platform-discovery.js';
+import { buildPlatformSearchConfig } from '../../core/discovery/platform-discovery.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import { areFormulaNamesEquivalent } from '../formula-name-normalization.js';
 
@@ -120,6 +120,7 @@ export async function discoverAllRootFiles(
 /**
  * Find formulas by name, searching both explicit formula.yml files and frontmatter-based formulas
  */
+/**
 export async function findFormulas(formulaName: string): Promise<Array<{ fullPath: string; relativePath: string; config: any }>> {
   const cwd = process.cwd();
   const matchingFormulas: Array<{ fullPath: string; relativePath: string; config: any }> = [];
@@ -134,7 +135,7 @@ export async function findFormulas(formulaName: string): Promise<Array<{ fullPat
       return;
     }
 
-    const allMdFiles = await findFilesByExtension(dirPath, FILE_PATTERNS.MD_FILES, dirPath);
+    const allMdFiles = await findFilesByExtension(dirPath, FILE_PATTERNS.MD_FILES);
 
     // Process markdown files in parallel
     const filePromises = allMdFiles.map(async (mdFile) => {
@@ -229,3 +230,4 @@ export async function findFormulas(formulaName: string): Promise<Array<{ fullPat
 
   return Array.from(uniqueFormulas.values());
 }
+*/

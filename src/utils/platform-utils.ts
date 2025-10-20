@@ -27,8 +27,7 @@ import {
   getPlatformRulesDirFilePatterns
 } from '../core/platforms.js';
 import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
-import { discoverFiles } from './discovery/file-processing.js';
-import { resolveTargetDirectory, resolveTargetFilePath } from './platform-mapper.js';
+import { discoverFiles } from '../core/discovery/file-discovery.js';
 
 /**
  * Enhanced platform detection with detailed information
@@ -136,7 +135,7 @@ export async function cleanupPlatformFiles(
     if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: getPathLeaf(platformPaths.commandsDir) });
     if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: getPathLeaf(platformPaths.agentsDir) });
 
-    const filePatterns = getPlatformRulesDirFilePatterns(platform);
+    // const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
     for (const { dir, label, leaf } of subdirs) {
 
@@ -145,8 +144,6 @@ export async function cleanupPlatformFiles(
         formulaName,
         platform,
         label,
-        filePatterns,
-        'platform'
       );
 
       const removalPromises = discovered.map(async (file) => {

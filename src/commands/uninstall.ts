@@ -3,7 +3,6 @@ import { join, relative } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { discoverFiles } from '../utils/discovery/file-processing.js';
 import { type PlatformName } from '../core/platforms.js';
 import { detectPlatforms } from '../utils/formula-installation.js';
 import { cleanupPlatformFiles as cleanupPlatformFilesForSingle } from '../utils/platform-utils.js';
@@ -20,6 +19,7 @@ import {
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 import { normalizePathForProcessing } from '../utils/path-normalization.js';
+import { discoverFiles } from '../core/discovery/file-discovery.js';
 
 /**
  * Clean up platform-specific files for a formula across all detected platforms
@@ -139,7 +139,6 @@ async function displayDryRunInfo(
   options: UninstallOptions,
   danglingDependencies: Set<string>,
   groundzeroPath: string,
-  aiFilesToRemove: string[],
   formulasToRemove: string[]
 ): Promise<void> {
   console.log(`🔍 Dry run - showing what would be uninstalled:\n`);
@@ -214,7 +213,7 @@ async function displayDryRunInfo(
   }
 
   // Display total files that would be removed
-  const allFilesToRemove = [...aiFilesToRemove];
+  const allFilesToRemove = [];
   for (const platformFiles of Object.values(platformCleanup)) {
     allFilesToRemove.push(...platformFiles);
   }
@@ -353,24 +352,9 @@ async function uninstallFormulaCommand(
     }
   }
   
-  // Compute AI files to remove for main + dependencies
-  const aiFilesToRemoveSets = await Promise.all(formulasToRemove.map(async (name) => {
-    const discovered = await discoverFiles(
-      groundzeroPath,
-      name,
-      'ai' as PlatformName,
-      PLATFORM_DIRS.AI,
-      [FILE_PATTERNS.MD_FILES],
-      'platform'
-    );
-    return discovered.map(d => d.fullPath);
-  }));
-  const aiFilesToRemove = Array.from(new Set(aiFilesToRemoveSets.flat()));
-
   // Dry run mode
   if (options.dryRun) {
-    const relAiFiles = aiFilesToRemove.map(p => relative(cwd, p));
-    await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, relAiFiles, formulasToRemove);
+    await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, formulasToRemove);
     const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
     const platformCleanup = await cleanupPlatformFiles(cwd, formulaName, { ...options, dryRun: true });
@@ -380,7 +364,6 @@ async function uninstallFormulaCommand(
         dryRun: true,
         formulaName,
         targetDir,
-        aiFiles: relAiFiles,
         recursive: options.recursive,
         danglingDependencies: Array.from(danglingDependencies),
         totalToRemove: formulasToRemove.length,
@@ -393,13 +376,6 @@ async function uninstallFormulaCommand(
   // Perform actual uninstallation
   try {
     const removedAiFiles: string[] = [];
-    
-    // Remove AI files (main + dangling dependencies)
-    for (const filePath of aiFilesToRemove) {
-      await remove(filePath);
-      removedAiFiles.push(relative(cwd, filePath));
-      logger.debug(`Removed AI file: ${filePath}`);
-    }
 
     // Remove empty directories under ai target path (if it exists)
     if (await exists(groundzeroPath)) {

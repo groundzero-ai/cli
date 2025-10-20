@@ -50,9 +50,6 @@ export async function buildCwdIdMap(
 ): Promise<Map<string, CwdIdMapEntry[]>> {
   const idMap = new Map<string, CwdIdMapEntry[]>();
 
-  // Helper to normalize extension pattern ('.md' vs 'md')
-  const normalizeExt = (pattern: string): string => pattern.startsWith('.') ? pattern : `.${pattern}`;
-
   // Helper to process a discovered file by full path
   const processFile = async (filePath: string, platformLabel: string): Promise<void> => {
     try {
@@ -92,8 +89,7 @@ export async function buildCwdIdMap(
   // 1) Scan AI directory for formula-marked markdown files
   const aiDir = join(cwd, PLATFORM_DIRS.AI);
   if (await exists(aiDir)) {
-    const aiExt = normalizeExt(FILE_PATTERNS.MD_FILES);
-    const aiFiles = await findFilesByExtension(aiDir, aiExt, aiDir);
+    const aiFiles = await findFilesByExtension(aiDir);
     await Promise.all(aiFiles.map(f => processFile(f.fullPath, PLATFORM_DIRS.AI)));
   }
 
@@ -111,13 +107,8 @@ export async function buildCwdIdMap(
       const patterns = subdirDef.readExts && subdirDef.readExts.length > 0 ? subdirDef.readExts : [FILE_PATTERNS.MD_FILES];
 
       // Find files for each supported extension in this subdir
-      const discoveryPromises = patterns.map(async (pattern) => {
-        const ext = normalizeExt(pattern);
-        const files = await findFilesByExtension(subdirPath, ext, subdirPath);
-        await Promise.all(files.map(f => processFile(f.fullPath, platformDef.id)));
-      });
-
-      await Promise.all(discoveryPromises);
+      const files = await findFilesByExtension(subdirPath, patterns);
+      await Promise.all(files.map(f => processFile(f.fullPath, platformDef.id)));
     }
   }
 
@@ -266,9 +257,6 @@ export async function cleanupInvalidFormulaFiles(
     }
   }
 
-  // Helper to normalize extension pattern
-  const normalizeExt = (pattern: string): string => pattern.startsWith('.') ? pattern : `.${pattern}`;
-
   // Helper to process a file for cleanup
   const processFileForCleanup = async (filePath: string): Promise<void> => {
     try {
@@ -292,8 +280,7 @@ export async function cleanupInvalidFormulaFiles(
   // 1) AI directory
   const aiDir = join(cwd, PLATFORM_DIRS.AI);
   if (await exists(aiDir)) {
-    const aiExt = normalizeExt(FILE_PATTERNS.MD_FILES);
-    const aiFiles = await findFilesByExtension(aiDir, aiExt, aiDir);
+    const aiFiles = await findFilesByExtension(aiDir);
     await Promise.all(aiFiles.map(f => processFileForCleanup(f.fullPath)));
   }
 
@@ -309,13 +296,8 @@ export async function cleanupInvalidFormulaFiles(
       }
 
       const patterns = subdirDef.readExts && subdirDef.readExts.length > 0 ? subdirDef.readExts : [FILE_PATTERNS.MD_FILES];
-      const discoveryPromises = patterns.map(async (pattern) => {
-        const ext = normalizeExt(pattern);
-        const files = await findFilesByExtension(subdirPath, ext, subdirPath);
-        await Promise.all(files.map(f => processFileForCleanup(f.fullPath)));
-      });
-
-      await Promise.all(discoveryPromises);
+      const files = await findFilesByExtension(subdirPath, patterns);
+      await Promise.all(files.map(f => processFileForCleanup(f.fullPath)));
     }
   }
 
