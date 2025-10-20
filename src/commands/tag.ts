@@ -12,16 +12,16 @@ import { isRootFile } from '../core/save/root-files-sync.js';
 import { addFormulaToRootFile } from '../utils/root-file-operations.js';
 
 /**
- * Options for the add command
+ * Options for the tag command
  */
-interface AddOptions {
+interface TagOptions {
   // No specific options needed for initial implementation
 }
 
 /**
- * Result of the add command operation
+ * Result of the tag command operation
  */
-interface AddCommandResult extends CommandResult {
+interface TagCommandResult extends CommandResult {
   filesProcessed?: number;
   filesSkipped?: number;
 }
@@ -200,7 +200,7 @@ async function processMarkdownFile(
 /**
  * Handle adding formula to a directory by operating on index.yml
  */
-async function addFormulaToDirectory(formulaName: string, targetPath: string): Promise<AddCommandResult> {
+async function tagFormulaToDirectory(formulaName: string, targetPath: string): Promise<TagCommandResult> {
   const indexPath = join(targetPath, 'index.yml');
 
   if (await exists(indexPath)) {
@@ -226,7 +226,7 @@ async function addFormulaToDirectory(formulaName: string, targetPath: string): P
           targetPath,
           indexPath
         }
-      };
+      } as TagCommandResult;
     }
 
     if (existingName && existingName !== formulaName) {
@@ -244,7 +244,7 @@ async function addFormulaToDirectory(formulaName: string, targetPath: string): P
             targetPath,
             indexPath
           }
-        };
+        } as TagCommandResult;
       } else {
         // Overwrite
         await writeIndexYml(indexPath, {
@@ -264,7 +264,7 @@ async function addFormulaToDirectory(formulaName: string, targetPath: string): P
             targetPath,
             indexPath
           }
-        };
+        } as TagCommandResult;
       }
     }
   }
@@ -281,19 +281,19 @@ async function addFormulaToDirectory(formulaName: string, targetPath: string): P
       targetPath,
       indexPath
     }
-  };
+  } as TagCommandResult;
 }
 
 /**
- * Main add command implementation
+ * Main tag command implementation
  */
-async function addFormulaCommand(
+async function tagFormulaCommand(
   formulaName: string,
   targetPath: string,
-  options: AddOptions = {}
-): Promise<AddCommandResult> {
+  options: TagOptions = {}
+): Promise<TagCommandResult> {
   try {
-    logger.info(`Adding formula '${formulaName}' to: ${targetPath}`);
+    logger.info(`Tagging formula '${formulaName}' to: ${targetPath}`);
 
     // Check if target is a single root file
     const pathExists = await exists(targetPath);
@@ -314,12 +314,12 @@ async function addFormulaCommand(
           filesSkipped: result.processed ? 0 : 1,
           isRootFile: true
         }
-      };
+      } as TagCommandResult;
     }
 
     if (isDir) {
       // Handle directory: operate on index.yml only
-      return await addFormulaToDirectory(formulaName, targetPath);
+      return await tagFormulaToDirectory(formulaName, targetPath);
     }
 
     // Handle regular markdown files (existing logic for single files)
@@ -358,31 +358,31 @@ async function addFormulaCommand(
         filesProcessed,
         filesSkipped
       }
-    };
+    } as TagCommandResult;
     
   } catch (error) {
     if (error instanceof UserCancellationError) {
       throw error; // Re-throw to be handled by withErrorHandling
     }
     
-    logger.error('Failed to add formula to files', { error, formulaName, targetPath });
-    throw error instanceof Error ? error : new Error(`Add operation failed: ${error}`);
+    logger.error('Failed to tag formula to files', { error, formulaName, targetPath });
+    throw error instanceof Error ? error : new Error(`Tag operation failed: ${error}`);
   }
 }
 
 /**
- * Setup the add command
+ * Setup the tag command
  */
-export function setupAddCommand(program: Command): void {
+export function setupTagCommand(program: Command): void {
   program
-    .command('add')
+    .command('tag')
     .argument('<formula-name>', 'formula name to add to markdown files')
     .argument('<path>', 'path to markdown file or directory containing markdown files')
     .description('Add formula frontmatter to markdown files')
-    .action(withErrorHandling(async (formulaName: string, path: string, options?: AddOptions) => {
-      const result = await addFormulaCommand(formulaName, path, options);
+    .action(withErrorHandling(async (formulaName: string, path: string, options?: TagOptions) => {
+      const result = await tagFormulaCommand(formulaName, path, options);
       if (!result.success) {
-        throw new Error(result.error || 'Add operation failed');
+        throw new Error(result.error || 'Tag operation failed');
       }
     }));
 }
