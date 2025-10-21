@@ -1,0 +1,83 @@
+# Source files
+src/
+
+# TypeScript configuration
+tsconfig.json
+
+# Build scripts and tools
+scripts/
+
+# Test directories and files
+tmp/
+test/
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Development dependencies
+node_modules/
+
+# Build artifacts and caches
+dist/**/*.d.ts
+dist/**/*.d.ts.map
+*.tsbuildinfo
+.cache/
+.nyc_output/
+
+# Git and version control
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Development configuration
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Documentation for development
+.cursorignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Alternative package manager files
+yarn.lock
+pnpm-lock.yaml
+
+# Temporary files
+*.tmp
+*.temp
