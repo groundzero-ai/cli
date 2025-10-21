@@ -1,9 +1,9 @@
 # GroundZero Package Manager
 
-<a href="https://www.npmjs.com/package/mem0ai" target="blank">
-  <img src="https://img.shields.io/npm/v/mem0ai?style=flat-square" alt="Npm package">
+<a href="https://www.npmjs.com/package/@groundzero-ai/gpm" target="blank">
+  <img src="https://img.shields.io/npm/v/@groundzero-ai/gpm?style=flat-square" alt="Npm package for GroundZero package manager">
 </a>
-<a href="https://"  target="blank">
+<a href="https://discord.gg/MBvaEw9n"  target="blank">
   <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="GroundZero Discord">
 </a>
 <br /><br />
@@ -25,14 +25,9 @@ The GroundZero registry is currently in private beta, [signup for early access](
 
 ## Installation
 
-Curl
-```bash
-# Curl link here
-```
-
 npm
 ```bash
-npm install #package here
+npm install -g @groundzero-ai/gpm
 ```
 ## Use Cases
 
@@ -64,22 +59,28 @@ g0 save essentials .cursor/commands/essentials
 ### Modular management of files
 Create domain specific formulas for modular reuse.
 ```bash title="Terminal"
-# Create formulas
-g0 save essentials .cursor/rules/essentials
-g0 save essentials .cursor/commands/essentials
-g0 save scalable-typescript .cursor/rules/typescript
-g0 save scalable-nextjs .cursor/rules/nextjs
-g0 save scalable-nestjs .cursor/rules/nestjs
-g0 save mongodb .cursor/rules/mongodb
+# Create typescript formula
+g0 tag typescript .cursor/rules/typescript
+g0 save typescript
+
+# Create scalable-nextjs formula
+g0 tag scalable-nextjs .cursor/rules/nextjs
+g0 save scalable-nextjs
+
+# Create scalable-nestjs formula
+g0 tag scalable-nestjs .cursor/rules/nestjs
+g0 save scalable-nestjs
+
+# Create mongodb formula
+g0 tag mongodb .cursor/rules/mongodb
+g0 save mongodb
 
 # In your NextJS codebase
-g0 install essentials
-g0 install scalable-typescript
+g0 install typescript
 g0 install scalable-nextjs
 
 # In your NestJS codebase
-g0 install essentials
-g0 install scalable-typescript
+g0 install typescript
 g0 install scalable-nestjs
 g0 install mongodb
 ```  
@@ -87,13 +88,19 @@ g0 install mongodb
 ## Usage
 
 > [!TIP]  
-> Formulas are essential to how GroundZero works. We highly recommend reading [What are Formulas?](https://groundzero.enulus.com/docs/what-are-formulas) to understand how formulas work..
+> Formulas are essential to how GroundZero works. We highly recommend reading [What are Formulas?](https://groundzero.enulus.com/docs/what-are-formulas) to understand how formulas work.
 
-### Save files to a formula
+### Associate files and dirs with a formula 
 ```bash title="Terminal"
-g0 save <formula-name> <directory>
+g0 tag <formula-name> <path-to-dir-or-file>
 ```  
-Save a set of files in a codebase under the specified directory as a formula for reuse and cross-platform sync.
+Mark dirs or files as part of a formula for saving.  
+
+### Save a formula
+```bash title="Terminal"
+g0 save <formula-name>
+```  
+Save a set of dirs and files in a codebase under the specified directory as a formula for reuse and cross-platform sync.
 
 ### List formulas
 ```bash title="Terminal"
@@ -137,11 +144,10 @@ Files and paths will be automatically converted to platform specific designation
 | Codex | .codex/ | AGENTS.md | | prompts/ | |
 | Cursor | .cursor/ | AGENTS.md | rules/ | commands/ | |
 | Factory | .factory/ | AGENTS.md | | commands/ | droids/ |
-| Gemini CLI | .gemini/ | GEMINI.md | | commands/ | |
 | Kilo Code | .kilocode/ | AGENTS.md | rules/ | workflows/ | | 
 | Kiro | .kiro/ | | steering/ |  | |
 | OpenCode | .opencode/ | AGENTS.md | | command/ | agent/ |
-| Qwen Code | .qwen/ | QWEN.md | | commands/ | agents/ |
+| Qwen Code | .qwen/ | QWEN.md | | | agents/ |
 | Roo | .roo/ | AGENTS.md | | commands/ | |
 | Warp | .warp/ | WARP.md | | |
 | Windsurf | .windsurf/ | | rules/ |  | |
@@ -157,9 +163,9 @@ Feel free to create [PRs](https://github.com/groundzero-ai/gpm/pulls) and [Githu
 - Missing standard behavior
 - Documentation
 
-## Resources
+## Links
 
-- [Official Website]()
-- [Documentation]()
-- [Discord]()
+- [Official Website](https://groundzero.enulus.com)
+- [Documentation](https://groundzero.enulus.com/docs)
+- [Discord](https://discord.gg/MBvaEw9n)
 - [X (Twitter)](https://x.com/groundzero_ai)

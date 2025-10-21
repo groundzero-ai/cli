@@ -32,6 +32,9 @@ pnpm-debug.log*
 # dotenv environment variables files
 *.env
 
+# NPMJS Credentials
+.npmrc
+
 # ============================================================================
 # TypeScript Build Artifacts
 # ============================================================================
