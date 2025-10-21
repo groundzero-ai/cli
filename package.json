@@ -1,11 +1,16 @@
 {
   "name": "@groundzero-ai/gpm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": {
     "access": "public"
   },
   "license": "Apache-2.0",
   "author": "Eric Lee",
+  "homepage": "https://groundzero.enulus.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/groundzero-ai/gpm.git"
+  },
   "description": "GroundZero (g0) is the package manager for AI coding.",
   "keywords": [
     "cli",
