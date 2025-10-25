@@ -45,7 +45,7 @@ Automatically sync your rules, slash commands, and more across multiple platform
 ```bash title="Terminal"
 # Current codebase has .cursor, .claude, .opencode directories
 g0 save essentials .cursor/commands/essentials
-# GroundZero CLI automatically generates/syncs the same command files accross all platforms.
+# GroundZero CLI automatically generates/syncs the same command files across all platforms.
 
 # Before save:
 # .cursor/commands/essentials/clean-code.md
