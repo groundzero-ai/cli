@@ -1,0 +1,6 @@
+name: g0-gpm-cli
+version: 0.1.0
+formulas:
+- name: test-duplicate-formula
+  version: ^0.1.0
+dev-formulas: []

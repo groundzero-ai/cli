@@ -107,11 +107,10 @@ export async function discoverMdFiles(
   }
 
   // Find files with the specified patterns
-  const mdFilePatterns = [FILE_PATTERNS.MD_FILES, FILE_PATTERNS.MDC_FILES];
   const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
 
   // Recursive search using findFilesByExtension
-  const files = await findFilesByExtension(directoryPath, mdFilePatterns);
+  const files = await findFilesByExtension(directoryPath, [...FILE_PATTERNS.MARKDOWN_FILES]);
   allFiles.push(...files);
 
   // Process files in parallel using the extracted helper

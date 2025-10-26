@@ -67,7 +67,9 @@ export const FILE_PATTERNS = {
   CLAUDE_MD: 'CLAUDE.md',
   GEMINI_MD: 'GEMINI.md',
   QWEN_MD: 'QWEN.md',
-  WARP_MD: 'WARP.md'
+  WARP_MD: 'WARP.md',
+  // File patterns arrays
+  MARKDOWN_FILES: ['.md', '.mdc']
 } as const;
 
 // Universal subdirectory names used across all platforms

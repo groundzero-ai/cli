@@ -3,7 +3,7 @@ import * as semver from 'semver';
 import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { updateMarkdownWithFormulaFrontmatter } from '../utils/md-frontmatter.js';
+import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { isRootFile } from '../core/save/root-files-sync.js';
 import { transformRootFileContent } from '../utils/root-file-transformer.js';
 import { logger } from '../utils/logger.js';
@@ -79,10 +79,15 @@ async function duplicateFormulaCommand(
       return { ...file, content: updatedContent };
     }
 
-    // Handle regular markdown files - update frontmatter (only for non-root files)
-    if (file.path.endsWith(FILE_PATTERNS.MD_FILES) || file.path.endsWith(FILE_PATTERNS.MDC_FILES)) {
-      const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
-      return { ...file, content: updatedContent };
+    // Handle regular markdown files - update frontmatter only for files that already have formula frontmatter
+    if (FILE_PATTERNS.MARKDOWN_FILES.some(ext => file.path.endsWith(ext))) {
+      const frontmatter = parseMarkdownFrontmatter(file.content);
+      const existingFormulaName = frontmatter?.formula?.name;
+
+      if (existingFormulaName) {
+        const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
+        return { ...file, content: updatedContent };
+      }
     }
 
     return file;
@@ -105,7 +110,7 @@ async function duplicateFormulaCommand(
   // Count processed file types for better user feedback
   const rootFileCount = transformedFiles.filter(f => isRootFile(f.path)).length;
   const markdownFileCount = transformedFiles.filter(f =>
-    (f.path.endsWith(FILE_PATTERNS.MD_FILES) || f.path.endsWith(FILE_PATTERNS.MDC_FILES)) &&
+    FILE_PATTERNS.MARKDOWN_FILES.some(ext => f.path.endsWith(ext)) &&
     !isRootFile(f.path)
   ).length;
 
