@@ -1,11 +1,9 @@
 import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
-import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { CONFLICT_RESOLUTION, PLATFORM_DIRS, FILE_PATTERNS, type Platform } from '../constants/index.js';
+import { PLATFORM_DIRS } from '../constants/index.js';
 import { logger } from './logger.js';
 import { formulaManager } from '../core/formula.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
-import { installPlatformFilesById } from './id-based-installer.js';
 
 /**
  * Install formula files to ai directory
