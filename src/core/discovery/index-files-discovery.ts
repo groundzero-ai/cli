@@ -75,7 +75,7 @@ export async function discoverIndexYmlMarkedFiles(
   const dedupByFullPath = new Map<string, DiscoveredFile>();
 
   for (const dir of candidateDirs) {
-    const files = await recursivelyListAllFiles(dir, dir);
+    const files = await recursivelyListAllFiles(dir, rootDir);
     for (const f of files) {
       try {
         const content = await readTextFile(f.fullPath);
