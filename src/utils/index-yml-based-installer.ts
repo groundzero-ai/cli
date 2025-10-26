@@ -5,7 +5,7 @@ import { getFormulaVersionPath } from '../core/directory.js';
 import { readIndexYml } from '../core/discovery/index-files-discovery.js';
 import { writeIfChanged } from '../core/install/file-updater.js';
 import { getPlatformDefinition, getDetectedPlatforms, type Platform } from '../core/platforms.js';
-import { FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORM_DIRS } from '../constants/index.js';
 import type { InstallOptions } from '../types/index.js';
 import { readFile as fsReadFile, writeFile as fsWriteFile } from 'fs/promises';
 import * as fs from 'fs/promises';
@@ -13,6 +13,142 @@ import * as readline from 'readline';
 import { areFormulaNamesEquivalent } from './formula-name.js';
 
 type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
+
+type WriteOutcome = 'created' | 'updated' | 'unchanged';
+
+async function writeIfChangedBinary(absFile: string, content: Buffer): Promise<WriteOutcome> {
+  await ensureDir(dirname(absFile));
+  const fileExists = await exists(absFile);
+  if (!fileExists) {
+    await fsWriteFile(absFile, content);
+    return 'created';
+  }
+  let existing: Buffer | null = null;
+  try {
+    existing = await fsReadFile(absFile);
+  } catch {
+    existing = null;
+  }
+  if (!existing || !content.equals(existing)) {
+    await fsWriteFile(absFile, content);
+    return 'updated';
+  }
+  return 'unchanged';
+}
+
+function splitDirRel(dirRel: string): { first: string; rest: string; isAi: boolean; universalSubdir: UniversalSubdir | null } {
+  const parts = dirRel.split('/');
+  const first = parts[0];
+  const rest = parts.slice(1).join('/');
+  const isAi = first === PLATFORM_DIRS.AI;
+  const universalSubdir = isAi ? null : (first === '.' ? '' : first) as UniversalSubdir;
+  return { first, rest, isAi, universalSubdir };
+}
+
+function computeTargetFileName(relPath: string, writeExt?: string): string {
+  const lower = relPath.toLowerCase();
+  if (writeExt && lower.endsWith(FILE_PATTERNS.MD_FILES)) {
+    const withoutExt = relPath.replace(/\.[^.]+$/, '');
+    return withoutExt + writeExt;
+  }
+  return relPath;
+}
+
+function isTextLike(pathLower: string): boolean {
+  return pathLower.endsWith(FILE_PATTERNS.INDEX_YML) || pathLower.endsWith(FILE_PATTERNS.MD_FILES);
+}
+
+function recordResult(result: IndexYmlInstallResult, relPath: string, outcome: WriteOutcome): void {
+  result.files.push(relPath);
+  if (outcome === 'created') {
+    result.installed++;
+    result.installedFiles.push(relPath);
+  } else if (outcome === 'updated') {
+    result.updated++;
+    result.updatedFiles.push(relPath);
+  }
+}
+
+async function writeFilesToTarget(
+  cwd: string,
+  baseDir: string,
+  targetRelDir: string,
+  files: RegistryDirFile[],
+  writeExt: string | undefined,
+  result: IndexYmlInstallResult
+): Promise<void> {
+  for (const file of files) {
+    try {
+      const targetFileName = computeTargetFileName(file.relativePath, writeExt);
+      const absDir = join(baseDir, targetRelDir);
+      const absFile = join(absDir, targetFileName);
+      await ensureDir(dirname(absFile));
+
+      const isText = isTextLike(targetFileName.toLowerCase());
+      const outcome = isText
+        ? await writeIfChanged(absFile, file.content.toString('utf8'))
+        : await writeIfChangedBinary(absFile, file.content);
+
+      const relPath = relative(cwd, absFile);
+      recordResult(result, relPath, outcome);
+    } catch (error) {
+      logger.warn(`Failed to install file ${file.relativePath}: ${error}`);
+      result.skipped++;
+    }
+  }
+}
+
+function createPrefixTracker<K>(): {
+  isCovered: (key: K, dirRel: string) => boolean;
+  mark: (key: K, dirRel: string) => void;
+} {
+  const map = new Map<K, Set<string>>();
+  const get = (k: K) => {
+    let s = map.get(k);
+    if (!s) {
+      s = new Set<string>();
+      map.set(k, s);
+    }
+    return s;
+  };
+  return {
+    isCovered(key, dirRel) {
+      const set = map.get(key);
+      if (!set) return false;
+      for (const prefix of set) {
+        if (dirRel === prefix || dirRel.startsWith(prefix + '/')) return true;
+      }
+      return false;
+    },
+    mark(key, dirRel) {
+      get(key).add(dirRel);
+    }
+  };
+}
+
+async function shouldProceedWithOverwrite(
+  targetBaseDir: string,
+  expectedId: string | null,
+  options: InstallOptions
+): Promise<boolean> {
+  const targetExists = await exists(targetBaseDir);
+  if (!targetExists) return true;
+
+  const targetId = await getIndexIdFromCwdDir(targetBaseDir);
+
+  // Same ID → safe overwrite
+  if (expectedId && targetId === expectedId) return true;
+
+  // Forced
+  if (options.force) return true;
+
+  // Non-interactive defaults to skip (retain current behavior)
+  const relPromptBase = relative(process.cwd(), targetBaseDir) || targetBaseDir;
+  if (!targetId && !expectedId) {
+    return await promptUserForOverwrite(`Directory ${relPromptBase} exists without index.yml. Overwrite`);
+  }
+  return await promptUserForOverwrite(`Directory ${relPromptBase} exists with no or different index.yml id. Overwrite`);
+}
 
 export interface IndexYmlInstallResult {
   installed: number;
@@ -183,6 +319,33 @@ async function buildCwdIndexYmlIdMap(
   return map;
 }
 
+async function buildCwdAiIndexYmlIdMap(
+  cwd: string
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+
+  async function recurse(baseDir: string): Promise<void> {
+    const files = await listFiles(baseDir).catch(() => [] as string[]);
+    if (files.includes(FILE_PATTERNS.INDEX_YML)) {
+      const id = await getIndexIdFromCwdDir(baseDir);
+      if (id) {
+        if (!map.has(id)) map.set(id, []);
+        map.get(id)!.push(baseDir);
+      }
+    }
+    const subdirs = await listDirectories(baseDir).catch(() => [] as string[]);
+    for (const sub of subdirs) {
+      await recurse(join(baseDir, sub));
+    }
+  }
+
+  const aiRoot = join(cwd, PLATFORM_DIRS.AI);
+  if (await exists(aiRoot)) {
+    await recurse(aiRoot);
+  }
+  return map;
+}
+
 async function clearDirectory(dirAbsPath: string): Promise<void> {
   try {
     const entries = await fs.readdir(dirAbsPath, { withFileTypes: true });
@@ -212,165 +375,7 @@ async function promptUserForOverwrite(promptText: string): Promise<boolean> {
   });
 }
 
-async function writeFilesForSinglePlatform(
-  cwd: string,
-  universalSubdir: UniversalSubdir,
-  targetRelDir: string,
-  files: RegistryDirFile[],
-  platform: Platform,
-  options: InstallOptions,
-  result: IndexYmlInstallResult
-): Promise<void> {
-  const def = getPlatformDefinition(platform);
-  const subdirDef = def.subdirs[universalSubdir];
-  if (!subdirDef) {
-    logger.debug(`Platform ${platform} does not support ${universalSubdir}; skipping`);
-    return;
-  }
 
-  // Write all files preserving directory layout; convert .md extension to platform writeExt
-  for (const file of files) {
-    try {
-      let targetFileName: string;
-      const lower = file.relativePath.toLowerCase();
-      if (lower.endsWith(FILE_PATTERNS.MD_FILES)) {
-        const withoutExt = file.relativePath.replace(/\.[^.]+$/, '');
-        targetFileName = withoutExt + subdirDef.writeExt;
-      } else {
-        targetFileName = file.relativePath;
-      }
-      const absDir = join(cwd, def.rootDir, subdirDef.path, targetRelDir);
-      const absFile = join(absDir, targetFileName);
-
-      const outcome = lower.endsWith(FILE_PATTERNS.INDEX_YML) || lower.endsWith(FILE_PATTERNS.MD_FILES)
-        ? await writeIfChanged(absFile, file.content.toString('utf8'))
-        : await (async () => {
-            await ensureDir(dirname(absFile));
-            const fileExists = await exists(absFile);
-            if (!fileExists) {
-              await fsWriteFile(absFile, file.content);
-              return 'created' as const;
-            }
-            let existing: Buffer | null = null;
-            try {
-              existing = await fsReadFile(absFile);
-            } catch {
-              existing = null;
-            }
-            if (!existing || !file.content.equals(existing)) {
-              await fsWriteFile(absFile, file.content);
-              return 'updated' as const;
-            }
-            return 'unchanged' as const;
-          })();
-
-      const relPath = relative(cwd, absFile);
-      result.files.push(relPath);
-      if (outcome === 'created') {
-        result.installed++;
-        result.installedFiles.push(relPath);
-      } else if (outcome === 'updated') {
-        result.updated++;
-        result.updatedFiles.push(relPath);
-      }
-    } catch (error) {
-      logger.warn(`Failed to install index.yml file for platform ${platform}: ${error}`);
-      result.skipped++;
-    }
-  }
-}
-
-/**
- * Install all files within an index.yml directory to both detected and specified platforms.
- * Preserves directory structure under the corresponding universal subdir path.
- */
-async function installIndexYmlDirectory(
-  cwd: string,
-  universalSubdir: UniversalSubdir,
-  relDirPath: string,
-  files: RegistryDirFile[],
-  platforms: Platform[],
-  options: InstallOptions
-): Promise<IndexYmlInstallResult> {
-  const result: IndexYmlInstallResult = {
-    installed: 0,
-    updated: 0,
-    skipped: 0,
-    files: [],
-    installedFiles: [],
-    updatedFiles: []
-  };
-
-  async function writeIfChangedBinary(absFile: string, content: Buffer): Promise<'created' | 'updated' | 'unchanged'> {
-    await ensureDir(dirname(absFile));
-    const fileExists = await exists(absFile);
-    if (!fileExists) {
-      await fsWriteFile(absFile, content);
-      return 'created';
-    }
-    let existing: Buffer | null = null;
-    try {
-      existing = await fsReadFile(absFile);
-    } catch {
-      existing = null;
-    }
-    if (!existing || !content.equals(existing)) {
-      await fsWriteFile(absFile, content);
-      return 'updated';
-    }
-    return 'unchanged';
-  }
-
-  // Merge detected platforms with specified platforms, keeping order: specified first, then detected
-  const detected = await getDetectedPlatforms(cwd);
-  const mergedPlatforms: Platform[] = Array.from(new Set([...(platforms || []), ...(detected as Platform[])]));
-
-  for (const platform of mergedPlatforms) {
-    const def = getPlatformDefinition(platform);
-    const subdirDef = def.subdirs[universalSubdir];
-    if (!subdirDef) {
-      logger.debug(`Platform ${platform} does not support ${universalSubdir}; skipping`);
-      continue;
-    }
-
-    for (const file of files) {
-      try {
-        // Determine target filename:
-        // - If index.yml, preserve as-is
-        // - If markdown (.md), convert to platform writeExt
-        // - Otherwise preserve original extension
-        let targetFileName: string;
-        const lower = file.relativePath.toLowerCase();
-        if (lower.endsWith(FILE_PATTERNS.MD_FILES)) {
-          const withoutExt = file.relativePath.replace(/\.[^.]+$/, '');
-          targetFileName = withoutExt + subdirDef.writeExt;
-        } else {
-          targetFileName = file.relativePath;
-        }
-        const absDir = join(cwd, def.rootDir, subdirDef.path, relDirPath);
-        const absFile = join(absDir, targetFileName);
-
-        const outcome = lower.endsWith(FILE_PATTERNS.INDEX_YML) || lower.endsWith(FILE_PATTERNS.MD_FILES)
-          ? await writeIfChanged(absFile, file.content.toString('utf8'))
-          : await writeIfChangedBinary(absFile, file.content);
-        const relPath = relative(cwd, absFile);
-        result.files.push(relPath);
-        if (outcome === 'created') {
-          result.installed++;
-          result.installedFiles.push(relPath);
-        } else if (outcome === 'updated') {
-          result.updated++;
-          result.updatedFiles.push(relPath);
-        }
-      } catch (error) {
-        logger.warn(`Failed to install index.yml file for platform ${platform}: ${error}`);
-        result.skipped++;
-      }
-    }
-  }
-
-  return result;
-}
 
 /**
  * Install pre-discovered index.yml directories (no discovery step here)
@@ -390,121 +395,79 @@ export async function installIndexYmlDirectories(
     updatedFiles: []
   };
 
-  // Determine platforms to consider (specified first, then detected uniques)
   const detected = await getDetectedPlatforms(cwd);
   const mergedPlatforms: Platform[] = Array.from(new Set([...(platforms || []), ...(detected as Platform[])]));
 
-  // Build CWD ID map once
   const cwdIdMap = await buildCwdIndexYmlIdMap(cwd, mergedPlatforms);
+  const cwdAiIdMap = await buildCwdAiIndexYmlIdMap(cwd);
 
-  // Track processed registry dir prefixes per platform to avoid double-processing children
-  const processedByPlatform = new Map<Platform, Set<string>>();
-  function getProcessedSet(platform: Platform): Set<string> {
-    let set = processedByPlatform.get(platform);
-    if (!set) {
-      set = new Set<string>();
-      processedByPlatform.set(platform, set);
-    }
-    return set;
-  }
-  function isCovered(platform: Platform, dirRel: string): boolean {
-    const set = processedByPlatform.get(platform);
-    if (!set) return false;
-    for (const prefix of set) {
-      if (dirRel === prefix || dirRel.startsWith(prefix + '/')) return true;
-    }
-    return false;
-  }
-  function markProcessed(platform: Platform, dirRel: string): void {
-    getProcessedSet(platform).add(dirRel);
-  }
+  const aiTracker = createPrefixTracker<'AI'>();
+  const platformTracker = createPrefixTracker<Platform>();
 
   for (const entry of directories) {
-    const dirRel = entry.dirRelToRoot;
+    const { isAi, universalSubdir, rest } = splitDirRel(entry.dirRelToRoot);
     const registryId = entry.registryId;
-    const parts = dirRel.split('/');
-    const first = parts[0];
-    const rest = parts.slice(1).join('/');
-    const universalSubdir = (first === '.' ? '' : first) as UniversalSubdir;
 
-    if (!universalSubdir || !Object.values(UNIVERSAL_SUBDIRS).includes(universalSubdir)) {
-      logger.debug(`Skipping index.yml directory not under a universal subdir: ${dirRel}`);
-      continue;
-    }
+    if (isAi) {
+      if (aiTracker.isCovered('AI', entry.dirRelToRoot)) continue;
+      const aiRoot = join(cwd, PLATFORM_DIRS.AI);
 
-    if (registryId) {
-      // Try ID-based matching per platform first
-      for (const platform of mergedPlatforms) {
-        if (isCovered(platform, dirRel)) continue;
-        const def = getPlatformDefinition(platform);
-        const subdirDef = def.subdirs[universalSubdir];
-        if (!subdirDef) continue;
-
-        const entries = cwdIdMap.get(registryId)?.filter(e => e.platform === platform && e.universalSubdir === universalSubdir) || [];
-        if (entries.length > 0) {
-          const entryMatch = entries[0];
-          const baseDir = join(cwd, def.rootDir, subdirDef.path);
-          const targetRel = relative(baseDir, entryMatch.dirAbsPath);
-
-          if (!options.dryRun) {
-            await clearDirectory(entryMatch.dirAbsPath);
-          }
-          await writeFilesForSinglePlatform(cwd, universalSubdir, targetRel, entry.files, platform, options, allResults);
-          markProcessed(platform, dirRel);
-          continue;
+      let targetAbs: string | null = null;
+      if (registryId) {
+        const matches = cwdAiIdMap.get(registryId) || [];
+        if (matches.length > 0) {
+          targetAbs = matches[0]; // id-based
         }
-
-        // No ID match -> path-based overwrite prompt
-        const targetBaseDir = join(cwd, def.rootDir, subdirDef.path, rest);
-        const targetExists = await exists(targetBaseDir);
-        let proceed = true;
-        if (targetExists) {
-          const targetId = await getIndexIdFromCwdDir(targetBaseDir);
-          if (!targetId || targetId !== registryId) {
-            if (options.force) {
-              proceed = true;
-            } else {
-              const rel = relative(cwd, targetBaseDir);
-              proceed = await promptUserForOverwrite(`Directory ${rel} exists with no or different index.yml id. Overwrite`);
-            }
-          }
-        }
-        if (!proceed) continue;
-        if (!options.dryRun && targetExists) {
-          await clearDirectory(targetBaseDir);
-        }
-        await writeFilesForSinglePlatform(cwd, universalSubdir, rest, entry.files, platform, options, allResults);
-        markProcessed(platform, dirRel);
       }
+      if (!targetAbs) targetAbs = join(aiRoot, rest);
+
+      const proceed = await shouldProceedWithOverwrite(targetAbs, registryId, options);
+      if (!proceed) continue;
+
+      if (!options.dryRun && await exists(targetAbs)) {
+        await clearDirectory(targetAbs);
+      }
+
+      const targetRel = relative(aiRoot, targetAbs);
+      await writeFilesToTarget(cwd, aiRoot, targetRel, entry.files, undefined, allResults);
+      aiTracker.mark('AI', entry.dirRelToRoot);
       continue;
     }
 
-    // No registry ID present -> pure path-based install for all platforms
+    // Non-AI: universal subdir
+    if (!universalSubdir || !Object.values(UNIVERSAL_SUBDIRS).includes(universalSubdir)) {
+      logger.debug(`Skipping index.yml directory not under a universal subdir: ${entry.dirRelToRoot}`);
+      continue;
+    }
+
     for (const platform of mergedPlatforms) {
-      if (isCovered(platform, dirRel)) continue;
+      if (platformTracker.isCovered(platform, entry.dirRelToRoot)) continue;
+
       const def = getPlatformDefinition(platform);
       const subdirDef = def.subdirs[universalSubdir];
       if (!subdirDef) continue;
-      const targetBaseDir = join(cwd, def.rootDir, subdirDef.path, rest);
-      const targetExists = await exists(targetBaseDir);
-      let proceed = true;
-      if (targetExists) {
-        const targetId = await getIndexIdFromCwdDir(targetBaseDir);
-        if (!targetId) {
-          if (options.force) {
-            proceed = true;
-          } else {
-            const rel = relative(cwd, targetBaseDir);
-            proceed = await promptUserForOverwrite(`Directory ${rel} exists without index.yml. Overwrite`);
-          }
+
+      const baseDir = join(cwd, def.rootDir, subdirDef.path);
+
+      let targetAbs: string | null = null;
+      if (registryId) {
+        const matches = (cwdIdMap.get(registryId) || []).filter(e => e.platform === platform && e.universalSubdir === universalSubdir);
+        if (matches.length > 0) {
+          targetAbs = matches[0].dirAbsPath; // id-based
         }
       }
+      if (!targetAbs) targetAbs = join(baseDir, rest);
+
+      const proceed = await shouldProceedWithOverwrite(targetAbs, registryId, options);
       if (!proceed) continue;
-      if (!options.dryRun && targetExists) {
-        await clearDirectory(targetBaseDir);
+
+      if (!options.dryRun && await exists(targetAbs)) {
+        await clearDirectory(targetAbs);
       }
-      await writeFilesForSinglePlatform(cwd, universalSubdir, rest, entry.files, platform, options, allResults);
-      markProcessed(platform, dirRel);
+
+      const targetRel = relative(baseDir, targetAbs);
+      await writeFilesToTarget(cwd, baseDir, targetRel, entry.files, subdirDef.writeExt, allResults);
+      platformTracker.mark(platform, entry.dirRelToRoot);
     }
   }
 

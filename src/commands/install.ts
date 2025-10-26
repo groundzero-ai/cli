@@ -36,7 +36,7 @@ import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-han
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { installIndexYmlDirectories } from '../utils/index-yml-based-installer.js';
 import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
-import { installPlatformFilesByIdWithMap } from '../utils/id-based-installer.js';
+import { installFilesByIdWithMap } from '../utils/id-based-installer.js';
 import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 
@@ -397,7 +397,7 @@ async function installFormulaCommand(
     const categorized = categorizedByFormula.get(resolved.name)!;
     if (categorized.idBasedFiles.size === 0) continue;
     try {
-      const platformResult = await installPlatformFilesByIdWithMap(
+      const platformResult = await installFilesByIdWithMap(
         cwd,
         resolved.name,
         resolved.version,

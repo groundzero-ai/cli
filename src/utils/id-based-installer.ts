@@ -41,7 +41,7 @@ export interface IdBasedInstallResult {
 /**
  * Variant that accepts a pre-discovered registry ID map to avoid duplicate discovery.
  */
-export async function installPlatformFilesByIdWithMap(
+export async function installFilesByIdWithMap(
   cwd: string,
   formulaName: string,
   version: string,
