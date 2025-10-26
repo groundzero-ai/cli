@@ -5,7 +5,7 @@ import { checkExistingFormulaInMarkdownFiles } from '../core/groundzero.js';
 import { parseFormulaYml } from './formula-yml.js';
 import { exists } from './fs.js';
 import { logger } from './logger.js';
-import { getLocalFormulasDir } from './paths.js';
+import { getLocalFormulaDir } from './paths.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getVersionInfoFromDependencyTree } from './install-helpers.js';
 
@@ -14,7 +14,8 @@ import { getVersionInfoFromDependencyTree } from './install-helpers.js';
  */
 async function getInstalledFormulaVersion(cwd: string, formulaName: string): Promise<string | undefined> {
   try {
-    const formulaYmlPath = join(getLocalFormulasDir(cwd), formulaName, FILE_PATTERNS.FORMULA_YML);
+    const formulaDir = getLocalFormulaDir(cwd, formulaName);
+    const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
     if (await exists(formulaYmlPath)) {
       const config = await parseFormulaYml(formulaYmlPath);
       return config.version;

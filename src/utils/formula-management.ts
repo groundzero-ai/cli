@@ -3,7 +3,7 @@ import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from './formula-yml.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
 import { logger } from './logger.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } from './paths.js';
+import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from './paths.js';
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
@@ -146,8 +146,7 @@ export async function writeLocalFormulaMetadata(
   metadata: FormulaYml,
   readmeContent?: string
 ): Promise<void> {
-  const normalizedFormulaName = normalizeFormulaName(formulaName);
-  const localFormulaDir = join(getLocalFormulasDir(cwd), normalizedFormulaName);
+  const localFormulaDir = getLocalFormulaDir(cwd, formulaName);
   const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
   await ensureDir(localFormulaDir);
   await writeFormulaYml(localFormulaYmlPath, metadata);

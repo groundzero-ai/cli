@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { PLATFORM_DIRS, FILE_PATTERNS, FORMULA_DIRS } from '../constants/index.js';
 import { exists } from './fs.js';
-import { areFormulaNamesEquivalent } from './formula-name.js';
+import { areFormulaNamesEquivalent, SCOPED_FORMULA_REGEX } from './formula-name.js';
 import { parseFormulaYml } from './formula-yml.js';
 
 /**
@@ -34,13 +34,6 @@ export async function isRootFormula(cwd: string, formulaName: string): Promise<b
 }
 
 /**
- * Get the path to store local formula metadata
- */
-export function getLocalFormulaMetadataPath(cwd: string, formulaName: string): string {
-  return join(cwd, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaName, FILE_PATTERNS.FORMULA_YML);
-}
-
-/**
  * Get the local GroundZero directory path
  */
 export function getLocalGroundZeroDir(cwd: string): string {
@@ -56,8 +49,14 @@ export function getLocalFormulasDir(cwd: string): string {
 
 /**
  * Get the local formula directory path for a specific formula
+ * Handles scoped formulas with nested directory structure (@scope/name -> @scope/name/)
  */
- export function getLocalFormulaDir(cwd: string, formulaName: string): string {
+export function getLocalFormulaDir(cwd: string, formulaName: string): string {
+  const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
+  if (scopedMatch) {
+    const [, scope, localName] = scopedMatch;
+    return join(cwd, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, '@' + scope, localName);
+  }
   return join(cwd, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, formulaName);
 }
 
