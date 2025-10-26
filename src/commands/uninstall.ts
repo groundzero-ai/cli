@@ -3,9 +3,7 @@ import { join, relative, dirname } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { type PlatformName } from '../core/platforms.js';
-import { detectPlatforms } from '../utils/formula-installation.js';
-import { cleanupPlatformFiles as cleanupPlatformFilesForSingle } from '../utils/platform-utils.js';
+import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
 import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -19,37 +17,8 @@ import {
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 import { normalizePathForProcessing } from '../utils/path-normalization.js';
-import { discoverFiles } from '../core/discovery/file-discovery.js';
 
-/**
- * Clean up platform-specific files for a formula across all detected platforms
- * - Iterates detected platforms
- * - Traverses supported subdirs (rules/commands/agents and platform-specific rules)
- * - Deletes files whose frontmatter formula.name matches target
- * - Preserves global groundzero files defined in GLOBAL_PLATFORM_FILES
- */
-async function cleanupPlatformFiles(
-  targetDir: string,
-  formulaName: string,
-  options: UninstallOptions
-): Promise<Record<string, string[]>> {
-  const cwd = targetDir;
-  const platforms = await detectPlatforms(cwd);
-  const cleanedByPlatform: Record<string, string[]> = {};
-
-  // Process each detected platform using the shared single-platform cleanup
-  await Promise.all(platforms.map(async (platform) => {
-    const result = await cleanupPlatformFilesForSingle(
-      cwd,
-      platform as PlatformName,
-      formulaName,
-      { dryRun: options.dryRun }
-    );
-    cleanedByPlatform[platform] = result.files.map(p => normalizePathForProcessing(relative(cwd, p)));
-  }));
-
-  return cleanedByPlatform;
-}
+// Centralized discovery is used instead of bespoke platform iteration
 
 /**
  * Get protected formulas from cwd formula.yml
@@ -196,19 +165,20 @@ async function displayDryRunInfo(
   }
   
   // Check platform files that would be cleaned up for all formulas
-  const dryRunPlatformCleanupPromises = formulasToRemove.map(formula =>
-    cleanupPlatformFiles(targetDir, formula, { ...options, dryRun: true })
+  const discoveredByFormula = await Promise.all(
+    formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
   );
-  const dryRunPlatformCleanupResults = await Promise.all(dryRunPlatformCleanupPromises);
-
-  // Aggregate platform cleanup results across all formulas
   const platformCleanup: Record<string, string[]> = {};
-  for (const result of dryRunPlatformCleanupResults) {
-    for (const [platform, files] of Object.entries(result)) {
-      if (!platformCleanup[platform]) {
-        platformCleanup[platform] = [];
-      }
-      platformCleanup[platform].push(...files);
+  const seen = new Set<string>();
+  for (const { files } of discoveredByFormula) {
+    for (const f of files) {
+      if (f.isRootFile) continue;
+      if (seen.has(f.fullPath)) continue;
+      seen.add(f.fullPath);
+      const rel = normalizePathForProcessing(relative(cwd, f.fullPath));
+      const platform = f.sourceDir;
+      if (!platformCleanup[platform]) platformCleanup[platform] = [];
+      platformCleanup[platform].push(rel);
     }
   }
 
@@ -357,7 +327,23 @@ async function uninstallFormulaCommand(
     await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, formulasToRemove);
     const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
-    const platformCleanup = await cleanupPlatformFiles(cwd, formulaName, { ...options, dryRun: true });
+    // Build platform cleanup summary via centralized discovery across all formulas
+    const discoveredByFormula = await Promise.all(
+      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
+    );
+    const platformCleanup: Record<string, string[]> = {};
+    const seen = new Set<string>();
+    for (const { files } of discoveredByFormula) {
+      for (const f of files) {
+        if (f.isRootFile) continue;
+        if (seen.has(f.fullPath)) continue;
+        seen.add(f.fullPath);
+        const rel = normalizePathForProcessing(relative(cwd, f.fullPath));
+        const platform = f.sourceDir;
+        if (!platformCleanup[platform]) platformCleanup[platform] = [];
+        platformCleanup[platform].push(rel);
+      }
+    }
     return {
       success: true,
       data: {
@@ -406,20 +392,24 @@ async function uninstallFormulaCommand(
       await removeEmptyDirectories(formulasDir);
     }
 
-    // Clean up platform-specific files for all formulas being removed
-    const platformCleanupPromises = formulasToRemove.map(formula =>
-      cleanupPlatformFiles(cwd, formula, options)
+    // Discover platform-specific files for all formulas being removed and delete them
+    const discoveredByFormula = await Promise.all(
+      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
     );
-    const platformCleanupResults = await Promise.all(platformCleanupPromises);
-
-    // Aggregate platform cleanup results across all formulas
     const platformCleanup: Record<string, string[]> = {};
-    for (const result of platformCleanupResults) {
-      for (const [platform, files] of Object.entries(result)) {
-        if (!platformCleanup[platform]) {
-          platformCleanup[platform] = [];
+    const seen = new Set<string>();
+    for (const { files } of discoveredByFormula) {
+      for (const f of files) {
+        if (f.isRootFile) continue; // Root files handled separately
+        if (seen.has(f.fullPath)) continue; // Dedupe
+        seen.add(f.fullPath);
+        if (await exists(f.fullPath)) {
+          await remove(f.fullPath);
+          const rel = normalizePathForProcessing(relative(cwd, f.fullPath));
+          const platform = f.sourceDir;
+          if (!platformCleanup[platform]) platformCleanup[platform] = [];
+          platformCleanup[platform].push(rel);
         }
-        platformCleanup[platform].push(...files);
       }
     }
     
