@@ -5,6 +5,7 @@ import { registryManager } from '../core/registry.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { displayFormulaTable, FormulaTableEntry } from '../utils/formatters.js';
+import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
 
 /**
  * List formulas command implementation
@@ -25,7 +26,8 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
     // If a specific formula name was provided, filter for exact matches only
     let filteredEntries = entries;
     if (options.formulaName) {
-      filteredEntries = entries.filter(entry => entry.name === options.formulaName);
+      const target =options.formulaName;
+      filteredEntries = entries.filter(entry => areFormulaNamesEquivalent(entry.name, target));
     }
     
     if (filteredEntries.length === 0) {

@@ -116,14 +116,6 @@ export function parseFormulaInput(formulaInput: string): { name: string; version
  * Regular names like MyFormula become myformula.
  */
 export function normalizeFormulaName(name: string): string {
-  // Handle scoped names (@scope/name format)
-  const scopedMatch = name.match(/^(@[^\/]+)\/(.+)$/);
-  if (scopedMatch) {
-    const [, scope, localName] = scopedMatch;
-    return `${scope.toLowerCase()}/${localName.toLowerCase()}`;
-  }
-
-  // Handle regular names
   return name.toLowerCase();
 }
 

@@ -16,7 +16,8 @@ import {
   getLatestFormulaVersion,
   listFormulaVersions,
   hasFormulaVersion,
-  findFormulaByName
+  findFormulaByName,
+  listAllFormulas
 } from './directory.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { 
@@ -44,19 +45,19 @@ export class RegistryManager {
         return [];
       }
       
-      const formulaDirs = await listDirectories(formulasDir);
+      const formulaNames = await listAllFormulas();
       const entries: RegistryEntry[] = [];
       
-      for (const formulaDir of formulaDirs) {
+      for (const formulaName of formulaNames) {
         try {
           if (showAllVersions) {
             // Get all versions for this formula
-            const versions = await listFormulaVersions(formulaDir);
+            const versions = await listFormulaVersions(formulaName);
             if (versions.length === 0) continue;
             
             // Process each version
             for (const version of versions) {
-              const formulaPath = getFormulaVersionPath(formulaDir, version);
+              const formulaPath = getFormulaVersionPath(formulaName, version);
               const formulaYmlPath = join(formulaPath, 'formula.yml');
               const metadata = await parseFormulaYml(formulaYmlPath);
               
@@ -75,10 +76,10 @@ export class RegistryManager {
             }
           } else {
             // Show only latest version
-            const latestVersion = await getLatestFormulaVersion(formulaDir);
+            const latestVersion = await getLatestFormulaVersion(formulaName);
             if (!latestVersion) continue;
             
-            const formulaPath = getFormulaVersionPath(formulaDir, latestVersion);
+            const formulaPath = getFormulaVersionPath(formulaName, latestVersion);
             const formulaYmlPath = join(formulaPath, 'formula.yml');
             const metadata = await parseFormulaYml(formulaYmlPath);
             
@@ -96,7 +97,7 @@ export class RegistryManager {
             });
           }
         } catch (error) {
-          logger.warn(`Failed to read formula: ${formulaDir}`, { 
+          logger.warn(`Failed to read formula: ${formulaName}`, { 
             error: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined
           });

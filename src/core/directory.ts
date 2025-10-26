@@ -172,3 +172,44 @@ export async function findFormulaByName(formulaName: string): Promise<string | n
   return null;
 }
 
+/**
+ * List all formula base names in the local registry, including scoped formulas.
+ * Returns names relative to the formulas root, e.g. 'name' or '@scope/name'.
+ */
+export async function listAllFormulas(): Promise<string[]> {
+  const { formulas } = getRegistryDirectories();
+
+  if (!(await exists(formulas))) {
+    return [];
+  }
+
+  const result: string[] = [];
+  const topLevelDirs = await listDirectories(formulas);
+
+  for (const firstLevel of topLevelDirs) {
+    const firstLevelPath = path.join(formulas, firstLevel);
+    const firstLevelChildren = await listDirectories(firstLevelPath);
+
+    // Unscoped formulas: name/<version>
+    const hasSemverChildren = firstLevelChildren.some(child => semver.valid(child));
+    if (hasSemverChildren) {
+      result.push(firstLevel);
+      continue;
+    }
+
+    // Scoped formulas: @scope/name/<version>
+    for (const secondLevel of firstLevelChildren) {
+      const secondLevelPath = path.join(firstLevelPath, secondLevel);
+      const secondLevelChildren = await listDirectories(secondLevelPath);
+      const hasSemverGrandchildren = secondLevelChildren.some(child => semver.valid(child));
+      if (hasSemverGrandchildren) {
+        result.push(`${firstLevel}/${secondLevel}`);
+      }
+    }
+  }
+
+  // Stable order
+  result.sort((a, b) => a.localeCompare(b));
+  return result;
+}
+
