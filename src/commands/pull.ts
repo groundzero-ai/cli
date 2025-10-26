@@ -8,7 +8,7 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { extractFormulaFromTarball, verifyTarballIntegrity } from '../utils/tarball.js';
-import { parseFormulaRefExact } from '../utils/formula-ref.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
 
 /**
@@ -18,7 +18,7 @@ async function pullFormulaCommand(
   formulaInput: string,
   options: PullOptions
 ): Promise<CommandResult> {
-  const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
+  const { name: parsedName, version: parsedVersion } = parseFormulaInput(formulaInput);
   logger.info(`Pulling formula '${parsedName}' from remote registry`, { options });
 
   showBetaRegistryMessage();

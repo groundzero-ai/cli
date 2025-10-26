@@ -9,7 +9,7 @@ import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
-import { parseFormulaRefExact } from '../utils/formula-ref.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
 
 /**
@@ -20,7 +20,7 @@ async function pushFormulaCommand(
   options: PushOptions
 ): Promise<CommandResult> {
   logger.info(`Pushing formula '${formulaInput}' to remote registry`, { options });
-  const { name: parsedName, version: parsedVersion } = parseFormulaRefExact(formulaInput);
+  const { name: parsedName, version: parsedVersion } = parseFormulaInput(formulaInput);
   let attemptedVersion: string | undefined;
 
   showBetaRegistryMessage();
