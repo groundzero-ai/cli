@@ -6,27 +6,8 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import { promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, promptPrereleaseVersionsDelete } from '../utils/prompts.js';
 import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 
-/**
- * Parse formula input to extract name and version
- */
-function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
-  const atIndex = formulaInput.lastIndexOf('@');
-  
-  if (atIndex === -1) {
-    // No version specified
-    return { name: formulaInput };
-  }
-  
-  const name = formulaInput.substring(0, atIndex);
-  const version = formulaInput.substring(atIndex + 1);
-  
-  if (!name || !version) {
-    throw new Error(`Invalid formula syntax: ${formulaInput}. Use 'formula' or 'formula@version'`);
-  }
-  
-  return { name, version };
-}
 
 /**
  * Group versions by base version for prerelease handling

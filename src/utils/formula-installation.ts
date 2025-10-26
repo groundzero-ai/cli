@@ -1,35 +1,6 @@
 import { logger } from './logger.js';
-import { ValidationError } from './errors.js';
-import { parseVersionRange } from './version-ranges.js';
 import { promptPlatformSelection } from './prompts.js';
 import { detectAllPlatforms } from '../core/platforms.js';
-
-/**
- * Parse formula input to extract name and version/range
- */
-export function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
-  const atIndex = formulaInput.lastIndexOf('@');
-
-  if (atIndex === -1) {
-    return { name: formulaInput };
-  }
-
-  const name = formulaInput.substring(0, atIndex);
-  const version = formulaInput.substring(atIndex + 1);
-
-  if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use format: formula@version or formula@range`);
-  }
-
-  // Validate the version/range format
-  try {
-    parseVersionRange(version);
-  } catch (error) {
-    throw new ValidationError(`Invalid version/range format: ${version}. ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-
-  return { name, version };
-}
 
 /**
  * Detect existing platforms in the project

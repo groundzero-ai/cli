@@ -26,7 +26,6 @@ import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } fro
 import {
   displayInstallationSummary,
   displayInstallationResults,
-  parseFormulaInput
 } from '../utils/formula-installation.js';
 import {
   withOperationErrorHandling,
@@ -39,6 +38,7 @@ import { installIndexYmlDirectories } from '../utils/index-yml-based-installer.j
 import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
 import { installPlatformFilesByIdWithMap } from '../utils/id-based-installer.js';
 import { installRootFilesFromMap } from '../utils/root-file-installer.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 
 /**
  * Install all formulas from CWD formula.yml file

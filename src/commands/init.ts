@@ -9,7 +9,7 @@ import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulaDir } from '../utils/paths.js';
-import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
+import { normalizeFormulaName } from '../utils/formula-name.js';
 
 /**
  * Initialize formula.yml command implementation

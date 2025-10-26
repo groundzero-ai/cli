@@ -10,7 +10,7 @@ import { buildDependencyTree, findDanglingDependencies } from '../core/dependenc
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
+import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
 import {
   PLATFORM_DIRS,
   FILE_PATTERNS,

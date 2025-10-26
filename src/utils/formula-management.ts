@@ -7,7 +7,7 @@ import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir } fr
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
-import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name-normalization.js';
+import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name.js';
 
 /**
  * Ensure local GroundZero directory structure exists

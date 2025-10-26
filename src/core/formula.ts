@@ -14,7 +14,7 @@ import {
   FormulaNotFoundError,
   InvalidFormulaError,
 } from '../utils/errors.js';
-import { validateFormulaName } from '../utils/formula-validation.js';
+import { validateFormulaName } from '../utils/formula-name.js';
 import { 
   getFormulaPath, 
   getFormulaVersionPath, 

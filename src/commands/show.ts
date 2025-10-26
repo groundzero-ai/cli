@@ -4,7 +4,7 @@ import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { describeVersionRange, isExactVersion } from '../utils/version-ranges.js';
-import { parseFormulaInput } from '../utils/formula-installation.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 import { formulaManager } from '../core/formula.js';
 
 /**

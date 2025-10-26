@@ -8,7 +8,7 @@ import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { findFilesByExtension } from '../utils/discovery/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
-import { areFormulaNamesEquivalent } from '../utils/formula-name-normalization.js';
+import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
 
 /**
  * Formula metadata from groundzero directory

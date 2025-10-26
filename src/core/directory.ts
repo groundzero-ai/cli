@@ -5,7 +5,7 @@ import { G0Directories } from '../types/index.js';
 import { PLATFORM_DIRS, FORMULA_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
+import { normalizeFormulaName } from '../utils/formula-name.js';
 
 /**
  * Cross-platform directory resolution following platform conventions

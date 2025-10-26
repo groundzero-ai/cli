@@ -11,7 +11,7 @@ import { getFileMtime } from './file-processing.js';
 import { findFilesByExtension } from './file-processing.js';
 import { buildPlatformSearchConfig } from '../../core/discovery/platform-discovery.js';
 import type { DiscoveredFile } from '../../types/index.js';
-import { areFormulaNamesEquivalent } from '../formula-name-normalization.js';
+import { areFormulaNamesEquivalent } from '../formula-name.js';
 
 /**
  * Discover root-level AGENTS.md content designated for a specific formula.

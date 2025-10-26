@@ -9,8 +9,7 @@ import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/save/platform-sync.js';
-import { validateFormulaName, SCOPED_FORMULA_REGEX } from '../utils/formula-validation.js';
-import { normalizeFormulaName } from '../utils/formula-name-normalization.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
 import { createFormulaFiles } from '../core/save/formula-file-generator.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
@@ -18,50 +17,6 @@ import { extractBaseVersion } from '../utils/version-generator.js';
 import {  getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
 import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
 
-/**
- * Parse formula inputs to handle three usage patterns:
- * Only support formula name input patterns now:
- * - formula-name
- * - formula-name@version
- */
-function parseFormulaInputs(formulaName: string): {
-  name: string;
-  version?: string;
-} {
-  // Check if this looks like a scoped formula name (@scope/name)
-  // Handle this before path normalization to avoid treating it as a directory
-  const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
-  if (scopedMatch) {
-    validateFormulaName(formulaName);
-    return {
-      name: normalizeFormulaName(formulaName)
-    };
-  }
-
-  // Formula name with optional version
-  const atIndex = formulaName.lastIndexOf('@');
-
-  if (atIndex === -1) {
-    validateFormulaName(formulaName);
-    return {
-      name: normalizeFormulaName(formulaName)
-    };
-  }
-
-  const name = formulaName.substring(0, atIndex);
-  const version = formulaName.substring(atIndex + 1);
-
-  if (!name || !version) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_SYNTAX.replace('%s', formulaName));
-  }
-
-  validateFormulaName(name);
-
-  return {
-    name: normalizeFormulaName(name),
-    version
-  };
-}
 
 /**
  * Main implementation of the save formula command
@@ -108,7 +63,7 @@ async function saveFormulaCommand(
   }
 
   // Parse inputs to determine the pattern being used
-  const { name, version: explicitVersion } = parseFormulaInputs(formulaName);
+  const { name, version: explicitVersion } = parseFormulaInput(formulaName);
 
   logger.debug(`Saving formula with name: ${name}`, { explicitVersion, options });
 

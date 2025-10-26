@@ -1,5 +1,5 @@
 import { FormulaFile, FormulaYml } from "../../types";
-import { normalizeFormulaName } from "../../utils/formula-name-normalization.js";
+import { normalizeFormulaName } from "../../utils/formula-name.js";
 import { ensureDir, writeTextFile } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
 import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platform-mapper.js";

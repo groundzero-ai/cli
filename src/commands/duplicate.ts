@@ -10,27 +10,8 @@ import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { Formula, FormulaFile, FormulaYml, CommandResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
+import { parseFormulaInput } from '../utils/formula-name.js';
 
-/**
- * Parse formula input to extract name and optional version
- * Accepts: name or name@version (version can be exact or range for source)
- */
-function parseFormulaInput(input: string): { name: string; version?: string } {
-  const atIndex = input.lastIndexOf('@');
-
-  if (atIndex === -1) {
-    return { name: input };
-  }
-
-  const name = input.substring(0, atIndex);
-  const version = input.substring(atIndex + 1);
-
-  if (!name || !version) {
-    throw new Error(`Invalid formula syntax: ${input}. Use 'formula' or 'formula@version'`);
-  }
-
-  return { name, version };
-}
 
 async function duplicateFormulaCommand(
   sourceInput: string,

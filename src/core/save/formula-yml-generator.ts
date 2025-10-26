@@ -1,7 +1,7 @@
 import { join } from "path";
 import { FILE_PATTERNS } from "../../constants/index.js";
 import { FormulaYml } from "../../types";
-import { areFormulaNamesEquivalent, normalizeFormulaName } from "../../utils/formula-name-normalization.js";
+import { areFormulaNamesEquivalent, normalizeFormulaName } from "../../utils/formula-name.js";
 import { parseFormulaYml, writeFormulaYml } from "../../utils/formula-yml.js";
 import { ensureDir, exists } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";

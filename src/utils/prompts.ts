@@ -3,7 +3,7 @@ import { basename } from 'path';
 import { FormulaYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
-import { normalizeFormulaName } from './formula-name-normalization.js';
+import { normalizeFormulaName } from './formula-name.js';
 
 /**
  * Common prompt types and utilities for user interaction
