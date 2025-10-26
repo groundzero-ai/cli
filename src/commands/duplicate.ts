@@ -4,6 +4,7 @@ import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
+import { updateIndexYml } from '../utils/index-yml.js';
 import { isRootFile } from '../core/save/root-files-sync.js';
 import { transformRootFileContent } from '../utils/root-file-transformer.js';
 import { logger } from '../utils/logger.js';
@@ -12,6 +13,32 @@ import { Formula, FormulaFile, FormulaYml, CommandResult } from '../types/index.
 import { FILE_PATTERNS } from '../constants/index.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 
+/**
+ * Helper function to dump YAML with proper quoting for scoped names
+ */
+function dumpYamlWithScopedQuoting(config: FormulaYml, options: yaml.DumpOptions = {}): string {
+  let dumped = yaml.dump(config, { ...options, quotingType: '"' });
+  
+  // Ensure scoped names are quoted
+  if (config.name.startsWith('@')) {
+    const lines = dumped.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('name:')) {
+        const valueMatch = lines[i].match(/name:\s*(.+)$/);
+        if (valueMatch) {
+          const value = valueMatch[1].trim();
+          if (!value.startsWith('"') && !value.startsWith("'")) {
+            lines[i] = lines[i].replace(/name:\s*(.+)$/, `name: "${config.name}"`);
+          }
+        }
+        break;
+      }
+    }
+    dumped = lines.join('\n');
+  }
+  
+  return dumped;
+}
 
 async function duplicateFormulaCommand(
   sourceInput: string,
@@ -60,7 +87,7 @@ async function duplicateFormulaCommand(
           name: newName,
           version: newVersion
         };
-        const dumped = yaml.dump(updated, { lineWidth: 120 });
+        const dumped = dumpYamlWithScopedQuoting(updated, { lineWidth: 120 });
         return { ...file, content: dumped };
       } catch {
         // Fallback: minimal rewrite if parsing fails
@@ -68,9 +95,18 @@ async function duplicateFormulaCommand(
           name: newName,
           version: newVersion
         };
-        const dumped = yaml.dump(fallback, { lineWidth: 120 });
+        const dumped = dumpYamlWithScopedQuoting(fallback, { lineWidth: 120 });
         return { ...file, content: dumped };
       }
+    }
+
+    // Handle index.yml files - update formula name
+    if (file.path.endsWith(FILE_PATTERNS.INDEX_YML)) {
+      const result = updateIndexYml(file.content, { name: newName });
+      if (result.updated) {
+        return { ...file, content: result.content };
+      }
+      return file;
     }
 
     // Handle root files (AGENTS.md, CLAUDE.md, etc.) - update markers with new name and ID

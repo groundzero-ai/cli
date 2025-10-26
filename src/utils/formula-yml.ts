@@ -29,8 +29,31 @@ export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml
   let content = yaml.dump(config, {
     indent: 2,
     noArrayIndent: true,
-    sortKeys: false
+    sortKeys: false,
+    quotingType: '"'  // Prefer double quotes for consistency
   });
+  
+  // Ensure scoped names (starting with @) are quoted
+  const isScopedName = config.name.startsWith('@');
+  if (isScopedName) {
+    // Split into lines and process the name line
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('name:')) {
+        // Check if the name value is already quoted
+        const valueMatch = lines[i].match(/name:\s*(.+)$/);
+        if (valueMatch) {
+          const value = valueMatch[1].trim();
+          // If not quoted, add quotes
+          if (!value.startsWith('"') && !value.startsWith("'")) {
+            lines[i] = lines[i].replace(/name:\s*(.+)$/, `name: "${config.name}"`);
+          }
+        }
+        break;
+      }
+    }
+    content = lines.join('\n');
+  }
   
   // Convert arrays from block style to flow style
   const flowStyleArrays = ['keywords'];

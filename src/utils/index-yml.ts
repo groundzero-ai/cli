@@ -9,12 +9,12 @@ function detectNewline(text: string): '\n' | '\r\n' {
 }
 
 /**
- * Update index.yml content to ensure GroundZero comment and a valid formula.id.
+ * Update index.yml content to ensure GroundZero comment, formula name, and a valid formula.id.
  * Preserves all other lines and ordering.
  */
 export function updateIndexYml(
   content: string,
-  opts: { ensureId?: boolean; resetId?: boolean } = {}
+  opts: { name?: string; ensureId?: boolean; resetId?: boolean } = {}
 ): { updated: boolean; content: string } {
   const nl = detectNewline(content);
   const lines = content.split(nl);
@@ -54,6 +54,32 @@ export function updateIndexYml(
     blockEnd++;
   }
 
+  // Handle name update if provided
+  if (opts.name !== undefined) {
+    // Search for name line within the block
+    let nameFoundAt = -1;
+    for (let i = blockStart; i < blockEnd; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed.startsWith('name:')) {
+        nameFoundAt = i;
+        break;
+      }
+    }
+
+    if (nameFoundAt !== -1) {
+      const newLine = generateYamlKeyValue('name', opts.name, childIndent);
+      if (lines[nameFoundAt] !== newLine) {
+        lines[nameFoundAt] = newLine;
+        updated = true;
+      }
+    } else {
+      // Insert name line at the beginning of the block
+      lines.splice(blockStart, 0, generateYamlKeyValue('name', opts.name, childIndent));
+      blockEnd++; // Adjust block end since we added a line
+      updated = true;
+    }
+  }
+
   // Search for id line within the block
   let idFoundAt = -1;
   let existingId: string | null = null;
@@ -79,13 +105,13 @@ export function updateIndexYml(
     }
 
     if (idFoundAt !== -1) {
-      const newLine = `${childIndent}id: ${effectiveId}`;
+      const newLine = generateYamlKeyValue('id', effectiveId, childIndent);
       if (lines[idFoundAt] !== newLine) {
         lines[idFoundAt] = newLine;
         updated = true;
       }
     } else {
-      lines.splice(blockEnd, 0, `${childIndent}id: ${effectiveId}`);
+      lines.splice(blockEnd, 0, generateYamlKeyValue('id', effectiveId, childIndent));
       updated = true;
     }
   }

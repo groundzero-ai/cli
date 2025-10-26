@@ -11,11 +11,13 @@ export function generateYamlKeyValue(key: string, value: any, indent: string = '
 
   // For strings, use js-yaml to ensure proper quoting
   if (typeof value === 'string') {
-    // Use js-yaml's dump to get proper quoting for special characters
+    // Check if this is a scoped name (starts with @) - these need explicit quoting
+    const isScopedName = value.startsWith('@');
+    
     const quotedValue = yaml.dump(value, {
       flowLevel: 0,
       quotingType: '"',  // Prefer double quotes for consistency
-      forceQuotes: false  // Only quote when necessary
+      forceQuotes: isScopedName  // Force quotes for scoped names
     }).trim();
 
     return `${indent}${key}: ${quotedValue}`;
