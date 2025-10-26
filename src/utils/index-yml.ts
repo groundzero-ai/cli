@@ -1,4 +1,6 @@
 import { generateEntityId, isValidEntityId } from './entity-id.js';
+import { generateYamlKeyValue } from './yaml-frontmatter.js';
+import type { FormulaMarkerYml } from './md-frontmatter.js';
 
 export const GROUNDZERO_FORMULA_COMMENT = '# GroundZero formula' as const;
 
@@ -90,6 +92,26 @@ export function updateIndexYml(
 
   if (!updated) return { updated: false, content };
   return { updated: true, content: lines.join(nl) };
+}
+
+/**
+ * Generate complete index.yml content with GroundZero comment and formula block
+ */
+export function buildIndexYmlContent(marker: FormulaMarkerYml): string {
+  const lines: string[] = [GROUNDZERO_FORMULA_COMMENT];
+
+  if (marker.formula?.name) {
+    lines.push('formula:');
+    lines.push(generateYamlKeyValue('name', marker.formula.name, '  '));
+    if (marker.formula.id) {
+      lines.push(generateYamlKeyValue('id', marker.formula.id, '  '));
+    }
+    if (marker.formula.platformSpecific) {
+      lines.push('  platformSpecific: true');
+    }
+  }
+
+  return lines.join('\n');
 }
 
 

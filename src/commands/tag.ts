@@ -10,6 +10,8 @@ import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { isRootFile } from '../core/save/root-files-sync.js';
 import { addFormulaToRootFile } from '../utils/root-file-operations.js';
+import { generateYamlKeyValue } from '../utils/yaml-frontmatter.js';
+import { buildIndexYmlContent } from '../utils/index-yml.js';
 
 /**
  * Options for the tag command
@@ -79,26 +81,6 @@ async function readIndexYml(filePath: string): Promise<FormulaMarkerYml | null> 
     logger.warn(`Failed to parse index.yml at ${filePath}: ${error}`);
     return null;
   }
-}
-
-/**
- * Build YAML content with GroundZero formula comment
- */
-function buildIndexYmlContent(marker: FormulaMarkerYml): string {
-  const lines: string[] = ['# GroundZero formula'];
-
-  if (marker.formula?.name) {
-    lines.push(`formula:`);
-    lines.push(`  name: ${marker.formula.name}`);
-    if (marker.formula.id) {
-      lines.push(`  id: ${marker.formula.id}`);
-    }
-    if (marker.formula.platformSpecific) {
-      lines.push(`  platformSpecific: true`);
-    }
-  }
-
-  return lines.join('\n');
 }
 
 /**

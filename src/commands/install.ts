@@ -444,12 +444,12 @@ async function installFormulaCommand(
   // Phase 2c: Path-based remaining files
   for (const resolved of finalResolvedFormulas) {
     const categorized = categorizedByFormula.get(resolved.name)!;
-    const aiLikeFiles = categorized.pathBasedFiles.filter(f => f.path.startsWith('ai/'));
-    if (aiLikeFiles.length === 0) continue;
+    const aiFiles = categorized.pathBasedFiles.filter(f => f.path.startsWith('ai/'));
+    if (aiFiles.length === 0) continue;
     const aiResult = await installAiFilesFromList(
       cwd,
       targetDir,
-      aiLikeFiles,
+      aiFiles,
       options,
       conflictResult.forceOverwriteFormulas.has(resolved.name)
     );

@@ -35,15 +35,6 @@ export interface CategorizedInstallFiles {
   rootFiles: Map<string, string>;
 }
 
-function isPlatformMarkdownFile(path: string): boolean {
-  return (
-    path.endsWith(FILE_PATTERNS.MD_FILES) &&
-    (path.startsWith(`${UNIVERSAL_SUBDIRS.RULES}/`) ||
-      path.startsWith(`${UNIVERSAL_SUBDIRS.COMMANDS}/`) ||
-      path.startsWith(`${UNIVERSAL_SUBDIRS.AGENTS}/`))
-  );
-}
-
 function isInIndexYmlDir(path: string, indexDirs: string[]): boolean {
   for (const dirRel of indexDirs) {
     if (path === dirRel || path.startsWith(dirRel + '/')) return true;
@@ -118,7 +109,7 @@ export async function discoverAndCategorizeFiles(
   for (const file of formula.files) {
     const p = file.path;
     if (p === 'formula.yml') continue; // never install registry formula.yml
-    if (isPlatformMarkdownFile(p)) continue; // handled by ID-based or index.yml
+    if (idBasedPaths.has(p)) continue; // handled by ID-based
     if (isInIndexYmlDir(p, discoveredDirs)) continue; // handled by index.yml
     // Root files handled separately
     pathBasedFiles.push(file);

@@ -1,6 +1,7 @@
 import matter from 'gray-matter';
 import { generateEntityId, isValidEntityId } from './entity-id.js';
 import { GROUNDZERO_FORMULA_COMMENT } from './index-yml.js';
+import { generateYamlKeyValue, generateFormulaFrontmatterBlock } from './yaml-frontmatter.js';
 
 /**
  * Interface for formula marker YAML
@@ -112,18 +113,9 @@ function buildNewFrontmatter(
   updateObject: { name?: string; platformSpecific?: boolean; id?: string },
   nl: string
 ): string {
-  const lines: string[] = [];
-  if (typeof updateObject.name === 'string' && updateObject.name.length > 0) {
-    lines.push(`  name: ${updateObject.name}`);
-  }
-  if (typeof updateObject.id === 'string' && updateObject.id.length > 0) {
-    lines.push(`  id: ${updateObject.id}`);
-  }
-  if (updateObject.platformSpecific === true) {
-    lines.push(`  platformSpecific: true`);
-  }
-  const formulaBlock = lines.length > 0 ? `formula:${nl}${lines.join(nl)}` : 'formula:';
-  return `---${nl}${GROUNDZERO_FORMULA_COMMENT}${nl}${formulaBlock}${nl}---${nl}${nl}${content}`;
+  const formulaBlock = generateFormulaFrontmatterBlock(updateObject);
+  const formulaYaml = formulaBlock ? `formula:${nl}${formulaBlock}` : 'formula:';
+  return `---${nl}${GROUNDZERO_FORMULA_COMMENT}${nl}${formulaYaml}${nl}---${nl}${nl}${content}`;
 }
 
 function updateFormulaBlockInText(
@@ -163,7 +155,7 @@ function updateFormulaBlockInText(
   if (formulaIndex === -1) {
     // Append new formula block at the end of frontmatter
     const insert: string[] = [GROUNDZERO_FORMULA_COMMENT, 'formula:'];
-    if (shouldUpdateName) insert.push(`${childIndent}name: ${updateObject.name}`);
+    if (shouldUpdateName) insert.push(generateYamlKeyValue('name', updateObject.name, childIndent));
     if (shouldUpdatePlatform) insert.push(`${childIndent}platformSpecific: true`);
     // Ensure we keep original frontmatter content as-is and append
     const base = lines.join(nl).trimEnd();
@@ -195,10 +187,11 @@ function updateFormulaBlockInText(
 
   // Apply updates in-place
   if (shouldUpdateName) {
+    const nameLine = generateYamlKeyValue('name', updateObject.name, childIndent);
     if (nameFoundAt !== -1) {
-      lines[nameFoundAt] = `${childIndent}name: ${updateObject.name}`;
+      lines[nameFoundAt] = nameLine;
     } else {
-      lines.splice(blockEnd, 0, `${childIndent}name: ${updateObject.name}`);
+      lines.splice(blockEnd, 0, nameLine);
       blockEnd++;
     }
   }
@@ -213,10 +206,11 @@ function updateFormulaBlockInText(
   }
 
   if (shouldUpdateId) {
+    const idLine = generateYamlKeyValue('id', updateObject.id, childIndent);
     if (idFoundAt !== -1) {
-      lines[idFoundAt] = `${childIndent}id: ${updateObject.id}`;
+      lines[idFoundAt] = idLine;
     } else {
-      lines.splice(blockEnd, 0, `${childIndent}id: ${updateObject.id}`);
+      lines.splice(blockEnd, 0, idLine);
       blockEnd++;
     }
   }

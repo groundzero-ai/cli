@@ -129,15 +129,15 @@ export async function buildRegistryIdMap(
   // Load formula from registry
   const formula = await formulaManager.loadFormula(formulaName, version);
   
-  // Filter to platform-specific markdown files only (rules/, commands/, agents/ subdirs)
+  // Filter to ALL markdown files with valid entity IDs
   const platformFiles = formula.files.filter(file => {
     const path = file.path;
-    return (
-      path.endsWith(FILE_PATTERNS.MD_FILES) &&
-      (path.startsWith(`${UNIVERSAL_SUBDIRS.RULES}/`) ||
-       path.startsWith(`${UNIVERSAL_SUBDIRS.COMMANDS}/`) ||
-       path.startsWith(`${UNIVERSAL_SUBDIRS.AGENTS}/`))
-    );
+    if (!path.endsWith(FILE_PATTERNS.MD_FILES)) return false;
+
+    // Check if file has a valid entity ID
+    const frontmatter = parseMarkdownFrontmatter(file.content);
+    const id = frontmatter?.formula?.id;
+    return id && isValidEntityId(id);
   });
   
   // Group files by parent directory to identify adjacent files
