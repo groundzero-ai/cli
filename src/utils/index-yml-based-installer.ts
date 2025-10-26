@@ -10,6 +10,7 @@ import type { InstallOptions } from '../types/index.js';
 import { readFile as fsReadFile, writeFile as fsWriteFile } from 'fs/promises';
 import * as fs from 'fs/promises';
 import * as readline from 'readline';
+import { areFormulaNamesEquivalent } from './formula-name.js';
 
 type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
 
@@ -58,7 +59,7 @@ export async function discoverRegistryIndexYmlDirs(
     if (files.includes(FILE_PATTERNS.INDEX_YML)) {
       try {
         const marker = await readIndexYml(join(dir, FILE_PATTERNS.INDEX_YML));
-        if (marker && marker.formula?.name === formulaName) {
+        if (marker && marker.formula?.name && areFormulaNamesEquivalent(marker.formula.name, formulaName)) {
           acc.push(rel === '' ? '.' : rel);
         }
       } catch (err) {

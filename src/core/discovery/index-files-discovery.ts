@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger.js';
 import type { FormulaMarkerYml } from '../../utils/md-frontmatter.js';
 import { obtainSourceDirAndRegistryPath } from './file-discovery.js';
 import { FILE_PATTERNS } from '../../constants/index.js';
+import { areFormulaNamesEquivalent } from '../../utils/formula-name.js';
 
 export async function readIndexYml(path: string): Promise<FormulaMarkerYml | null> {
   try {
@@ -47,7 +48,7 @@ async function findMatchingIndexYmlDirsRecursive(rootDir: string, formulaName: s
   const indexPath = join(rootDir, FILE_PATTERNS.INDEX_YML);
   if (await exists(indexPath)) {
     const content = await readIndexYml(indexPath);
-    if (content && content.formula?.name === formulaName) {
+    if (content && content.formula?.name && areFormulaNamesEquivalent(content.formula.name, formulaName)) {
       matches.push(rootDir);
     }
   }

@@ -14,6 +14,7 @@ import { getPlatformDefinition } from '../core/platforms.js';
 import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, PLATFORM_DIRS, type Platform } from '../constants/index.js';
 import { findFilesByExtension } from './discovery/file-processing.js';
 import type { FileIdInfo, FormulaFile } from '../types/index.js';
+import { areFormulaNamesEquivalent } from './formula-name.js';
 
 /**
  * Information about a registry file with its ID and adjacent files
@@ -56,7 +57,7 @@ export async function buildCwdIdMap(
       const content = await readTextFile(filePath);
       const frontmatter = parseMarkdownFrontmatter(content);
 
-      if (frontmatter?.formula?.name === formulaName) {
+      if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
         const id = frontmatter.formula.id;
         const isValid = id && isValidEntityId(id);
 
@@ -263,7 +264,7 @@ export async function cleanupInvalidFormulaFiles(
       const content = await readTextFile(filePath);
       const frontmatter = parseMarkdownFrontmatter(content);
 
-      if (frontmatter?.formula?.name === formulaName) {
+      if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
         const id = frontmatter.formula.id;
 
         if (id && isValidEntityId(id) && !validRegistryIds.has(id)) {

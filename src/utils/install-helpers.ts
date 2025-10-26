@@ -2,6 +2,7 @@ import * as semver from 'semver';
 import { FormulaYml } from '../types/index.js';
 import { resolveDependencies, ResolvedFormula } from '../core/dependency-resolver.js';
 import { gatherRootVersionConstraints } from '../core/groundzero.js';
+import { areFormulaNamesEquivalent } from './formula-name.js';
 
 /**
  * Extract formulas from formula.yml configuration
@@ -105,7 +106,7 @@ export async function getVersionInfoFromDependencyTree(
   const requiredVersions = (resolvedFormulas[0] as any)?.requiredVersions as Map<string, string[]> | undefined;
   
   for (const resolved of resolvedFormulas) {
-    if (resolved.name === formulaName) {
+    if (areFormulaNamesEquivalent(resolved.name, formulaName)) {
       if (semver.gt(resolved.version, highestVersion)) {
         highestVersion = resolved.version;
       }

@@ -1,6 +1,7 @@
 import { join } from 'path';
 import { PLATFORM_DIRS, FILE_PATTERNS, FORMULA_DIRS } from '../constants/index.js';
 import { exists } from './fs.js';
+import { areFormulaNamesEquivalent } from './formula-name.js';
 
 /**
  * Path utility functions for consistent file and directory path handling
@@ -26,7 +27,7 @@ export async function isRootFormula(cwd: string, formulaName: string): Promise<b
   try {
     const { parseFormulaYml } = await import('./formula-yml.js');
     const config = await parseFormulaYml(rootFormulaYmlPath);
-    return config.name === formulaName;
+    return areFormulaNamesEquivalent(config.name, formulaName);
   } catch (error) {
     return false;
   }

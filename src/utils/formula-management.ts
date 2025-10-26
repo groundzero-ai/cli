@@ -109,7 +109,7 @@ export async function addFormulaToYml(
   // Remove from current location if moving between arrays
   if (currentLocation && currentLocation !== targetArray) {
     const currentArray = config[currentLocation]!;
-    const currentIndex = currentArray.findIndex(dep => dep.name === formulaName);
+    const currentIndex = currentArray.findIndex(dep => areFormulaNamesEquivalent(dep.name, formulaName));
     if (currentIndex >= 0) {
       currentArray.splice(currentIndex, 1);
     }
@@ -117,7 +117,7 @@ export async function addFormulaToYml(
   
   // Update or add dependency
   const targetArrayRef = config[targetArray]!;
-  const existingIndex = targetArrayRef.findIndex(dep => dep.name === formulaName);
+  const existingIndex = targetArrayRef.findIndex(dep => areFormulaNamesEquivalent(dep.name, formulaName));
   
   if (existingIndex >= 0) {
     targetArrayRef[existingIndex] = dependency;
