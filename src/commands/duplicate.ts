@@ -37,7 +37,6 @@ async function duplicateFormulaCommand(
     sourceFormula = await formulaManager.loadFormula(sourceName, sourceVersionInput);
   } catch (error) {
     if (error instanceof FormulaNotFoundError) {
-      console.log(`Target formula ${sourceName} not found.`);
       return { success: false, error: `Target formula ${sourceName} not found.` };
     }
     throw error instanceof Error ? error : new Error(String(error));
@@ -45,7 +44,6 @@ async function duplicateFormulaCommand(
 
   // Check if any version already exists for the new name
   if (await formulaManager.formulaExists(newName)) {
-    console.log(`Formula ${newName} already exists`);
     return { success: false, error: `Formula ${newName} already exists` };
   }
 

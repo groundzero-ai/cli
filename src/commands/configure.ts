@@ -135,14 +135,12 @@ async function listProfiles(): Promise<CommandResult> {
 async function deleteProfile(profileName: string): Promise<CommandResult> {
   try {
     if (profileName === 'default') {
-      console.log('❌ Cannot delete the default profile');
       return { success: false, error: 'Cannot delete the default profile' };
     }
 
     const exists = await profileManager.hasProfile(profileName);
     if (!exists) {
-      console.log(`❌ Profile '${profileName}' not found`);
-      return { success: false, error: 'Profile not found' };
+      return { success: false, error: `Profile '${profileName}' not found` };
     }
 
     // Confirm deletion

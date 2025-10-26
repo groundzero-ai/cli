@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { describeVersionRange, isExactVersion } from '../utils/version-ranges.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { formulaManager } from '../core/formula.js';
@@ -71,11 +71,9 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
       data: metadata
     };
   } catch (error) {
-    logger.error(`Failed to show formula: ${formulaInput}`, { error });
     // Align with other commands' UX for not found
-    if (error instanceof Error && error.message && error.message.includes('not found')) {
-      console.log(`❌ Formula '${formulaInput}' not found`);
-      return { success: false, error: 'Formula not found' };
+    if (error instanceof FormulaNotFoundError) {
+      return { success: false, error: `Formula '${formulaInput}' not found` };
     }
     throw new Error(`Failed to show formula: ${error}`);
   }
