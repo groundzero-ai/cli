@@ -10,7 +10,7 @@ import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/save/platform-sync.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
+import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
 import { createFormulaFiles } from '../core/save/formula-file-generator.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
 import { extractBaseVersion } from '../utils/version-generator.js';
@@ -127,7 +127,7 @@ async function saveFormulaCommand(
   }
 
   // Discover and include MD files using appropriate logic
-  const discoveredFiles = await discoverFormulaFiles(formulaConfig.name);
+  const discoveredFiles = await discoverFormulaFilesForSave(formulaConfig.name);
 
   // Process discovered files and create formula files array
   const formulaFiles = await createFormulaFiles(formulaInfo, discoveredFiles);

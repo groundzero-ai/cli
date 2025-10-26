@@ -3,7 +3,7 @@ import { join, relative, dirname } from 'path';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { discoverFormulaFiles } from '../core/discovery/formula-files-discovery.js';
+import { discoverFormulaFilesForUninstall } from '../core/uninstall/uninstall-file-discovery.js';
 import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -166,7 +166,7 @@ async function displayDryRunInfo(
   
   // Check platform files that would be cleaned up for all formulas
   const discoveredByFormula = await Promise.all(
-    formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
+    formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
   );
   const platformCleanup: Record<string, string[]> = {};
   const seen = new Set<string>();
@@ -329,7 +329,7 @@ async function uninstallFormulaCommand(
     
     // Build platform cleanup summary via centralized discovery across all formulas
     const discoveredByFormula = await Promise.all(
-      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
+      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
     );
     const platformCleanup: Record<string, string[]> = {};
     const seen = new Set<string>();
@@ -394,7 +394,7 @@ async function uninstallFormulaCommand(
 
     // Discover platform-specific files for all formulas being removed and delete them
     const discoveredByFormula = await Promise.all(
-      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFiles(name) }))
+      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
     );
     const platformCleanup: Record<string, string[]> = {};
     const seen = new Set<string>();

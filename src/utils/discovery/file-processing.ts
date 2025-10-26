@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { parseMarkdownFrontmatter } from '../md-frontmatter.js';
-import { FILE_PATTERNS, PLATFORM_DIRS } from '../../constants/index.js';
+import { PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
 import { logger } from '../logger.js';
 import {
   exists,
@@ -17,7 +17,7 @@ import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
 import { shouldIncludeMarkdownFile } from '../../core/discovery/md-files-discovery.js';
 
 // Union type for modules that need to handle AI directory alongside platforms
-export type Platformish = Platform | typeof PLATFORM_DIRS.AI;
+export type Platformish = Platform | typeof PLATFORM_AI;
 
 /**
  * Get file modification time
@@ -95,7 +95,7 @@ export async function processMdFileForDiscovery(
 
         // Compute registry path using new universal mapping
         let registryPath: string;
-        if (platform !== 'ai') {
+        if (platform !== PLATFORM_AI) {
           // Universal file from platform directory - use the mapper to get universal path
           const mapping = mapPlatformFileToUniversal(file.fullPath);
           if (mapping) {
@@ -109,7 +109,7 @@ export async function processMdFileForDiscovery(
           registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
         }
 
-        const sourceDir = platform === 'ai' ? PLATFORM_DIRS.AI : getPlatformDefinition(platform).rootDir;
+        const sourceDir = platform === PLATFORM_AI ? PLATFORM_DIRS.AI : getPlatformDefinition(platform).rootDir;
         const result: DiscoveredFile = {
           fullPath: file.fullPath,
           relativePath: file.relativePath,

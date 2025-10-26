@@ -20,6 +20,8 @@ export const PLATFORMS = {
   WINDSURF: 'windsurf',
 } as const;
 
+export const PLATFORM_AI = 'ai';
+
 // Human-friendly aliases mapped to platform ids
 export const PLATFORM_ALIASES = {
   // CODEXCLI

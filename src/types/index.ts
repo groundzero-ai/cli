@@ -210,7 +210,8 @@ export interface Logger {
 }
 
 // Conflict resolution types
-export interface DiscoveredFile {
+// Save command discovery type (full metadata)
+export interface SaveDiscoveredFile {
   fullPath: string;
   relativePath: string;
   sourceDir: string;
@@ -222,13 +223,23 @@ export interface DiscoveredFile {
   discoveredViaIndexYml?: boolean;  // Discovered via index.yml marker
 }
 
+// Backward-compatibility alias until all imports are migrated
+export type DiscoveredFile = SaveDiscoveredFile;
+
+// Uninstall command discovery type (minimal fields)
+export interface UninstallDiscoveredFile {
+  fullPath: string;
+  sourceDir: string;
+  isRootFile?: boolean;
+}
+
 export interface ContentAnalysisResult {
   universalFiles: Array<{
-    file: DiscoveredFile;
+    file: SaveDiscoveredFile;
     finalRegistryPath: string;
   }>;
   platformSpecificFiles: Array<{
-    file: DiscoveredFile;
+    file: SaveDiscoveredFile;
     platformName: string;
     finalRegistryPath: string;
   }>;

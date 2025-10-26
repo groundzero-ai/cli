@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {
   getPlatformDefinition,
@@ -21,7 +21,7 @@ async function discoverPlatformFiles(
 ): Promise<DiscoveredFile[]> {
 
   // Handle AI directory separately - does not contain platform subdirectory structure
-  if (config.platform === 'ai') {
+  if (config.platform === PLATFORM_AI) {
     return discoverFiles(
       PLATFORM_DIRS.AI,
       formulaName,
