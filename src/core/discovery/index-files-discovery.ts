@@ -41,7 +41,7 @@ async function recursivelyListAllFiles(dir: string, baseDir: string): Promise<Ar
   return results;
 }
 
-async function findMatchingIndexYmlDirsRecursive(rootDir: string, formulaName: string): Promise<string[]> {
+export async function findMatchingIndexYmlDirsRecursive(rootDir: string, formulaName: string): Promise<string[]> {
   const matches: string[] = [];
   if (!(await exists(rootDir)) || !(await isDirectory(rootDir))) return matches;
 

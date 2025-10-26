@@ -9,6 +9,7 @@ import { shouldIncludeMarkdownFile } from '../discovery/md-files-discovery.js';
 import { readTextFile } from '../../utils/fs.js';
 import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
 import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
+import { findMatchingIndexYmlDirsRecursive } from '../discovery/index-files-discovery.js';
 
 async function discoverLightweightInDir(
   absDir: string,
@@ -34,6 +35,18 @@ async function discoverLightweightInDir(
   }
 
   return results;
+}
+
+async function discoverIndexYmlMarkedDirs(
+  rootDir: string,
+  platform: Platformish,
+  formulaName: string
+): Promise<UninstallDiscoveredFile[]> {
+  const matchingDirs = await findMatchingIndexYmlDirsRecursive(rootDir, formulaName);
+  return matchingDirs.map((dir: string) => ({
+    fullPath: dir,
+    sourceDir: platform
+  }));
 }
 
 async function discoverLightweightRootFiles(cwd: string, formulaName: string): Promise<UninstallDiscoveredFile[]> {
@@ -71,6 +84,10 @@ export async function discoverFormulaFilesForUninstall(formulaName: string): Pro
     if (cfg.platform === PLATFORM_AI) {
       const aiFiles = await discoverLightweightInDir(cfg.rulesDir, PLATFORM_AI, formulaName);
       results.push(...aiFiles);
+
+      // Add index.yml marked directories for AI
+      const aiIndexDirs = await discoverIndexYmlMarkedDirs(cfg.rulesDir, PLATFORM_AI, formulaName);
+      results.push(...aiIndexDirs);
       continue;
     }
 
@@ -81,6 +98,10 @@ export async function discoverFormulaFilesForUninstall(formulaName: string): Pro
       const files = await discoverLightweightInDir(subdirPath, cfg.platform, formulaName);
       results.push(...files);
     }
+
+    // Add index.yml marked directories for platform
+    const platformIndexDirs = await discoverIndexYmlMarkedDirs(join(cwd, def.rootDir), cfg.platform, formulaName);
+    results.push(...platformIndexDirs);
   }
 
   // Root files

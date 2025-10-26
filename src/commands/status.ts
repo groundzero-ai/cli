@@ -11,9 +11,10 @@ import { registryManager } from '../core/registry.js';
 import { exists, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { 
+import {
   getLocalFormulaYmlPath,
   getLocalFormulasDir,
+  getLocalFormulaDir,
   getLocalGroundZeroDir,
   getAIDir
 } from '../utils/paths.js';
@@ -258,8 +259,6 @@ async function analyzeFormulaStatus(
 
   // If local metadata is missing, likely .groundzero/formulas/<name>/formula.yml is missing or misnamed
   if (!localMetadata) {
-    const projectRoot = dirname(dirname(availableFormula.path));
-    const metaDir = join(projectRoot, PLATFORM_DIRS.GROUNDZERO, FORMULA_DIRS.FORMULAS, requiredFormula.name);
     status.status = 'files-missing';
     status.issues = [`'${FILE_PATTERNS.FORMULA_YML}' is missing or misnamed`];
     // Avoid confusing 0.0.0 display when metadata is missing
