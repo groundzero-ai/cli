@@ -68,6 +68,63 @@ export async function findFilesByExtension(
 }
 
 /**
+ * Recursively find directories containing a specific file
+ * @param rootDir - Root directory to start searching from
+ * @param targetFileName - Name of the file to search for (e.g., 'formula.yml')
+ * @param parseCallback - Optional callback to parse and validate the file content
+ * @returns Array of directory paths where the file was found
+ */
+export async function findDirectoriesContainingFile<T = void>(
+  rootDir: string,
+  targetFileName: string,
+  parseCallback?: (filePath: string) => Promise<T | null>
+): Promise<Array<{ dirPath: string; parsedContent?: T }>> {
+  const results: Array<{ dirPath: string; parsedContent?: T }> = [];
+
+  if (!(await exists(rootDir)) || !(await isDirectory(rootDir))) {
+    return results;
+  }
+
+  async function recurse(dir: string): Promise<void> {
+    try {
+      const files = await listFiles(dir);
+
+      // Check if target file exists in current directory
+      if (files.includes(targetFileName)) {
+        const filePath = join(dir, targetFileName);
+
+        // If parse callback provided, use it to validate/parse
+        if (parseCallback) {
+          try {
+            const parsedContent = await parseCallback(filePath);
+            if (parsedContent !== null) {
+              results.push({ dirPath: dir, parsedContent });
+            }
+          } catch (error) {
+            logger.warn(`Failed to parse ${targetFileName} at ${filePath}: ${error}`);
+          }
+        } else {
+          // No callback, just record the directory
+          results.push({ dirPath: dir });
+        }
+      }
+
+      // Recursively search subdirectories
+      const subdirs = await listDirectories(dir);
+      for (const subdir of subdirs) {
+        const subdirPath = join(dir, subdir);
+        await recurse(subdirPath);
+      }
+    } catch (error) {
+      logger.warn(`Failed to scan directory: ${dir}`, { error });
+    }
+  }
+
+  await recurse(rootDir);
+  return results;
+}
+
+/**
  * Process a single markdown file for discovery - common logic used by multiple discovery methods
  */
 export async function processMdFileForDiscovery(

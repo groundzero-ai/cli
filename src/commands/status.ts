@@ -8,13 +8,12 @@ import { ensureRegistryDirectories, listFormulaVersions } from '../core/director
 import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
-import { exists, listDirectories, walkFiles, readTextFile } from '../utils/fs.js';
+import { exists, walkFiles, readTextFile } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import {
   getLocalFormulaYmlPath,
   getLocalFormulasDir,
-  getLocalFormulaDir,
   getLocalGroundZeroDir,
   getAIDir
 } from '../utils/paths.js';
@@ -27,10 +26,11 @@ import {
   FILE_PATTERNS, 
   UNIVERSAL_SUBDIRS, 
   DEPENDENCY_ARRAYS,
-  PLATFORM_DIRS,
-  FORMULA_DIRS
 } from '../constants/index.js';
 import { getPlatformDefinition, detectAllPlatforms } from '../core/platforms.js';
+import { findDirectoriesContainingFile } from '../utils/discovery/file-processing.js';
+import { discoverFormulasForStatus } from '../core/status-file-discovery.js';
+import { normalizeFormulaName } from '../utils/formula-name.js';
 
 /**
  * Formula status types
@@ -59,6 +59,7 @@ interface FormulaStatusInfo {
       commands?: { found: number };
       agents?: { found: number };
     }>;
+    rootFiles?: { found: number; paths: string[] };
   };
 }
 
@@ -110,6 +111,7 @@ interface CommandOptions {
 
 /**
  * Scan local formula metadata from .groundzero/formulas directory
+ * Recursively scans to handle scoped formulas (e.g., @scope/name)
  */
 async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, FormulaYml>> {
   const formulasDir = getLocalFormulasDir(cwd);
@@ -120,29 +122,24 @@ async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, Formul
   }
   
   try {
-    const subdirectories = await listDirectories(formulasDir);
-    
-    // Process directories in parallel for better performance
-    const parsePromises = subdirectories.map(async (subdir) => {
-      const formulaDir = join(formulasDir, subdir);
-      const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
-      
-      if (await exists(formulaYmlPath)) {
+    // Use the generic recursive scanner to find all formula.yml files
+    const formulaDirs = await findDirectoriesContainingFile(
+      formulasDir,
+      FILE_PATTERNS.FORMULA_YML,
+      async (filePath) => {
         try {
-          const formulaConfig = await parseFormulaYml(formulaYmlPath);
-          return { name: formulaConfig.name, config: formulaConfig };
+          return await parseFormulaYml(filePath);
         } catch (error) {
-          logger.warn(`Failed to parse local formula metadata: ${formulaYmlPath}`, { error });
+          logger.warn(`Failed to parse local formula metadata: ${filePath}`, { error });
+          return null;
         }
       }
-      return null;
-    });
-    
-    const results = await Promise.all(parsePromises);
-    
-    for (const result of results) {
-      if (result) {
-        localFormulas.set(result.name, result.config);
+    );
+
+    // Build the map from results
+    for (const result of formulaDirs) {
+      if (result.parsedContent) {
+        localFormulas.set(result.parsedContent.name, result.parsedContent);
       }
     }
   } catch (error) {
@@ -233,10 +230,10 @@ async function analyzeFormulaStatus(
   if (!availableFormula) {
     if (localMetadata) {
       status.status = 'files-missing';
-      status.issues = [`Formula '${requiredFormula.name}' has local metadata but no files detected in ai or platforms`];
+      status.issues = [`Formula '${requiredFormula.name}' has local metadata but no files detected`];
     } else {
       status.status = 'missing';
-      status.issues = [`Formula '${requiredFormula.name}' not found in ai or platforms`];
+      status.issues = [`Formula '${requiredFormula.name}' not found`];
     }
     
     // Check for registry updates if available
@@ -428,9 +425,42 @@ async function performStatusAnalysis(
     options.platforms ? detectPlatformStatus(cwd) : Promise.resolve([])
   ]);
   
-  // 3. Scan installed files by frontmatter and read local metadata in parallel
+  // 3. Discover installed files using same method as uninstall and read local metadata in parallel
+  // First collect all formula names including dependencies
+  const formulaNames = new Set<string>([
+    ...(cwdConfig.formulas || []).map(f => normalizeFormulaName(f.name)),
+    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => normalizeFormulaName(f.name))
+  ]);
+
+  // Resolve dependencies for each formula to get their names
+  for (const formula of cwdConfig.formulas || []) {
+    try {
+      const constraints = await gatherGlobalVersionConstraints(cwd);
+      const rootConstraints = await gatherRootVersionConstraints(cwd);
+      const resolvedFormulas = await resolveDependencies(
+        formula.name,
+        cwd,
+        true,
+        new Set(),
+        new Map(),
+        formula.version,
+        new Map(),
+        constraints,
+        rootConstraints
+      );
+      // Add all resolved dependency names to the set
+      for (const resolved of resolvedFormulas) {
+        if (!resolved.isRoot) {
+          formulaNames.add(normalizeFormulaName(resolved.name));
+        }
+      }
+    } catch (error) {
+      logger.debug(`Failed to resolve dependencies for ${formula.name}`, { error });
+    }
+  }
+
   const [detectedByFrontmatter, localMetadata] = await Promise.all([
-    scanInstalledFormulasByFrontmatter(cwd),
+    discoverFormulasForStatus(Array.from(formulaNames)),
     scanLocalFormulaMetadata(cwd)
   ]);
 
@@ -459,7 +489,8 @@ async function performStatusAnalysis(
     if (detected) {
       status.fileSummary = {
         aiFiles: { found: detected.aiFiles.length, paths: detected.aiFiles },
-        platformFiles: detected.platforms
+        platformFiles: detected.platforms,
+        rootFiles: detected.rootFiles ? { found: detected.rootFiles.length, paths: detected.rootFiles } : undefined
       };
     }
     
@@ -631,6 +662,9 @@ function renderFormulaTree(
         if (pf.agents?.found) parts.push(`agents:${pf.agents.found}`);
         console.log(`${fsPrefix}   - ${p} ${parts.length ? `(${parts.join(', ')})` : ''}`);
       }
+    }
+    if (fs.rootFiles && fs.rootFiles.found > 0) {
+      console.log(`${fsPrefix}📁 root files: ${fs.rootFiles.found}`);
     }
   }
   
@@ -892,71 +926,3 @@ export function setupStatusCommand(program: Command): void {
     }));
 }
 
-/**
- * Scan installed formulas by parsing frontmatter across ai and platform directories
- */
-async function scanInstalledFormulasByFrontmatter(cwd: string): Promise<Map<string, { aiFiles: string[]; platforms: Record<string, { rules?: { found: number }; commands?: { found: number }; agents?: { found: number } }>; anyPath?: string }>> {
-  const result = new Map<string, { aiFiles: string[]; platforms: Record<string, { rules?: { found: number }; commands?: { found: number }; agents?: { found: number } }>; anyPath?: string }>();
-
-  const aiDir = getAIDir(cwd);
-  if (await exists(aiDir)) {
-    for await (const filePath of walkFiles(aiDir)) {
-      if (!filePath.endsWith(FILE_PATTERNS.MD_FILES) && !filePath.endsWith(FILE_PATTERNS.MDC_FILES)) {
-        continue;
-      }
-      try {
-        const content = await readTextFile(filePath);
-        const fm = parseMarkdownFrontmatter(content);
-        const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
-        if (formulaName) {
-          if (!result.has(formulaName)) {
-            result.set(formulaName, { aiFiles: [], platforms: {}, anyPath: dirname(filePath) });
-          }
-          const entry = result.get(formulaName)!;
-          entry.aiFiles.push(filePath);
-          if (!entry.anyPath) entry.anyPath = dirname(filePath);
-        }
-      } catch {}
-    }
-  }
-
-  const detections = await detectAllPlatforms(cwd);
-  for (const { name: platform, detected } of detections) {
-    if (!detected) continue;
-    const def = getPlatformDefinition(platform as any);
-    const platformRoot = join(cwd, def.rootDir);
-
-    for (const [subKey, subDef] of Object.entries(def.subdirs)) {
-      const targetDir = join(platformRoot, (subDef as any).path || '');
-      if (!(await exists(targetDir))) continue;
-      for await (const fp of walkFiles(targetDir)) {
-        const allowedExts: string[] = ((subDef as any).readExts) || [FILE_PATTERNS.MD_FILES];
-        if (!allowedExts.some((ext) => fp.endsWith(ext))) continue;
-        try {
-          const content = await readTextFile(fp);
-          const fm = parseMarkdownFrontmatter(content);
-          const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
-          if (!formulaName) continue;
-          if (!result.has(formulaName)) {
-            result.set(formulaName, { aiFiles: [], platforms: {}, anyPath: dirname(fp) });
-          }
-          const entry = result.get(formulaName)!;
-          entry.platforms[platform] = entry.platforms[platform] || {};
-          if (subKey === UNIVERSAL_SUBDIRS.RULES) {
-            entry.platforms[platform].rules = entry.platforms[platform].rules || { found: 0 };
-            entry.platforms[platform].rules!.found++;
-          } else if (subKey === UNIVERSAL_SUBDIRS.COMMANDS) {
-            entry.platforms[platform].commands = entry.platforms[platform].commands || { found: 0 };
-            entry.platforms[platform].commands!.found++;
-          } else if (subKey === UNIVERSAL_SUBDIRS.AGENTS) {
-            entry.platforms[platform].agents = entry.platforms[platform].agents || { found: 0 };
-            entry.platforms[platform].agents!.found++;
-          }
-          if (!entry.anyPath) entry.anyPath = dirname(fp);
-        } catch {}
-      }
-    }
-  }
-
-  return result;
-}
