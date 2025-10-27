@@ -6,7 +6,7 @@ import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
 import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
-import { findFilesByExtension } from '../utils/file-processing.js';
+import { findFilesByExtension, findDirectoriesContainingFile } from '../utils/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
 import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
 
@@ -98,43 +98,53 @@ export async function findFormulaDirectory(groundzeroPath: string, formulaName: 
 }
 
 /**
- * Scan ai directory for all available formulas
+ * Scan groundzero directory for all available formulas
  */
 export async function scanGroundzeroFormulas(groundzeroPath: string): Promise<Map<string, GroundzeroFormula>> {
   const formulas = new Map<string, GroundzeroFormula>();
-  
+
   if (!(await exists(groundzeroPath)) || !(await isDirectory(groundzeroPath))) {
     logger.debug('AI directory not found or not a directory', { groundzeroPath });
     return formulas;
   }
 
   try {
-    const subdirectories = await listDirectories(groundzeroPath);
-    
-    for (const subdir of subdirectories) {
-      const subdirPath = join(groundzeroPath, subdir);
-      const configPath = await findFormulaConfigFile(subdirPath);
-      
-      if (configPath) {
+    // Find all formula.yml files recursively under the formulas directory
+    const formulasDir = getLocalFormulasDir(groundzeroPath);
+    if (!(await exists(formulasDir))) {
+      return formulas;
+    }
+
+    const formulaDirs = await findDirectoriesContainingFile(
+      formulasDir,
+      FILE_PATTERNS.FORMULA_YML,
+      async (filePath) => {
         try {
-          const formulaConfig = await parseFormulaYml(configPath);
-          formulas.set(formulaConfig.name, {
-            name: formulaConfig.name,
-            version: formulaConfig.version,
-            description: formulaConfig.description,
-            formulas: formulaConfig.formulas || [],
-            'dev-formulas': formulaConfig['dev-formulas'] || [],
-            path: subdirPath
-          });
+          return await parseFormulaYml(filePath);
         } catch (error) {
-          logger.warn(`Failed to parse formula file ${configPath}: ${error}`);
+          logger.warn(`Failed to parse formula file ${filePath}: ${error}`);
+          return null;
         }
+      }
+    );
+
+    for (const { dirPath, parsedContent } of formulaDirs) {
+      if (parsedContent) {
+        const formulaConfig = parsedContent;
+        formulas.set(formulaConfig.name, {
+          name: formulaConfig.name,
+          version: formulaConfig.version,
+          description: formulaConfig.description,
+          formulas: formulaConfig.formulas || [],
+          'dev-formulas': formulaConfig['dev-formulas'] || [],
+          path: dirPath
+        });
       }
     }
   } catch (error) {
     logger.error(`Failed to scan ai directory: ${error}`);
   }
-  
+
   return formulas;
 }
 
@@ -187,19 +197,21 @@ export async function gatherGlobalVersionConstraints(cwd: string, includeResolut
   const formulasDir = getLocalFormulasDir(cwd);
   if (await exists(formulasDir) && await isDirectory(formulasDir)) {
     try {
-      const subdirs = await listDirectories(formulasDir);
-      for (const subdir of subdirs) {
-        const configPath = join(formulasDir, subdir, FILE_PATTERNS.FORMULA_YML);
-        if (!(await exists(configPath))) {
-          continue;
+      const formulaDirs = await findDirectoriesContainingFile(
+        formulasDir,
+        FILE_PATTERNS.FORMULA_YML,
+        async (filePath) => {
+          try {
+            return await parseFormulaYml(filePath);
+          } catch (error) {
+            logger.debug(`Failed to parse formula.yml at ${filePath}: ${error}`);
+            return null;
+          }
         }
+      );
 
-        try {
-          const subConfig = await parseFormulaYml(configPath);
-          collectFromConfig(subConfig);
-        } catch (error) {
-          logger.debug(`Failed to parse formula.yml for ${subdir}: ${error}`);
-        }
+      for (const { parsedContent } of formulaDirs) {
+        collectFromConfig(parsedContent);
       }
     } catch (error) {
       logger.debug(`Failed to enumerate formulas directory for constraints: ${error}`);
@@ -246,7 +258,7 @@ export async function gatherRootVersionConstraints(cwd: string): Promise<Map<str
 }
 
 /**
- * Get formula configuration from ai directory
+ * Get formula configuration
  */
 export async function getGroundzeroFormulaConfig(groundzeroPath: string, formulaName: string): Promise<FormulaYml | null> {
   const formulaPath = await findFormulaDirectory(groundzeroPath, formulaName);

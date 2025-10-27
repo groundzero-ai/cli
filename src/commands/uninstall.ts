@@ -105,6 +105,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
  */
 async function displayDryRunInfo(
   formulaName: string,
+  cwd: string,
   targetDir: string,
   options: UninstallOptions,
   danglingDependencies: Set<string>,
@@ -123,11 +124,10 @@ async function displayDryRunInfo(
 
 
   // Check formula.yml files and README.md files that would be removed
-  const formulasDir = getLocalFormulasDir(targetDir);
   const formulaYmlFilesToRemove: string[] = [];
   const readmeFilesToRemove: string[] = [];
   for (const formula of formulasToRemove) {
-    const formulaDir = getLocalFormulaDir(targetDir, formula);
+    const formulaDir = getLocalFormulaDir(cwd, formula);
     const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
     const readmePath = join(formulaDir, FILE_PATTERNS.README_MD);
     if (await exists(formulaYmlPath)) {
@@ -154,7 +154,6 @@ async function displayDryRunInfo(
   console.log('');
 
   // Root files that would be updated or deleted
-  const cwd = process.cwd();
   const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
   console.log(`📝 Root files to update: ${rootPlan.toUpdate.length}`);
   for (const f of rootPlan.toUpdate.sort((a, b) => a.localeCompare(b))) {
@@ -309,7 +308,7 @@ async function uninstallFormulaCommand(
   if (options.recursive) {
     // Build dependency tree and find dangling dependencies
     const protectedFormulas = await getProtectedFormulas(cwd);
-    const dependencyTree = await buildDependencyTree(groundzeroPath, protectedFormulas);
+    const dependencyTree = await buildDependencyTree(cwd, protectedFormulas);
     danglingDependencies = await findDanglingDependencies(formulaName, dependencyTree);
     
     formulasToRemove = [formulaName, ...Array.from(danglingDependencies)];
@@ -327,7 +326,7 @@ async function uninstallFormulaCommand(
   
   // Dry run mode
   if (options.dryRun) {
-    await displayDryRunInfo(formulaName, targetDir, options, danglingDependencies, groundzeroPath, formulasToRemove);
+    await displayDryRunInfo(formulaName, cwd, targetDir, options, danglingDependencies, groundzeroPath, formulasToRemove);
     const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
     // Build platform cleanup summary via centralized discovery across all formulas
