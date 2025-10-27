@@ -1,3 +1,5 @@
+import { basename } from 'path';
+import { isJunk } from 'junk';
 import { Command } from 'commander';
 import { CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -59,7 +61,8 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     }
     
     // Files section - match install command's file list format
-    const sortedFilePaths = files.map(f => f.path).sort((a, b) => a.localeCompare(b));
+    const filteredFiles = files.filter(f => !isJunk(basename(f.path)));
+    const sortedFilePaths = filteredFiles.map(f => f.path).sort((a, b) => a.localeCompare(b));
     console.log(`📝 Files: ${sortedFilePaths.length}`);
     for (const filePath of sortedFilePaths) {
       console.log(`   ├── ${filePath}`);

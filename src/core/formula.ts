@@ -1,6 +1,6 @@
-import { join, relative, dirname } from 'path';
+import { join, relative, dirname, basename } from 'path';
+import { isJunk } from 'junk';
 import { Formula, FormulaFile } from '../types/index.js';
-import { FILE_PATTERNS } from '../constants/index.js';
 import { 
   exists, 
   walkFiles, 
@@ -186,12 +186,18 @@ export class FormulaManager {
    */
   private async discoverFormulaFiles(formulaPath: string): Promise<FormulaFile[]> {
     const files: FormulaFile[] = [];
-    
+
     try {
       // Include all file types (no filtering)
       // Get all files recursively in the formula directory
       for await (const fullPath of walkFiles(formulaPath)) {
         const relativePath = relative(formulaPath, fullPath);
+
+        // Filter out junk files
+        if (isJunk(basename(relativePath))) {
+          continue;
+        }
+
         const content = await readTextFile(fullPath);
 
         files.push({
@@ -200,7 +206,7 @@ export class FormulaManager {
           encoding: 'utf8'
         });
       }
-      
+
       logger.debug(`Discovered ${files.length} files in formula directory`, { formulaPath });
       return files;
     } catch (error) {

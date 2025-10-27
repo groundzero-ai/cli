@@ -1,4 +1,5 @@
 import { join } from 'path';
+import { isJunk } from 'junk';
 import { PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {

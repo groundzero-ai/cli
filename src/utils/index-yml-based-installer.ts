@@ -1,4 +1,5 @@
 import { join, relative, dirname } from 'path';
+import { isJunk } from 'junk';
 import { listDirectories, listFiles, exists, ensureDir, remove } from './fs.js';
 import { logger } from './logger.js';
 import { getFormulaVersionPath } from '../core/directory.js';

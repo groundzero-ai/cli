@@ -1,4 +1,5 @@
 import { join } from 'path';
+import { isJunk } from 'junk';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import { exists, readTextFile } from './fs.js';
@@ -69,6 +70,11 @@ export async function discoverAllRootFiles(
 
   // Iterate unique root files and extract content
   for (const rootFile of uniqueRootFiles) {
+    // Skip junk files
+    if (isJunk(rootFile)) {
+      continue;
+    }
+
     const absPath = join(cwd, rootFile);
     if (!(await exists(absPath))) {
       continue;

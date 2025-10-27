@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { formulaManager } from '../core/formula.js';
 import { isValidEntityId } from './entity-id.js';
-import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, type Platform } from '../constants/index.js';
+import { FILE_PATTERNS, type Platform } from '../constants/index.js';
 import type { FormulaFile } from '../types/index.js';
 import {
   buildRegistryIdMap,

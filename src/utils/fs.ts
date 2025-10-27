@@ -2,6 +2,7 @@ import { promises as fs, constants as fsConstants, Stats } from 'fs';
 import { join, dirname, relative } from 'path';
 import { logger } from './logger.js';
 import { FileSystemError } from './errors.js';
+import { isJunk } from 'junk';
 
 /**
  * File system utilities with proper error handling
@@ -120,7 +121,7 @@ export async function listFiles(dirPath: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     return entries
-      .filter(entry => entry.isFile())
+      .filter(entry => entry.isFile() && !isJunk(entry.name))
       .map(entry => entry.name);
   } catch (error) {
     throw new FileSystemError(`Failed to list files in directory: ${dirPath}`, { dirPath, error });
