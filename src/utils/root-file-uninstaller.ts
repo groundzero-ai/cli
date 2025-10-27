@@ -4,7 +4,7 @@
  */
 
 import { join } from 'path';
-import { exists, readTextFile, writeTextFile, remove } from './fs.js';
+import { exists, readTextFile, writeTextFile } from './fs.js';
 import { logger } from './logger.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { buildOpenMarkerRegex, CLOSE_MARKER_REGEX } from './root-file-extractor.js';
@@ -47,11 +47,10 @@ function getUniqueRootFilenames(): string[] {
 }
 
 /**
- * Compute which root files would be updated or deleted after stripping sections
+ * Compute which root files would be updated after stripping sections
  */
-export async function computeRootFileRemovalPlan(cwd: string, formulaNames: string[]): Promise<{ toUpdate: string[]; toDelete: string[] }> {
+export async function computeRootFileRemovalPlan(cwd: string, formulaNames: string[]): Promise<{ toUpdate: string[] }> {
   const toUpdate: string[] = [];
-  const toDelete: string[] = [];
   const rootFiles = getUniqueRootFilenames();
   for (const filename of rootFiles) {
     const absPath = join(cwd, filename);
@@ -59,21 +58,17 @@ export async function computeRootFileRemovalPlan(cwd: string, formulaNames: stri
     const original = await readTextFile(absPath);
     const { changed, content } = stripMultipleFormulaSections(original, formulaNames);
     if (!changed) continue;
-    if (content.trim().length === 0) {
-      toDelete.push(filename);
-    } else {
-      toUpdate.push(filename);
-    }
+    // Always update root files, never delete them (even if empty)
+    toUpdate.push(filename);
   }
-  return { toUpdate, toDelete };
+  return { toUpdate };
 }
 
 /**
- * Apply root-file removals for provided formulas
+ * Apply root-file updates for provided formulas
  */
-export async function applyRootFileRemovals(cwd: string, formulaNames: string[]): Promise<{ updated: string[]; deleted: string[] }> {
+export async function applyRootFileRemovals(cwd: string, formulaNames: string[]): Promise<{ updated: string[] }> {
   const updated: string[] = [];
-  const deleted: string[] = [];
   const rootFiles = getUniqueRootFilenames();
   for (const filename of rootFiles) {
     const absPath = join(cwd, filename);
@@ -81,17 +76,12 @@ export async function applyRootFileRemovals(cwd: string, formulaNames: string[])
     const original = await readTextFile(absPath);
     const { changed, content } = stripMultipleFormulaSections(original, formulaNames);
     if (!changed) continue;
-    if (content.trim().length === 0) {
-      await remove(absPath);
-      deleted.push(filename);
-      logger.debug(`Removed empty root file: ${absPath}`);
-    } else {
-      await writeTextFile(absPath, content);
-      updated.push(filename);
-      logger.debug(`Updated root file: ${absPath}`);
-    }
+    // Always update root files, never delete them (even if empty)
+    await writeTextFile(absPath, content);
+    updated.push(filename);
+    logger.debug(`Updated root file: ${absPath}`);
   }
-  return { updated, deleted };
+  return { updated };
 }
 
 

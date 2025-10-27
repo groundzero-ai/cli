@@ -159,10 +159,6 @@ async function displayDryRunInfo(
   for (const f of rootPlan.toUpdate.sort((a, b) => a.localeCompare(b))) {
     console.log(`   ├── ${f}`);
   }
-  console.log(`🗑️  Root files to delete: ${rootPlan.toDelete.length}`);
-  for (const f of rootPlan.toDelete.sort((a, b) => a.localeCompare(b))) {
-    console.log(`   ├── ${f}`);
-  }
   
   // Check platform files that would be cleaned up for all formulas
   const discoveredByFormula = await Promise.all(
@@ -222,8 +218,7 @@ function displayUninstallSuccess(
   removedAiFiles: string[],
   ymlRemovalResults: Record<string, boolean>,
   platformCleanup: Record<string, string[]>,
-  updatedRootFiles: string[],
-  deletedRootFiles: string[]
+  updatedRootFiles: string[]
 ): void {
   console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
@@ -238,9 +233,6 @@ function displayUninstallSuccess(
   for (const platformFiles of Object.values(platformCleanup)) {
     allRemovedFiles.push(...platformFiles);
   }
-
-  // Add deleted root files
-  allRemovedFiles.push(...deletedRootFiles);
 
   // Display removed files count and list
   const sortedRemovedFiles = allRemovedFiles.sort((a, b) => a.localeCompare(b));
@@ -356,7 +348,7 @@ async function uninstallFormulaCommand(
         danglingDependencies: Array.from(danglingDependencies),
         totalToRemove: formulasToRemove.length,
         platformCleanup,
-        rootFiles: { toUpdate: rootPlan.toUpdate, toDelete: rootPlan.toDelete }
+        rootFiles: { toUpdate: rootPlan.toUpdate }
       }
     };
   }
@@ -460,19 +452,6 @@ async function uninstallFormulaCommand(
       }
     }
 
-    // From root file deletions
-    for (const deleted of rootRemoval.deleted) {
-      const absolutePath = deleted.startsWith('/') ? deleted : join(cwd, deleted);
-      let currentDir = dirname(absolutePath);
-      while (currentDir !== dirname(currentDir)) { // Stop at root
-        if (!platformRootDirs.has(currentDir)) {
-          parentDirs.add(currentDir);
-        } else {
-          break; // Stop at platform root
-        }
-        currentDir = dirname(currentDir);
-      }
-    }
 
     // Remove directories from bottom up (deepest first)
     const sortedDirs = Array.from(parentDirs).sort((a, b) => b.length - a.length);
@@ -504,8 +483,7 @@ async function uninstallFormulaCommand(
       removedAiFiles,
       ymlRemovalResults,
       platformCleanup,
-      rootRemoval.updated,
-      rootRemoval.deleted
+      rootRemoval.updated
     );
 
     return {
@@ -519,7 +497,7 @@ async function uninstallFormulaCommand(
         danglingDependencies: Array.from(danglingDependencies),
         totalRemoved: removedAiFiles.length,
         platformCleanup,
-        rootFiles: { updated: rootRemoval.updated, deleted: rootRemoval.deleted }
+        rootFiles: { updated: rootRemoval.updated }
       }
     };
   } catch (error) {
