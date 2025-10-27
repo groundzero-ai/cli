@@ -8,7 +8,7 @@ import {
 import { matchPlatformPattern, isExactPlatformMatch } from '../../utils/path-matching.js';
 
 // Import the shared type
-import type { Platformish } from '../../utils/discovery/file-processing.js';
+import type { Platformish } from '../../utils/file-processing.js';
 
 // Platform search configuration interface
 export interface PlatformSearchConfig {

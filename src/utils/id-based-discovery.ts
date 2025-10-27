@@ -11,8 +11,8 @@ import { isValidEntityId } from './entity-id.js';
 import { logger } from './logger.js';
 import { formulaManager } from '../core/formula.js';
 import { getPlatformDefinition } from '../core/platforms.js';
-import { UNIVERSAL_SUBDIRS, FILE_PATTERNS, PLATFORM_DIRS, type Platform } from '../constants/index.js';
-import { findFilesByExtension } from './discovery/file-processing.js';
+import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
+import { findFilesByExtension } from './file-processing.js';
 import type { FileIdInfo, FormulaFile } from '../types/index.js';
 import { areFormulaNamesEquivalent } from './formula-name.js';
 
@@ -194,7 +194,6 @@ export async function loadRegistryYamlOverrides(
   const formula = await formulaManager.loadFormula(formulaName, version);
 
   // Known platforms for suffix matching
-  const { PLATFORMS, UNIVERSAL_SUBDIRS } = await import('../constants/index.js');
   const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
   const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
 

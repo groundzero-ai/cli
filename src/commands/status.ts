@@ -1,14 +1,13 @@
 import { Command } from 'commander';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
-import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
 import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
-import { exists, walkFiles, readTextFile } from '../utils/fs.js';
+import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import {
@@ -24,12 +23,11 @@ import {
 } from '../utils/version-ranges.js';
 import { 
   FILE_PATTERNS, 
-  UNIVERSAL_SUBDIRS, 
   DEPENDENCY_ARRAYS,
 } from '../constants/index.js';
 import { getPlatformDefinition, detectAllPlatforms } from '../core/platforms.js';
-import { findDirectoriesContainingFile } from '../utils/discovery/file-processing.js';
-import { discoverFormulasForStatus } from '../core/status-file-discovery.js';
+import { findDirectoriesContainingFile } from '../utils/file-processing.js';
+import { discoverFormulasForStatus } from '../core/status/status-file-discovery.js';
 import { normalizeFormulaName } from '../utils/formula-name.js';
 
 /**
@@ -105,9 +103,6 @@ interface CommandOptions {
   repair?: boolean;
   verbose?: boolean;
 }
-
-
-
 
 /**
  * Scan local formula metadata from .groundzero/formulas directory

@@ -39,6 +39,7 @@ import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
 import { installFilesByIdWithMap } from '../utils/id-based-installer.js';
 import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
+import { promptVersionSelection } from '../utils/prompts.js';
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -293,7 +294,6 @@ async function installFormulaCommand(
         chosenVersion = available.sort((a, b) => semver.rcompare(a, b))[0] || null;
       } else {
         // ask user to pick a version from available
-        const { promptVersionSelection } = await import('../utils/prompts.js');
         chosenVersion = await promptVersionSelection(details?.formulaName || name, available, 'to install');
       }
 

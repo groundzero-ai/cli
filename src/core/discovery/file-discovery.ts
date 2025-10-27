@@ -1,5 +1,5 @@
 import { DiscoveredFile } from "../../types"
-import { Platformish } from "../../utils/discovery/file-processing.js"
+import { Platformish } from "../../utils/file-processing.js"
 import { exists, isDirectory } from "../../utils/fs.js"
 import { discoverMdFiles } from "./md-files-discovery.js"
 import { discoverIndexYmlMarkedFiles } from "./index-files-discovery.js"

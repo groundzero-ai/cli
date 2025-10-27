@@ -1,8 +1,8 @@
 import { FILE_PATTERNS } from "../../constants/index.js";
 import { DiscoveredFile } from "../../types";
-import { getFileMtime, Platformish } from "../../utils/discovery/file-processing.js";
+import { getFileMtime, Platformish } from "../../utils/file-processing.js";
 import { exists, isDirectory, readTextFile } from "../../utils/fs.js";
-import { findFilesByExtension } from "../../utils/discovery/file-processing.js";
+import { findFilesByExtension } from "../../utils/file-processing.js";
 import { parseMarkdownFrontmatter } from "../../utils/md-frontmatter.js";
 import { logger } from "../../utils/logger.js";
 import { calculateFileHash } from "../../utils/hash-utils.js";

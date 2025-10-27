@@ -1,11 +1,11 @@
 import { join, dirname } from 'path';
-import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
-import { buildPlatformSearchConfig } from './discovery/platform-discovery.js';
-import { getPlatformDefinition, getAllPlatforms } from './platforms.js';
-import { exists, walkFiles, readTextFile } from '../utils/fs.js';
-import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
-import { findMatchingIndexYmlDirsRecursive } from './discovery/index-files-discovery.js';
-import { extractFormulaContentFromRootFile } from '../utils/root-file-extractor.js';
+import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
+import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
+import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
+import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
+import { findMatchingIndexYmlDirsRecursive } from '../discovery/index-files-discovery.js';
+import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
  * Discover installed formulas using same methods as uninstall but optimized for status command

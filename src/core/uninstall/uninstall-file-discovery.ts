@@ -4,7 +4,7 @@ import { type UninstallDiscoveredFile } from '../../types/index.js';
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { exists, isDirectory } from '../../utils/fs.js';
-import { findFilesByExtension, type Platformish } from '../../utils/discovery/file-processing.js';
+import { findFilesByExtension, type Platformish } from '../../utils/file-processing.js';
 import { shouldIncludeMarkdownFile } from '../discovery/md-files-discovery.js';
 import { readTextFile } from '../../utils/fs.js';
 import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';

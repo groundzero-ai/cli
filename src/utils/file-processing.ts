@@ -1,20 +1,21 @@
 import { join } from 'path';
-import { parseMarkdownFrontmatter } from '../md-frontmatter.js';
-import { PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
-import { logger } from '../logger.js';
+import { parseMarkdownFrontmatter } from './md-frontmatter.js';
+import { PLATFORM_AI, PLATFORM_DIRS } from '../constants/index.js';
+import { logger } from './logger.js';
 import {
   exists,
   readTextFile,
   listFiles,
   listDirectories,
-  isDirectory
-} from '../fs.js';
-import { calculateFileHash } from '../hash-utils.js';
-import { mapPlatformFileToUniversal } from '../platform-mapper.js';
-import { getRelativePathFromBase } from '../path-normalization.js';
-import type { DiscoveredFile } from '../../types/index.js';
-import { getPlatformDefinition, type Platform } from '../../core/platforms.js';
-import { shouldIncludeMarkdownFile } from '../../core/discovery/md-files-discovery.js';
+  isDirectory,
+  getStats
+} from './fs.js';
+import { calculateFileHash } from './hash-utils.js';
+import { mapPlatformFileToUniversal } from './platform-mapper.js';
+import { getRelativePathFromBase } from './path-normalization.js';
+import type { DiscoveredFile } from '../types/index.js';
+import { getPlatformDefinition, type Platform } from '../core/platforms.js';
+import { shouldIncludeMarkdownFile } from '../core/discovery/md-files-discovery.js';
 
 // Union type for modules that need to handle AI directory alongside platforms
 export type Platformish = Platform | typeof PLATFORM_AI;
@@ -24,7 +25,6 @@ export type Platformish = Platform | typeof PLATFORM_AI;
  * @throws Error if unable to get file stats
  */
 export async function getFileMtime(filePath: string): Promise<number> {
-  const { getStats } = await import('../fs.js');
   const stats = await getStats(filePath);
   return stats.mtime.getTime();
 }

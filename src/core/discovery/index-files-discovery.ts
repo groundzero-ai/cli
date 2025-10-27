@@ -2,7 +2,7 @@ import { join } from 'path';
 import * as yaml from 'js-yaml';
 import { exists, isDirectory, listDirectories, listFiles, readTextFile } from '../../utils/fs.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
-import { getFileMtime, Platformish } from '../../utils/discovery/file-processing.js';
+import { getFileMtime, Platformish } from '../../utils/file-processing.js';
 import type { DiscoveredFile } from '../../types/index.js';
 import { logger } from '../../utils/logger.js';
 import type { FormulaMarkerYml } from '../../utils/md-frontmatter.js';

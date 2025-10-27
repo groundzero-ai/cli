@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { FormulaNotFoundError, FormulaVersionNotFoundError, VersionConflictError } from '../utils/errors.js';
 import { isExactVersion } from '../utils/version-ranges.js';
 import { listFormulaVersions } from './directory.js';
+import { registryManager } from './registry.js';
 
 /**
  * Resolved formula interface for dependency resolution
@@ -148,7 +149,6 @@ export async function resolveDependencies(
       
       try {
         // Check if formula exists in registry metadata (but files might be missing)
-        const { registryManager } = await import('./registry.js');
         const hasFormula = await registryManager.hasFormula(formulaName);
         logger.debug(`Registry check for '${formulaName}': hasFormula=${hasFormula}, requiredVersion=${version}`);
         

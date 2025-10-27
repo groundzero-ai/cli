@@ -1,5 +1,5 @@
 import { DiscoveredFile } from "../../types";
-import { discoverAllRootFiles } from "../../utils/discovery/formula-discovery.js";
+import { discoverAllRootFiles } from "../../utils/formula-discovery.js";
 import { discoverPlatformFilesUnified } from "./platform-files-discovery.js";
 
 export async function discoverFormulaFiles(

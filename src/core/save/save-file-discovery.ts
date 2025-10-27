@@ -1,4 +1,4 @@
-import { discoverAllRootFiles } from '../../utils/discovery/formula-discovery.js';
+import { discoverAllRootFiles } from '../../utils/formula-discovery.js';
 import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
 import type { SaveDiscoveredFile } from '../../types/index.js';
 

@@ -4,6 +4,7 @@ import { FormulaYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
 import { normalizeFormulaName } from './formula-name.js';
+import { readTextFile } from './fs.js';
 
 /**
  * Common prompt types and utilities for user interaction
@@ -485,7 +486,6 @@ export async function promptPlatformSpecificSelection(
  */
 export async function getContentPreview(filePath: string, maxLines: number = 3): Promise<string> {
   try {
-    const { readTextFile } = await import('./fs.js');
     const content = await readTextFile(filePath);
     const lines = content.split('\n').slice(0, maxLines);
     return lines.join('\n').substring(0, 100) + (lines.length >= maxLines ? '...' : '');

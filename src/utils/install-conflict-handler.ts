@@ -8,6 +8,7 @@ import { logger } from './logger.js';
 import { getLocalFormulaDir } from './paths.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getVersionInfoFromDependencyTree } from './install-helpers.js';
+import { promptFormulaOverwrite } from './prompts.js';
 
 /**
  * Get currently installed version from .groundzero/formulas/<formula>/formula.yml
@@ -110,7 +111,6 @@ export async function checkAndHandleAllFormulaConflicts(
       }
       
       // Prompt per formula overwrite confirmation when existing detected
-      const { promptFormulaOverwrite } = await import('./prompts.js');
       const confirmed = await promptFormulaOverwrite(resolved.name, existingVersion);
       if (confirmed) {
         forceOverwriteFormulas.add(resolved.name);
