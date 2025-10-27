@@ -270,5 +270,13 @@ export function getPlatformNameFromSource(sourceDir: string): string {
   return getPathLeaf(sourceDir) || 'unknown';
 }
 
+/**
+ * Get all platform directory names
+ * Returns an array of all supported platform directory names
+ */
+export function getAllPlatformDirs(): string[] {
+  return Object.values(PLATFORM_DIRS);
+}
+
 
 

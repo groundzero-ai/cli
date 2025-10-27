@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { join, relative, dirname } from 'path';
+import { readdir } from 'fs/promises';
 import { UninstallOptions, CommandResult } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -16,6 +17,7 @@ import {
 import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 import { normalizePathForProcessing } from '../utils/path-normalization.js';
+import { getAllPlatformDirs } from '../utils/platform-utils.js';
 
 // Centralized discovery is used instead of bespoke platform iteration
 
@@ -418,30 +420,73 @@ async function uninstallFormulaCommand(
     const rootRemoval = await applyRootFileRemovals(cwd, formulasToRemove);
 
     // Final pass: remove empty directories left after file deletions
-    const dirsToClean = new Set<string>();
+    const platformRootDirs = new Set(getAllPlatformDirs().map(dir => join(cwd, dir)));
+    const dirsChecked = new Set<string>();
+
+    // Helper function to remove directory if empty (and not platform root)
+    async function removeIfEmpty(dirPath: string): Promise<boolean> {
+      if (platformRootDirs.has(dirPath)) return false;
+      if (dirsChecked.has(dirPath)) return false;
+      dirsChecked.add(dirPath);
+
+      try {
+        const entries = await readdir(dirPath);
+        if (entries.length === 0) {
+          await remove(dirPath);
+          return true;
+        }
+      } catch (error) {
+        // Directory doesn't exist or can't be read
+        return false;
+      }
+      return false;
+    }
+
+    // Collect all parent directories from deleted files
+    const parentDirs = new Set<string>();
 
     // From platform file deletions
     for (const files of Object.values(platformCleanup)) {
       for (const relPath of files) {
         const absolutePath = relPath.startsWith('/') ? relPath : join(cwd, relPath);
-        dirsToClean.add(dirname(absolutePath));
+        let currentDir = dirname(absolutePath);
+        while (currentDir !== dirname(currentDir)) { // Stop at root
+          if (!platformRootDirs.has(currentDir)) {
+            parentDirs.add(currentDir);
+          } else {
+            break; // Stop at platform root
+          }
+          currentDir = dirname(currentDir);
+        }
       }
     }
 
     // From root file deletions
     for (const deleted of rootRemoval.deleted) {
       const absolutePath = deleted.startsWith('/') ? deleted : join(cwd, deleted);
-      dirsToClean.add(dirname(absolutePath));
+      let currentDir = dirname(absolutePath);
+      while (currentDir !== dirname(currentDir)) { // Stop at root
+        if (!platformRootDirs.has(currentDir)) {
+          parentDirs.add(currentDir);
+        } else {
+          break; // Stop at platform root
+        }
+        currentDir = dirname(currentDir);
+      }
     }
 
-    // Also tidy formula directories root and groundzero path
-    dirsToClean.add(formulasDir);
-    dirsToClean.add(groundzeroPath);
+    // Remove directories from bottom up (deepest first)
+    const sortedDirs = Array.from(parentDirs).sort((a, b) => b.length - a.length);
+    for (const dir of sortedDirs) {
+      await removeIfEmpty(dir);
+    }
 
-    for (const dir of dirsToClean) {
-      if (await exists(dir)) {
-        await removeEmptyDirectories(dir);
-      }
+    // Clean up formula directories as before
+    if (await exists(formulasDir)) {
+      await removeEmptyDirectories(formulasDir);
+    }
+    if (await exists(groundzeroPath)) {
+      await removeEmptyDirectories(groundzeroPath);
     }
 
     // Remove all formulas being uninstalled from formula.yml

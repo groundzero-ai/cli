@@ -2,6 +2,7 @@ import { join, basename } from 'path';
 import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Platform } from '../core/platforms.js';
 import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir, PLATFORM_DIRS } from '../constants/index.js';
 import { normalizePathForProcessing, getRelativePathParts, findSubpathIndex } from './path-normalization.js';
+import { getAllPlatformDirs } from './platform-utils.js';
 
 /**
  * Normalize platform names from command line input
@@ -161,7 +162,7 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
   const pathParts = getRelativePathParts(registryPath);
   const firstPart = pathParts[0];
 
-  const platformDirectories = Object.values(PLATFORM_DIRS) as string[];
+  const platformDirectories = getAllPlatformDirs();
   if (platformDirectories.includes(firstPart)) {
     // Special case: AI directory should not be prefixed again since it's already the base
     if (firstPart === PLATFORM_DIRS.AI) {
