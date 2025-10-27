@@ -8,9 +8,8 @@ import { buildDependencyTree, findDanglingDependencies } from '../core/dependenc
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
+import { areFormulaNamesEquivalent, validateFormulaName } from '../utils/formula-name.js';
 import {
-  PLATFORM_DIRS,
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
 } from '../constants/index.js';
@@ -285,6 +284,8 @@ async function uninstallFormulaCommand(
   targetDir: string,
   options: UninstallOptions
 ): Promise<CommandResult> {
+  validateFormulaName(formulaName);
+
   logger.info(`Uninstalling formula '${formulaName}' from: ${targetDir}`, { options });
   
   // Ensure registry directories exist
