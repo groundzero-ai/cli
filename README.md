@@ -3,7 +3,7 @@
 <a href="https://www.npmjs.com/package/@groundzero-ai/gpm" target="blank">
   <img src="https://img.shields.io/npm/v/@groundzero-ai/gpm?style=flat-square" alt="Npm package for GroundZero package manager">
 </a>
-<a href="https://discord.gg/MBvaEw9n"  target="blank">
+<a href="https://discord.gg/W5H54HZ8Fm"  target="blank">
   <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="GroundZero Discord">
 </a>
 <br /><br />
