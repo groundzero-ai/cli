@@ -578,6 +578,7 @@ async function installCommand(
 export function setupInstallCommand(program: Command): void {
   program
     .command('install')
+    .alias('i')
     .description('Install formulas from local registry to codebase at cwd. Supports versioning with formula@version syntax.')
     .argument('[formula-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified). Supports formula@version syntax.')
     .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')

@@ -358,6 +358,7 @@ async function tagFormulaCommand(
 export function setupTagCommand(program: Command): void {
   program
     .command('tag')
+    .alias('t')
     .argument('<formula-name>', 'formula name to add to markdown files')
     .argument('<path>', 'path to markdown file or directory containing markdown files')
     .description('Add formula frontmatter to markdown files')

@@ -512,6 +512,7 @@ async function uninstallFormulaCommand(
 export function setupUninstallCommand(program: Command): void {
   program
     .command('uninstall')
+    .alias('un')
     .description('Remove a formula from the ai directory and update dependencies')
     .argument('<formula-name>', 'name of the formula to uninstall')
     .argument('[target-dir]', 'target directory (defaults to current directory)', '.')

@@ -189,6 +189,7 @@ async function saveFormulaCommand(
 export function setupSaveCommand(program: Command): void {
   program
     .command('save')
+    .alias('s')
     .argument('<formula-name>', 'formula name (optionally formula-name@version)')
     .argument('[version-type]', 'version type: stable (optional)')
     .description('Save a formula to local registry.\n' +
