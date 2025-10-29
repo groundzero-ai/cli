@@ -2,14 +2,16 @@ import { Command } from 'commander';
 import { PullOptions, CommandResult } from '../types/index.js';
 import { PullFormulaResponse } from '../types/api.js';
 import { formulaManager } from '../core/formula.js';
-import { ensureRegistryDirectories } from '../core/directory.js';
+import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
 import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { extractFormulaFromTarball, verifyTarballIntegrity } from '../utils/tarball.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
+import { promptOverwriteConfirmation } from '../utils/prompts.js';
+import { formatFileSize } from '../utils/formatters.js';
 
 /**
  * Pull formula command implementation
@@ -41,57 +43,73 @@ async function pullFormulaCommand(
     console.log(`📦 Version: ${versionToPull}`);
     console.log(`🔑 Profile: ${profile}`);
     console.log('');
-    
-    // Check if formula already exists locally
-    const localExists = await formulaManager.formulaExists(parsedName);
-    if (localExists && !parsedVersion) {
-      // For specific version requests, we'll allow overwrites
-      // For 'latest', we should warn the user
-      console.log(`⚠️  Formula '${parsedName}' already exists locally`);
-      console.log('Pulling will overwrite the local version.');
-      console.log('');
-    }
-    
+
     // Step 1: Query the registry for the formula
     console.log('🔍 Querying registry for formula...');
-    const endpoint = `/formulas/pull/${encodeURIComponent(parsedName)}/${encodeURIComponent(versionToPull)}`;
+    // Encode each path segment separately to preserve slashes for scoped formula names
+    const encodedName = parsedName.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const endpoint = versionToPull === 'latest'
+      ? `/formulas/pull/by-name/${encodedName}`
+      : `/formulas/pull/by-name/${encodedName}/v/${encodeURIComponent(versionToPull)}`;
     const response = await httpClient.get<PullFormulaResponse>(endpoint);
-    
+
     console.log('✓ Formula found in registry');
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Description: ${response.formula.description || '(no description)'}`);
-    console.log(`  • Size: ${(response.version.tarballSize / (1024 * 1024)).toFixed(2)}MB`);
+    console.log(`  • Size: ${formatFileSize(response.version.tarballSize)}`);
     const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
     if (keywords.length > 0) {
       console.log(`  • Keywords: ${keywords.join(', ')}`);
     }
     console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
     console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
-    
+
+    // Check if the specific version already exists locally (after we know the actual version)
+    const actualVersion = response.version.version;
+    const localVersionExists = await hasFormulaVersion(parsedName, actualVersion);
+    if (localVersionExists) {
+      console.log(`⚠️  Version '${actualVersion}' of formula '${parsedName}' already exists locally`);
+      console.log('');
+
+      const shouldProceed = await promptOverwriteConfirmation(parsedName, actualVersion);
+      if (!shouldProceed) {
+        throw new UserCancellationError('User declined to overwrite existing formula version');
+      }
+      console.log('');
+    }
+
+    // Check if any version of the formula exists (for informational purposes)
+    const localExists = await formulaManager.formulaExists(parsedName);
+    if (localExists && !localVersionExists) {
+      console.log(`ℹ️  Formula '${parsedName}' has other versions locally`);
+      console.log('Pulling will add a new version.');
+      console.log('');
+    }
+
     // Step 2: Download the tarball
     console.log('📥 Downloading formula tarball...');
     const tarballBuffer = Buffer.from(await httpClient.downloadFile(response.downloadUrl));
-    
+
     // Step 3: Verify tarball integrity
     console.log('🔐 Verifying tarball integrity...');
     const isValid = verifyTarballIntegrity(
       tarballBuffer,
       response.version.tarballSize
     );
-    
+
     if (!isValid) {
       throw new Error('Tarball integrity verification failed');
     }
-    
+
     console.log('✓ Tarball verified successfully');
-    
+
     // Step 4: Extract formula from tarball
     console.log('📂 Extracting formula files...');
     const extracted = await extractFormulaFromTarball(tarballBuffer);
-    
+
     // Step 5: Save to local registry
-    console.log('💾 Installing to local registry...');
+    console.log('💾 Downloading to local registry...');
     
     // Create formula object for local storage
     const formula = {
@@ -109,13 +127,13 @@ async function pullFormulaCommand(
     await formulaManager.saveFormula(formula);
     
     // Step 6: Success!
-    console.log('✅ Formula pulled and installed successfully!');
+    console.log('✅ Pull successful');
     console.log('');
-    console.log('📊 Installation Summary:');
+    console.log('📊 Formula Details:');
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Files: ${extracted.files.length}`);
-    console.log(`  • Size: ${(response.version.tarballSize / (1024 * 1024)).toFixed(2)}MB`);
+    console.log(`  • Size: ${formatFileSize(response.version.tarballSize)}`);
     console.log(`  • Checksum: ${extracted.checksum.substring(0, 16)}...`);
     console.log('');
     console.log('🎯 Next steps:');

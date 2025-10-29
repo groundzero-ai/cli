@@ -173,6 +173,18 @@ export function formatDependencyList(dependencies: Array<{ name: string; version
 }
 
 /**
+ * Format file size in appropriate units (KB or MB)
+ */
+export function formatFileSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) {
+    return `${mb.toFixed(2)}MB`;
+  }
+  const kb = bytes / 1024;
+  return `${kb.toFixed(2)}KB`;
+}
+
+/**
  * Display formula configuration details in a consistent format
  */
 export function displayFormulaConfig(formulaConfig: FormulaYml, path: string, isExisting: boolean = false): void {

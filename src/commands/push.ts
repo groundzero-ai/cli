@@ -13,6 +13,7 @@ import { parseFormulaInput } from '../utils/formula-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { UserCancellationError } from '../utils/errors.js';
+import { formatFileSize } from '../utils/formatters.js';
 import { 
   computeStableVersion, 
   transformFormulaFilesForVersionChange,
@@ -123,8 +124,7 @@ async function pushFormulaCommand(
     // Step 2: Create tarball
     console.log('📦 Creating tarball...');
     const tarballInfo = await createTarballFromFormula(formula);
-    const sizeInMB = (tarballInfo.size / (1024 * 1024)).toFixed(2);
-    console.log(`✓ Created tarball (${formula.files.length} files, ${sizeInMB}MB)`);
+    console.log(`✓ Created tarball (${formula.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
     // Step 3: Prepare upload data
     const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);
@@ -137,12 +137,12 @@ async function pushFormulaCommand(
     );
     
     // Step 5: Success!
-    console.log('✅ Formula pushed successfully');
+    console.log('✅ Push successful');
     console.log('');
     console.log('📊 Formula Details:');
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${response.version.version}`);
-    console.log(`  • Size: ${sizeInMB}MB`);
+    console.log(`  • Size: ${formatFileSize(tarballInfo.size)}`);
     console.log(`  • Formula ID: ${response.formula._id}`);
     console.log(`  • Version ID: ${response.version._id}`);
     const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
