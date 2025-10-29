@@ -219,7 +219,7 @@ export class HttpClient {
         errorMessage = 'Authentication failed. Please check your API key.';
         break;
       case 403:
-        errorMessage = 'Access denied. You may not have permission to access this resource.';
+        errorMessage = errorData.message || 'Access denied. You may not have permission to access this resource.';
         break;
       case 404:
         errorMessage = 'Resource not found.';

@@ -135,13 +135,22 @@ async function pushFormulaCommand(
         return { success: false, error: 'Version already exists' };
       }
       
-      if (apiError?.statusCode === 401 || apiError?.statusCode === 403) {
+      if (apiError?.statusCode === 401) {
         console.error(`❌ Authentication failed: ${error.message}`);
         console.log('');
         console.log('💡 To configure authentication:');
         console.log('  g0 configure');
         console.log('  g0 configure --profile <name>');
         return { success: false, error: 'Authentication failed' };
+      }
+
+      if (apiError?.statusCode === 403) {
+        console.error(`❌ Access denied: ${error.message}`);
+        console.log('');
+        console.log('💡 To configure authentication:');
+        console.log('  g0 configure');
+        console.log('  g0 configure --profile <name>');
+        return { success: false, error: 'Access denied' };
       }
       
       if (apiError?.statusCode === 422) {
