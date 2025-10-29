@@ -213,6 +213,7 @@ async function configureCommand(options: ConfigureOptions): Promise<CommandResul
 export function setupConfigureCommand(program: Command): void {
   program
     .command('configure')
+    .alias('config')
     .description('Configure default profile and authentication')
     .option('--profile <name>', 'profile name to configure')
     .option('--list', 'list all configured profiles')
