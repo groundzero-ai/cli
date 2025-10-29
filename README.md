@@ -167,5 +167,5 @@ Feel free to create [PRs](https://github.com/groundzero-ai/gpm/pulls) and [Githu
 
 - [Official Website](https://groundzero.enulus.com)
 - [Documentation](https://groundzero.enulus.com/docs)
-- [Discord](https://discord.gg/MBvaEw9n)
+- [Discord](https://discord.gg/W5H54HZ8Fm)
 - [X (Twitter)](https://x.com/groundzero_ai)
