@@ -48,6 +48,12 @@ export interface Formula {
   files: FormulaFile[];
 }
 
+export interface FormulaRepository {
+  type: string
+  url: string
+  directory?: string
+}
+
 // Formula.yml file types
 export interface FormulaDependency {
   name: string;
@@ -57,18 +63,18 @@ export interface FormulaDependency {
 export interface FormulaYml {
   name: string;
   version: string;
+  private?: boolean;
+
   description?: string;
   keywords?: string[];
-  private?: boolean;
+  author?: string;
+  license?: string;
+  homepage?: string;
+  repository?: FormulaRepository;
+
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];
   platformSpecific?: boolean;  // Force platform-specific saving with prefix
-  // Optional fields for version management
-  created?: string;        // ISO timestamp
-  updated?: string;        // ISO timestamp
-  changelog?: string;      // Version-specific changelog
-  deprecated?: boolean;    // Mark version as deprecated
-  migration?: string;      // Migration notes for major version changes
 }
 
 // Command option types

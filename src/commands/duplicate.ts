@@ -1,44 +1,14 @@
 import { Command } from 'commander';
 import * as semver from 'semver';
-import yaml from 'js-yaml';
 import { formulaManager } from '../core/formula.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { updateMarkdownWithFormulaFrontmatter, parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
-import { updateIndexYml } from '../utils/index-yml.js';
-import { isRootFile } from '../core/save/root-files-sync.js';
-import { transformRootFileContent } from '../utils/root-file-transformer.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
-import { Formula, FormulaFile, FormulaYml, CommandResult } from '../types/index.js';
+import { Formula, CommandResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-
-/**
- * Helper function to dump YAML with proper quoting for scoped names
- */
-function dumpYamlWithScopedQuoting(config: FormulaYml, options: yaml.DumpOptions = {}): string {
-  let dumped = yaml.dump(config, { ...options, quotingType: '"' });
-  
-  // Ensure scoped names are quoted
-  if (config.name.startsWith('@')) {
-    const lines = dumped.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim().startsWith('name:')) {
-        const valueMatch = lines[i].match(/name:\s*(.+)$/);
-        if (valueMatch) {
-          const value = valueMatch[1].trim();
-          if (!value.startsWith('"') && !value.startsWith("'")) {
-            lines[i] = lines[i].replace(/name:\s*(.+)$/, `name: "${config.name}"`);
-          }
-        }
-        break;
-      }
-    }
-    dumped = lines.join('\n');
-  }
-  
-  return dumped;
-}
+import { transformFormulaFilesForDuplication } from '../utils/formula-versioning.js';
+import { isRootFile } from '../core/save/root-files-sync.js';
 
 async function duplicateFormulaCommand(
   sourceInput: string,
@@ -78,56 +48,12 @@ async function duplicateFormulaCommand(
   const newVersion = newVersionInput || sourceFormula.metadata.version;
 
   // Transform files: update frontmatter, formula.yml, and root file markers
-  const transformedFiles: FormulaFile[] = sourceFormula.files.map((file) => {
-    if (file.path === FILE_PATTERNS.FORMULA_YML) {
-      try {
-        const parsed = yaml.load(file.content) as FormulaYml;
-        const updated: FormulaYml = {
-          ...parsed,
-          name: newName,
-          version: newVersion
-        };
-        const dumped = dumpYamlWithScopedQuoting(updated, { lineWidth: 120 });
-        return { ...file, content: dumped };
-      } catch {
-        // Fallback: minimal rewrite if parsing fails
-        const fallback: FormulaYml = {
-          name: newName,
-          version: newVersion
-        };
-        const dumped = dumpYamlWithScopedQuoting(fallback, { lineWidth: 120 });
-        return { ...file, content: dumped };
-      }
-    }
-
-    // Handle index.yml files - update formula name
-    if (file.path.endsWith(FILE_PATTERNS.INDEX_YML)) {
-      const result = updateIndexYml(file.content, { name: newName });
-      if (result.updated) {
-        return { ...file, content: result.content };
-      }
-      return file;
-    }
-
-    // Handle root files (AGENTS.md, CLAUDE.md, etc.) - update markers with new name and ID
-    if (isRootFile(file.path)) {
-      const updatedContent = transformRootFileContent(file.content, sourceName, newName);
-      return { ...file, content: updatedContent };
-    }
-
-    // Handle regular markdown files - update frontmatter only for files that already have formula frontmatter
-    if (FILE_PATTERNS.MARKDOWN_FILES.some(ext => file.path.endsWith(ext))) {
-      const frontmatter = parseMarkdownFrontmatter(file.content);
-      const existingFormulaName = frontmatter?.formula?.name;
-
-      if (existingFormulaName) {
-        const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
-        return { ...file, content: updatedContent };
-      }
-    }
-
-    return file;
-  });
+  const transformedFiles = transformFormulaFilesForDuplication(
+    sourceFormula.files,
+    sourceName,
+    newName,
+    newVersion
+  );
 
   const newFormula: Formula = {
     metadata: {

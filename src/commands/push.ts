@@ -11,10 +11,41 @@ import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarb
 import * as semver from 'semver';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
+import { promptConfirmation } from '../utils/prompts.js';
+import { UserCancellationError } from '../utils/errors.js';
+import { 
+  computeStableVersion, 
+  transformFormulaFilesForVersionChange,
+  formulaVersionExists 
+} from '../utils/formula-versioning.js';
 
 /**
  * Push formula command implementation
  */
+async function createStableFormulaVersion(formula: any, stableVersion: string): Promise<any> {
+  // Abort if target stable version already exists
+  if (await formulaVersionExists(formula.metadata.name, stableVersion)) {
+    throw new Error(`Stable version already exists: ${formula.metadata.name}@${stableVersion}`);
+  }
+
+  const transformedFiles = transformFormulaFilesForVersionChange(
+    formula.files,
+    stableVersion,
+    formula.metadata.name
+  );
+
+  const newFormula = {
+    metadata: {
+      ...formula.metadata,
+      version: stableVersion
+    },
+    files: transformedFiles
+  };
+
+  await formulaManager.saveFormula(newFormula);
+  return newFormula;
+}
+
 async function pushFormulaCommand(
   formulaInput: string,
   options: PushOptions
@@ -37,17 +68,35 @@ async function pushFormulaCommand(
     }
     
     // Load formula and determine version
-    const formula = await formulaManager.loadFormula(parsedName, parsedVersion);
-    const versionToPush = parsedVersion || formula.metadata.version;
+    let formula = await formulaManager.loadFormula(parsedName, parsedVersion);
+    let versionToPush = parsedVersion || formula.metadata.version;
     attemptedVersion = versionToPush;
 
-    // Reject prerelease versions (e.g., -alpha, -beta, -rc, -dev)
+    // Reject or handle prerelease versions
     if (semver.prerelease(versionToPush)) {
-      console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
-      console.log('');
-      console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
-      console.log('💡 Please create a stable formula using the command "g0 save <formula> stable".');
-      return { success: false, error: 'Only stable versions can be pushed' };
+      if (parsedVersion) {
+        // Explicit prerelease remains an error
+        console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
+        console.log('');
+        console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
+        console.log('💡 Please create a stable formula using the command "g0 save <formula> stable".');
+        return { success: false, error: 'Only stable versions can be pushed' };
+      } else {
+        // Latest is prerelease and no version was specified -> prompt to convert
+        const proceed = await promptConfirmation(
+          `Latest version '${versionToPush}' is a prerelease. Convert to stable and push?`,
+          false
+        );
+        if (!proceed) {
+          throw new UserCancellationError('User declined prerelease to stable conversion');
+        }
+
+        const stableVersion = computeStableVersion(versionToPush);
+        console.log(`Converting to stable '${stableVersion}' and pushing...`);
+        formula = await createStableFormulaVersion(formula, stableVersion);
+        versionToPush = stableVersion;
+        attemptedVersion = versionToPush;
+      }
     }
     
     // Authenticate and create HTTP client
