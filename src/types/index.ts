@@ -122,6 +122,7 @@ export interface InstallOptions {
   variables?: Record<string, any>;
   dev?: boolean;
   platforms?: string[];
+  remote?: boolean;
 }
 
 export interface UninstallOptions {

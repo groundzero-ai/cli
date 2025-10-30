@@ -2,7 +2,7 @@ import * as semver from 'semver';
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { ensureRegistryDirectories } from '../core/directory.js';
+import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
 import { resolveDependencies, displayDependencyTree } from '../core/dependency-resolver.js';
 import { exists } from '../utils/fs.js';
@@ -39,7 +39,16 @@ import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
 import { installFilesByIdWithMap } from '../utils/id-based-installer.js';
 import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-import { promptVersionSelection } from '../utils/prompts.js';
+import { promptVersionSelection, promptOverwriteConfirmation } from '../utils/prompts.js';
+import { formulaManager } from '../core/formula.js';
+import { pullFormulaFromRemote } from '../core/remote-pull.js';
+
+type AvailabilityStatus = 'local' | 'pulled' | 'missing' | 'not-found' | 'failed';
+
+interface AvailabilityResult {
+  status: AvailabilityStatus;
+  message?: string;
+}
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -110,18 +119,51 @@ async function installAllFormulasCommand(
   }
   console.log('');
   
+  const availabilityStates = await Promise.all(
+    formulasToInstall.map(formula =>
+      ensureFormulaAvailable(formula.name, formula.version, { dryRun: !!options.dryRun, forceRemote: !!options.remote })
+    )
+  );
+
   // Install formulas sequentially to avoid conflicts
   let totalInstalled = 0;
   let totalSkipped = 0;
   const results: Array<{ name: string; success: boolean; error?: string }> = [];
   
-  for (const formula of formulasToInstall) {
+  for (let index = 0; index < formulasToInstall.length; index++) {
+    const formula = formulasToInstall[index];
+    const availability = availabilityStates[index];
+
+    if (availability.status === 'not-found') {
+      totalSkipped++;
+      results.push({ name: formula.name, success: false, error: availability.message || 'Formula not found in remote registry' });
+      continue;
+    }
+
+    if (availability.status === 'failed') {
+      totalSkipped++;
+      results.push({ name: formula.name, success: false, error: availability.message || 'Failed to prepare formula for installation' });
+      continue;
+    }
+
+    if (availability.status === 'missing') {
+      console.log(`🛠️  Dry run: skipping installation for ${formatFormulaLabel(formula.name, formula.version)} (formula not pulled)`);
+      results.push({ name: formula.name, success: true });
+      continue;
+    }
+
     try {
       const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
       console.log(`\n🔧 Installing ${formula.isDev ? '[dev] ' : ''}${label}...`);
       
       const installOptions: InstallOptions = { ...options, dev: formula.isDev };
-      const result = await installFormulaCommand(formula.name, targetDir, installOptions, formula.version);
+      const result = await installFormulaCommand(
+        formula.name,
+        targetDir,
+        installOptions,
+        formula.version,
+        availability
+      );
       
       if (result.success) {
         totalInstalled++;
@@ -222,6 +264,103 @@ async function handleDryRunMode(
   };
 }
 
+function formatFormulaLabel(formulaName: string, version?: string): string {
+  return version ? `${formulaName}@${version}` : formulaName;
+}
+
+async function ensureFormulaAvailable(
+  formulaName: string,
+  version: string | undefined,
+  options: { dryRun: boolean; forceRemote?: boolean }
+): Promise<AvailabilityResult> {
+  const label = formatFormulaLabel(formulaName, version);
+
+  try {
+    // Skip local checks if forceRemote is enabled
+    if (!options.forceRemote) {
+      if (version) {
+        if (await hasFormulaVersion(formulaName, version)) {
+          console.log(`✓ Using local ${label}`);
+          return { status: 'local' };
+        }
+      } else if (await formulaManager.formulaExists(formulaName)) {
+        console.log(`✓ Using local ${label}`);
+        return { status: 'local' };
+      }
+    } else {
+      // When forceRemote is enabled, still check if version exists locally and prompt for confirmation
+      let localVersionExists = false;
+      if (version) {
+        localVersionExists = await hasFormulaVersion(formulaName, version);
+      } else {
+        localVersionExists = await formulaManager.formulaExists(formulaName);
+      }
+
+      if (localVersionExists) {
+        console.log(`⚠️  Version '${version || 'latest'}' of formula '${formulaName}' already exists locally`);
+        console.log('');
+
+        const shouldProceed = await promptOverwriteConfirmation(formulaName, version || 'latest');
+        if (!shouldProceed) {
+          throw new UserCancellationError('User declined to overwrite existing formula version');
+        }
+        console.log('');
+      }
+    }
+
+    if (options.dryRun) {
+      const action = options.forceRemote ? 'pull' : 'pull';
+      console.log(`↪ Would ${action} ${label} from remote`);
+      return { status: 'missing', message: `Dry run: would ${action} ${label}` };
+    }
+
+    const pullResult = await pullFormulaFromRemote(formulaName, version);
+
+    if (pullResult.success) {
+      const resolvedLabel = formatFormulaLabel(pullResult.name, pullResult.version);
+      console.log(`✓ Pulled ${resolvedLabel} from remote registry`);
+      return { status: 'pulled' };
+    }
+
+    switch (pullResult.reason) {
+      case 'not-found': {
+        const message = `Formula '${label}' not found in remote registry`;
+        console.log(`❌ ${message}`);
+        return { status: 'not-found', message };
+      }
+      case 'access-denied': {
+        const message = pullResult.message || `Access denied pulling ${label}`;
+        console.log(`❌ ${message}`);
+        console.log('   Use g0 configure to authenticate or check permissions.');
+        return { status: 'failed', message };
+      }
+      case 'network': {
+        const message = pullResult.message || `Network error pulling ${label}`;
+        console.log(`❌ ${message}`);
+        console.log('   Check your internet connection and try again.');
+        return { status: 'failed', message };
+      }
+      case 'integrity': {
+        const message = pullResult.message || `Integrity check failed pulling ${label}`;
+        console.log(`❌ ${message}`);
+        return { status: 'failed', message };
+      }
+      default: {
+        const message = pullResult.message || `Failed to pull ${label}`;
+        console.log(`❌ ${message}`);
+        return { status: 'failed', message };
+      }
+    }
+  } catch (error) {
+    if (error instanceof UserCancellationError) {
+      throw error; // Re-throw to allow clean exit
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`❌ Unexpected error ensuring ${label}: ${message}`);
+    return { status: 'failed', message };
+  }
+}
+
 /**
  * Install formula command implementation with recursive dependency resolution
  * @param formulaName - Name of the formula to install
@@ -234,7 +373,8 @@ async function installFormulaCommand(
   formulaName: string,
   targetDir: string,
   options: InstallOptions,
-  version?: string
+  version?: string,
+  availabilityHint?: AvailabilityResult
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
@@ -251,6 +391,37 @@ async function installFormulaCommand(
   }
 
   logger.debug(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
+
+  const dryRun = !!options.dryRun;
+  const forceRemote = !!options.remote;
+  const availability = availabilityHint ?? await ensureFormulaAvailable(formulaName, version, { dryRun, forceRemote });
+
+  if (availability.status === 'not-found') {
+    console.log('❌ Formula not found');
+    return { success: false, error: 'Formula not found' };
+  }
+
+  if (availability.status === 'failed') {
+    return { success: false, error: availability.message || 'Failed to prepare formula for installation' };
+  }
+
+  if (availability.status === 'missing') {
+    console.log(`Dry run: would pull ${formatFormulaLabel(formulaName, version)} from remote before installation.`);
+    return {
+      success: true,
+      data: {
+        formulaName,
+        targetDir: getAIDir(cwd),
+        resolvedFormulas: [],
+        totalFormulas: 0,
+        installed: 0,
+        skipped: 1,
+        totalGroundzeroFiles: 0,
+        dryRun: true
+      },
+      warnings: [`Dry run: ${formatFormulaLabel(formulaName, version)} not installed (formula unavailable locally)`]
+    };
+  }
 
   await ensureRegistryDirectories();
   
@@ -586,6 +757,7 @@ export function setupInstallCommand(program: Command): void {
     .option('--force', 'overwrite existing files')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
+    .option('--remote', 'pull and install from remote registry, ignoring local versions')
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
       // Normalize platforms option early for downstream logic
       options.platforms = normalizePlatforms(options.platforms);
