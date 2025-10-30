@@ -1,5 +1,5 @@
 {
-  "name": "@groundzero-ai/gpm",
+  "name": "g0",
   "version": "0.2.0",
   "publishConfig": {
     "access": "public"
@@ -9,7 +9,7 @@
   "homepage": "https://groundzero.enulus.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/groundzero-ai/gpm.git"
+    "url": "https://github.com/groundzero-ai/cli.git"
   },
   "description": "GroundZero (g0) is the package manager for AI coding.",
   "keywords": [

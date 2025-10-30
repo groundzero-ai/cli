@@ -1,7 +1,7 @@
 # GroundZero Package Manager
 
-<a href="https://www.npmjs.com/package/@groundzero-ai/gpm" target="blank">
-  <img src="https://img.shields.io/npm/v/@groundzero-ai/gpm?style=flat-square" alt="Npm package for GroundZero package manager">
+<a href="https://www.npmjs.com/package/g0" target="blank">
+  <img src="https://img.shields.io/npm/v/g0?style=flat-square" alt="Npm package for GroundZero package manager">
 </a>
 <a href="https://discord.gg/W5H54HZ8Fm"  target="blank">
   <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="GroundZero Discord">
@@ -27,7 +27,7 @@ The GroundZero registry is currently in private beta, [signup for early access](
 
 npm
 ```bash
-npm install -g @groundzero-ai/gpm
+npm install -g g0
 ```
 ## Use Cases
 
@@ -156,7 +156,7 @@ Files and paths will be automatically converted to platform specific designation
 
 We would love your help building the future of package management for AI coding.  
 
-Feel free to create [PRs](https://github.com/groundzero-ai/gpm/pulls) and [Github issues](https://github.com/groundzero-ai/gpm/issues) for:
+Feel free to create [PRs](https://github.com/groundzero-ai/cli/pulls) and [Github issues](https://github.com/groundzero-ai/cli/issues) for:
 - Bugs
 - Feature requests
 - Support for new platforms
