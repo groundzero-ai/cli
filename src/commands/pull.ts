@@ -10,6 +10,7 @@ import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formatFileSize } from '../utils/formatters.js';
 import { fetchRemoteFormulaMetadata, pullFormulaFromRemote, RemotePullFailure } from '../core/remote-pull.js';
+import { Spinner } from '../utils/spinner.js';
 
 /**
  * Pull formula command implementation
@@ -29,7 +30,22 @@ async function pullFormulaCommand(
       apiKey: options.apiKey
     };
 
-    const metadataResult = await fetchRemoteFormulaMetadata(parsedName, parsedVersion, authOptions);
+    console.log(`✓ Pulling formula '${parsedName}' from remote registry...`);
+    console.log(`✓ Version: ${parsedVersion ?? 'latest'}`);
+    console.log('');
+
+    // Show spinner while fetching metadata
+    const metadataSpinner = new Spinner('Querying registry for formula...');
+    metadataSpinner.start();
+    
+    let metadataResult;
+    try {
+      metadataResult = await fetchRemoteFormulaMetadata(parsedName, parsedVersion, authOptions);
+      metadataSpinner.stop();
+    } catch (error) {
+      metadataSpinner.stop();
+      throw error;
+    }
 
     if (!metadataResult.success) {
       return handleMetadataFailure(metadataResult, parsedName, parsedVersion);
@@ -40,13 +56,11 @@ async function pullFormulaCommand(
     const profile = context.profile;
     const versionToPull = response.version.version;
 
-    console.log(`📥 Pulling formula '${parsedName}' from remote registry...`);
-    console.log(`📦 Version: ${parsedVersion ?? 'latest'} (resolved: ${versionToPull})`);
-    console.log(`🔑 Profile: ${profile}`);
-    console.log('');
-
-    console.log('🔍 Querying registry for formula...');
     console.log('✓ Formula found in registry');
+    console.log(`✓ Version: ${parsedVersion ?? 'latest'} (resolved: ${versionToPull})`);
+    console.log(`✓ Profile: ${profile}`);
+    console.log('');
+    console.log('✓ Formula Details:');
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${versionToPull}`);
     console.log(`  • Description: ${response.formula.description || '(no description)'}`);
@@ -73,34 +87,44 @@ async function pullFormulaCommand(
     // Check if any version of the formula exists (for informational purposes)
     const localExists = await formulaManager.formulaExists(parsedName);
     if (localExists && !localVersionExists) {
-      console.log(`ℹ️  Formula '${parsedName}' has other versions locally`);
+      console.log(`✓ Formula '${parsedName}' has other versions locally`);
       console.log('Pulling will add a new version.');
       console.log('');
     }
 
-    console.log('📥 Downloading formula tarball...');
-    const pullResult = await pullFormulaFromRemote(parsedName, parsedVersion, {
-      ...authOptions,
-      preFetchedResponse: response,
-      httpClient: context.httpClient
-    });
+    // Show spinner while downloading and extracting
+    const downloadSpinner = new Spinner('Downloading formula tarball...');
+    downloadSpinner.start();
+    
+    let pullResult;
+    try {
+      pullResult = await pullFormulaFromRemote(parsedName, parsedVersion, {
+        ...authOptions,
+        preFetchedResponse: response,
+        httpClient: context.httpClient
+      });
+      downloadSpinner.stop();
+    } catch (error) {
+      downloadSpinner.stop();
+      throw error;
+    }
 
     if (!pullResult.success) {
       return handleMetadataFailure(pullResult, parsedName, parsedVersion);
     }
-
+    
     const extracted = pullResult.extracted;
 
-    console.log('✅ Pull successful');
+    console.log('✓ Pull successful');
     console.log('');
-    console.log('📊 Formula Details:');
+    console.log('✓ Formula Details:');
     console.log(`  • Name: ${pullResult.response.formula.name}`);
     console.log(`  • Version: ${pullResult.response.version.version}`);
     console.log(`  • Files: ${extracted.files.length}`);
     console.log(`  • Size: ${formatFileSize(pullResult.response.version.tarballSize)}`);
     console.log(`  • Checksum: ${extracted.checksum.substring(0, 16)}...`);
     console.log('');
-    console.log('🎯 Next steps:');
+    console.log('✓ Next steps:');
     console.log(`  g0 show ${pullResult.response.formula.name}         # View formula details`);
     console.log(`  g0 install ${pullResult.response.formula.name}     # Install formula to current project`);
     

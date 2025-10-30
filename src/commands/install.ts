@@ -42,6 +42,7 @@ import { parseFormulaInput } from '../utils/formula-name.js';
 import { promptVersionSelection, promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formulaManager } from '../core/formula.js';
 import { pullFormulaFromRemote } from '../core/remote-pull.js';
+import { Spinner } from '../utils/spinner.js';
 
 type AvailabilityStatus = 'local' | 'pulled' | 'missing' | 'not-found' | 'failed';
 
@@ -92,13 +93,13 @@ async function installAllFormulasCommand(
 
   if (formulasToInstall.length === 0) {
     if (skippedRootFormulas.length > 0) {
-      console.log('📦 All formulas in formula.yml were skipped (matched root formula)');
+      console.log('✓ All formulas in formula.yml were skipped (matched root formula)');
       console.log('\nTips:');
       console.log('• Root formulas cannot be installed as dependencies');
       console.log('• Use "g0 install <formula-name>" to install external formulas');
       console.log('• Use "g0 save" to save your root formula to the registry');
     } else {
-      console.log('📦 No formulas found in formula.yml');
+      console.log('⚠️ No formulas found in formula.yml');
       console.log('\nTips:');
       console.log('• Add formulas to the "formulas" array in formula.yml');
       console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
@@ -108,7 +109,7 @@ async function installAllFormulasCommand(
     return { success: true, data: { installed: 0, skipped: skippedRootFormulas.length } };
   }
 
-  console.log(`📦 Installing ${formulasToInstall.length} formulas from formula.yml:`);
+  console.log(`✓ Installing ${formulasToInstall.length} formulas from formula.yml:`);
   formulasToInstall.forEach(formula => {
     const prefix = formula.isDev ? '[dev] ' : '';
     const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
@@ -168,7 +169,7 @@ async function installAllFormulasCommand(
       if (result.success) {
         totalInstalled++;
         results.push({ name: formula.name, success: true });
-        console.log(`✅ Successfully installed ${formula.name}`);
+        console.log(`✓ Successfully installed ${formula.name}`);
       } else {
         totalSkipped++;
         results.push({ name: formula.name, success: false, error: result.error });
@@ -210,7 +211,7 @@ async function handleDryRunMode(
   options: InstallOptions,
   formulaYmlExists: boolean
 ): Promise<CommandResult> {
-  console.log(`🔍 Dry run - showing what would be installed:\n`);
+  console.log(`✓ Dry run - showing what would be installed:\n`);
   
   const mainFormula = resolvedFormulas.find(f => f.isRoot);
   if (mainFormula) {
@@ -224,23 +225,23 @@ async function handleDryRunMode(
   // Show what would be installed to ai
   for (const resolved of resolvedFormulas) {
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.SKIPPED) {
-      console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (user would decline overwrite)`);
+      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (user would decline overwrite)`);
       continue;
     }
     
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.KEPT) {
-      console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
       continue;
     }
     
     const dryRunResult = await installAiFiles(resolved.name, targetDir, options, resolved.version, true);
     
     if (dryRunResult.skipped) {
-      console.log(`⏭️  Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
+      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
       continue;
     }
     
-    console.log(`📁 Would install to ai${targetDir !== '.' ? '/' + targetDir : ''}: ${dryRunResult.installedCount} files`);
+    console.log(`✓ Would install to ai${targetDir !== '.' ? '/' + targetDir : ''}: ${dryRunResult.installedCount} files`);
     
     if (dryRunResult.overwritten) {
       console.log(`  ⚠️  Would overwrite existing directory`);
@@ -249,7 +250,7 @@ async function handleDryRunMode(
   
   // Show formula.yml update
   if (formulaYmlExists) {
-    console.log(`\n📋 Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
+    console.log(`\n✓ Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
   } else {
     console.log('\nNo .groundzero/formula.yml found - skipping dependency addition');
   }
@@ -314,7 +315,17 @@ async function ensureFormulaAvailable(
       return { status: 'missing', message: `Dry run: would ${action} ${label}` };
     }
 
-    const pullResult = await pullFormulaFromRemote(formulaName, version);
+    const pullSpinner = new Spinner(`Pulling ${label} from remote registry...`);
+    pullSpinner.start();
+    
+    let pullResult;
+    try {
+      pullResult = await pullFormulaFromRemote(formulaName, version);
+      pullSpinner.stop();
+    } catch (error) {
+      pullSpinner.stop();
+      throw error;
+    }
 
     if (pullResult.success) {
       const resolvedLabel = formatFormulaLabel(pullResult.name, pullResult.version);
@@ -503,7 +514,7 @@ async function installFormulaCommand(
   const conflictResult = await checkAndHandleAllFormulaConflicts(resolvedFormulas as any, options);
   
   if (!conflictResult.shouldProceed) {
-    console.log(`⏭️  Installation cancelled by user`);
+    console.log(`Installation cancelled by user`);
     return {
       success: true,
       data: {

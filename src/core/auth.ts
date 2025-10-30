@@ -53,11 +53,11 @@ class AuthManager {
   }
 
   /**
-   * Get registry URL from environment variable
+   * Get registry URL
    */
   getRegistryUrl(): string {
-    // const registryUrl = "https://g0backend.enulus.com/v1";
-    const registryUrl = "http://localhost:3000/v1";
+    const registryUrl = "https://g0backend.enulus.com/v1";
+    // const registryUrl = "http://localhost:3000/v1";
     logger.debug(`Using registry URL: ${registryUrl}`);
     return registryUrl;
   }

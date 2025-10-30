@@ -14,6 +14,7 @@ import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { UserCancellationError } from '../utils/errors.js';
 import { formatFileSize } from '../utils/formatters.js';
+import { Spinner } from '../utils/spinner.js';
 import { 
   computeStableVersion, 
   transformFormulaFilesForVersionChange,
@@ -109,9 +110,9 @@ async function pushFormulaCommand(
     const registryUrl = authManager.getRegistryUrl();
     const profile = authManager.getCurrentProfile({ profile: options.profile });
     
-    console.log(`📤 Pushing formula '${parsedName}' to remote registry...`);
-    console.log(`📦 Version: ${versionToPush}`);
-    console.log(`🔑 Profile: ${profile}`);
+    console.log(`✓ Pushing formula '${parsedName}' to remote registry...`);
+    console.log(`✓ Version: ${versionToPush}`);
+    console.log(`✓ Profile: ${profile}`);
     console.log('');
     
     // Step 1: Validate formula completeness
@@ -122,7 +123,7 @@ async function pushFormulaCommand(
     console.log(`  • Files: ${formula.files.length}`);
     
     // Step 2: Create tarball
-    console.log('📦 Creating tarball...');
+    console.log('✓ Creating tarball...');
     const tarballInfo = await createTarballFromFormula(formula);
     console.log(`✓ Created tarball (${formula.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
@@ -130,16 +131,25 @@ async function pushFormulaCommand(
     const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);
     
     // Step 4: Upload to registry
-    console.log('🚀 Uploading to registry...');
-    const response = await httpClient.uploadFormData<PushFormulaResponse>(
-      '/formulas/push',
-      formData
-    );
+    const uploadSpinner = new Spinner('Uploading to registry...');
+    uploadSpinner.start();
+    
+    let response: PushFormulaResponse;
+    try {
+      response = await httpClient.uploadFormData<PushFormulaResponse>(
+        '/formulas/push',
+        formData
+      );
+      uploadSpinner.stop();
+    } catch (error) {
+      uploadSpinner.stop();
+      throw error;
+    }
     
     // Step 5: Success!
-    console.log('✅ Push successful');
+    console.log('✓ Push successful');
     console.log('');
-    console.log('📊 Formula Details:');
+    console.log('✓ Formula Details:');
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Size: ${formatFileSize(tarballInfo.size)}`);
