@@ -28,20 +28,33 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     const files = formula.files;
     
     // Display formula details
-    console.log(`🍺 Formula: ${metadata.name}`);
+    console.log(`✓ Formula: ${metadata.name}`);
     
-    console.log(`📦 Version: ${metadata.version}`);
+    console.log(`✓ Version: ${metadata.version}`);
     if (metadata.description) {
-      console.log(`📝 Description: ${metadata.description}`);
+      console.log(`✓ Description: ${metadata.description}`);
     }
     if (metadata.keywords && metadata.keywords.length > 0) {
-      console.log(`🏷️  Keywords: ${metadata.keywords.join(', ')}`);
+      console.log(`✓ Keywords: ${metadata.keywords.join(', ')}`);
     }
-    console.log(`🔒 Private: ${metadata.private ? 'Yes' : 'No'}`);
-    
+    if (metadata.author) {
+      console.log(`✓ Author: ${metadata.author}`);
+    }
+    if (metadata.license) {
+      console.log(`✓ License: ${metadata.license}`);
+    }
+    if (metadata.homepage) {
+      console.log(`✓ Homepage: ${metadata.homepage}`);
+    }
+    if (metadata.repository) {
+      const repo = metadata.repository;
+      console.log(`✓ Repository: ${repo.type} - ${repo.url}${repo.directory ? ` (directory: ${repo.directory})` : ''}`);
+    }
+    console.log(`✓ Private: ${metadata.private ? 'Yes' : 'No'}`);
+
     // Dependencies section
     if (metadata.formulas && metadata.formulas.length > 0) {
-      console.log(`📋 Dependencies (${metadata.formulas.length}):`);
+      console.log(`✓ Imported Formulas (${metadata.formulas.length}):`);
       for (const dep of metadata.formulas) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
@@ -51,7 +64,7 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     }
     
     if (metadata['dev-formulas'] && metadata['dev-formulas'].length > 0) {
-      console.log(`🔧 Dev Dependencies (${metadata['dev-formulas'].length}):`);
+      console.log(`✓ Imported Dev Formulas (${metadata['dev-formulas'].length}):`);
       for (const dep of metadata['dev-formulas']) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
@@ -63,7 +76,7 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     // Files section - match install command's file list format
     const filteredFiles = files.filter(f => !isJunk(basename(f.path)));
     const sortedFilePaths = filteredFiles.map(f => f.path).sort((a, b) => a.localeCompare(b));
-    console.log(`📝 Files: ${sortedFilePaths.length}`);
+    console.log(`✓ Files: ${sortedFilePaths.length}`);
     for (const filePath of sortedFilePaths) {
       console.log(`   ├── ${filePath}`);
     }

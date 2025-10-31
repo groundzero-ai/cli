@@ -74,7 +74,6 @@ export interface FormulaYml {
 
   formulas?: FormulaDependency[];
   'dev-formulas'?: FormulaDependency[];
-  platformSpecific?: boolean;  // Force platform-specific saving with prefix
 }
 
 // Command option types
