@@ -89,7 +89,7 @@ async function saveFormulaCommand(
   // Get formula configuration based on input pattern
   // Use rename version if provided, otherwise use original version
   const formulaVersion = renameVersion || explicitVersion;
-  let formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, formulaVersion, versionType, options?.bump);
+  let formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
   let formulaConfig = formulaInfo.config;
   let isRootFormula = formulaInfo.isRootFormula;
   const targetVersion = formulaConfig.version;
