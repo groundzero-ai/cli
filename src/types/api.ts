@@ -3,7 +3,6 @@
  */
 
 export interface ApiFormula {
-  _id: string;
   name: string;
   description: string;
   keywords: string[];
@@ -13,8 +12,6 @@ export interface ApiFormula {
 }
 
 export interface ApiFormulaVersion {
-  _id: string;
-  formulaId: string;
   version: string;
   tarballSize: number;
   createdAt: string;

@@ -153,8 +153,6 @@ async function pushFormulaCommand(
     console.log(`  • Name: ${response.formula.name}`);
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Size: ${formatFileSize(tarballInfo.size)}`);
-    console.log(`  • Formula ID: ${response.formula._id}`);
-    console.log(`  • Version ID: ${response.version._id}`);
     const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
     if (keywords.length > 0) {
       console.log(`  • Keywords: ${keywords.join(', ')}`);
@@ -167,8 +165,6 @@ async function pushFormulaCommand(
       data: {
         formulaName: response.formula.name,
         version: response.version.version,
-        formulaId: response.formula._id,
-        versionId: response.version._id,
         size: tarballInfo.size,
         checksum: tarballInfo.checksum,
         registry: registryUrl,

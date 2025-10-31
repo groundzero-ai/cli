@@ -133,8 +133,6 @@ async function pullFormulaCommand(
       data: {
         formulaName: pullResult.response.formula.name,
         version: pullResult.response.version.version,
-        formulaId: pullResult.response.formula._id,
-        versionId: pullResult.response.version._id,
         files: extracted.files.length,
         size: pullResult.response.version.tarballSize,
         checksum: extracted.checksum,
