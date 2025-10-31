@@ -8,24 +8,6 @@ import { promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, p
 import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 
-
-/**
- * Group versions by base version for prerelease handling
- */
-function groupVersionsByBase(versions: string[]): Map<string, string[]> {
-  const groups = new Map<string, string[]>();
-  
-  for (const version of versions) {
-    const key = isLocalVersion(version) ? extractBaseVersion(version) : version;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key)!.push(version);
-  }
-  
-  return groups;
-}
-
 /**
  * Get prerelease versions for a specific base version
  */

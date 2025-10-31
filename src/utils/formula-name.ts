@@ -75,20 +75,10 @@ function validateFormulaNamePart(part: string, fullName: string): void {
  * Returns normalized name and optional version
  */
 export function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
-  // Check if this looks like a scoped formula name (@scope/name)
-  // Handle this before path normalization to avoid treating it as a directory
-  const scopedMatch = formulaInput.match(SCOPED_FORMULA_REGEX);
-  if (scopedMatch) {
-    validateFormulaName(formulaInput);
-    return {
-      name: normalizeFormulaName(formulaInput)
-    };
-  }
-
   // Formula name with optional version
   const atIndex = formulaInput.lastIndexOf('@');
 
-  if (atIndex === -1) {
+  if (atIndex === -1 || atIndex === 0) {
     validateFormulaName(formulaInput);
     return {
       name: normalizeFormulaName(formulaInput)
