@@ -83,10 +83,10 @@ export function transformFormulaFilesForVersionChange(
 }
 
 /**
- * Transform formula files for full duplication (name and version change)
+ * Transform formula files metadata for name and version changes
  * Updates formula.yml, index.yml, root files, and markdown frontmatter
  */
-export function transformFormulaFilesForDuplication(
+export function transformFormulaFilesMetadata(
   files: FormulaFile[],
   sourceName: string,
   newName: string,

@@ -9,13 +9,15 @@ import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/save/platform-sync.js';
-import { parseFormulaInput } from '../utils/formula-name.js';
+import { parseFormulaInput, validateFormulaName, normalizeFormulaName } from '../utils/formula-name.js';
 import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
 import { createFormulaFiles } from '../core/save/formula-file-generator.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
 import { extractBaseVersion } from '../utils/version-generator.js';
-import {  getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
+import { getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
 import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
+import { formulaVersionExists } from '../utils/formula-versioning.js';
+import { applyWorkspaceFormulaRename } from '../core/save/workspace-rename.js';
 
 
 /**
@@ -65,15 +67,55 @@ async function saveFormulaCommand(
   // Parse inputs to determine the pattern being used
   const { name, version: explicitVersion } = parseFormulaInput(formulaName);
 
+  const renameInput = options?.rename?.trim();
+  let renameTarget: string | undefined;
+  let renameVersion: string | undefined;
+
+  if (renameInput) {
+    const { name: renameName, version: renameVer } = parseFormulaInput(renameInput);
+    const normalizedRename = normalizeFormulaName(renameName);
+    if (normalizedRename !== name) {
+      renameTarget = normalizedRename;
+      renameVersion = renameVer;
+      logger.debug(`Renaming formula during save`, { from: name, to: renameTarget, version: renameVersion });
+    }
+  }
+
   logger.debug(`Saving formula with name: ${name}`, { explicitVersion, options });
 
   // Initialize formula environment
   await ensureRegistryDirectories();
 
   // Get formula configuration based on input pattern
-  const formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, explicitVersion, versionType, options?.bump);
-  const formulaConfig = formulaInfo.config;
-  const isRootFormula = formulaInfo.isRootFormula;
+  // Use rename version if provided, otherwise use original version
+  const formulaVersion = renameVersion || explicitVersion;
+  let formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, formulaVersion, versionType, options?.bump);
+  let formulaConfig = formulaInfo.config;
+  let isRootFormula = formulaInfo.isRootFormula;
+  const targetVersion = formulaConfig.version;
+
+  if (renameTarget) {
+    if (!options?.force) {
+      const targetExists = await formulaVersionExists(renameTarget, targetVersion);
+      if (targetExists) {
+        throw new Error(`Version ${renameTarget}@${targetVersion} already exists. Use --force to overwrite.`);
+      }
+    }
+
+    await applyWorkspaceFormulaRename(cwd, formulaInfo, renameTarget);
+
+    // Re-fetch formula info at the new location with the same target version
+    formulaInfo = await getOrCreateFormulaYmlInfo(
+      cwd,
+      renameTarget,
+      targetVersion,
+      versionType,
+      undefined,
+      /* force */ true
+    );
+    formulaConfig = formulaInfo.config;
+    isRootFormula = formulaInfo.isRootFormula;
+  }
 
   // Inject includes into this formula's own formula.yml (dependencies)
   if (hasIncludes) {
@@ -199,6 +241,7 @@ export function setupSaveCommand(program: Command): void {
       'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
+    .option('--rename <newName>', 'Rename formula during save (optionally newName@version)')
     .option('--include <names...>', 'Include formulas into main formula.yml')
     .option('--include-dev <names...>', 'Include dev formulas into main formula.yml')
     .action(withErrorHandling(async (formulaName: string, versionType?: string, options?: SaveOptions) => {

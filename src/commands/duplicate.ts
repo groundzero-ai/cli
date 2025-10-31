@@ -7,7 +7,7 @@ import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { Formula, CommandResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-import { transformFormulaFilesForDuplication } from '../utils/formula-versioning.js';
+import { transformFormulaFilesMetadata } from '../utils/formula-versioning.js';
 import { isRootFile } from '../core/save/root-files-sync.js';
 
 async function duplicateFormulaCommand(
@@ -48,7 +48,7 @@ async function duplicateFormulaCommand(
   const newVersion = newVersionInput || sourceFormula.metadata.version;
 
   // Transform files: update frontmatter, formula.yml, and root file markers
-  const transformedFiles = transformFormulaFilesForDuplication(
+  const transformedFiles = transformFormulaFilesMetadata(
     sourceFormula.files,
     sourceName,
     newName,
