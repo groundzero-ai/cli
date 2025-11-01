@@ -38,7 +38,7 @@ import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
 import { installAiFiles } from '../utils/install-orchestrator.js';
-import { extractFormulasFromConfig } from '../utils/install-helpers.js';
+import { extractFormulasFromConfig, getVersionInfoFromDependencyTree } from '../utils/install-helpers.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { promptOverwriteConfirmation } from '../utils/prompts.js';
@@ -461,7 +461,51 @@ async function installFormulaCommand(
     throw error;
   }
 
-  const { resolvedFormulas, missingFormulas } = dependencyResult;
+  let { resolvedFormulas, missingFormulas } = dependencyResult;
+
+  if (!options.dryRun && missingFormulas.length > 0) {
+    const pullSpinner = new Spinner(`Pulling ${missingFormulas.length} missing formula(s) from remote...`);
+    pullSpinner.start();
+
+    const pullResults = await Promise.allSettled(
+      missingFormulas.map(async (missingName) => {
+        try {
+          const { requiredVersion } = await getVersionInfoFromDependencyTree(missingName, resolvedFormulas);
+          const pullResult = await pullFormulaFromRemote(missingName, requiredVersion, {
+            recursive: true,
+          });
+
+          return { name: missingName, requiredVersion, result: pullResult };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return { name: missingName, requiredVersion: undefined, result: { success: false, message } };
+        }
+      })
+    );
+
+    pullSpinner.stop();
+
+    // Now print results after spinner is stopped
+    for (const settled of pullResults) {
+      if (settled.status === 'fulfilled') {
+        const { name, requiredVersion, result } = settled.value;
+
+        if (result.success && 'name' in result && 'version' in result) {
+          const pulledLabel = formatFormulaLabel(result.name, result.version);
+          console.log(`✓ Pulled ${pulledLabel} from remote registry`);
+        } else {
+          const versionLabel = requiredVersion ? `@${requiredVersion}` : '';
+          console.log(`⚠️  Failed to pull ${name}${versionLabel}: ${result.message}`);
+        }
+      } else {
+        console.log(`⚠️  Failed to pull ${settled.reason?.name || 'unknown formula'}: ${settled.reason}`);
+      }
+    }
+
+    const refreshedDependencies = await resolveDependenciesForInstall(formulaName, cwd, version, options);
+    resolvedFormulas = refreshedDependencies.resolvedFormulas;
+    missingFormulas = refreshedDependencies.missingFormulas;
+  }
 
   const conflictProcessing = await processConflictResolution(resolvedFormulas, options);
   if ('cancelled' in conflictProcessing) {

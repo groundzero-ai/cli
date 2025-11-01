@@ -69,15 +69,15 @@ export function displayInstallationResults(
     summaryText += `@${mainFormula.version}`;
   }
 
+  console.log(`\n${summaryText}`);
+
   const dependencyFormulas = resolvedFormulas.filter(f => !f.isRoot);
   if (dependencyFormulas.length > 0) {
-    const dependencyVersions = dependencyFormulas.map(f => `${f.name}@${f.version}`).join(', ');
-    summaryText += ` and dependencies: ${dependencyVersions}`;
-  } else {
-    summaryText += ` and ${resolvedFormulas.length - 1} dependencies`;
+    console.log(`✓ Installed dependencies: ${dependencyFormulas.length}`);
+    for (const dep of dependencyFormulas) {
+      console.log(`   ├── ${dep.name}@${dep.version}`);
+    }
   }
-
-  console.log(`\n${summaryText}`);
   console.log(`✓ Total formulas processed: ${resolvedFormulas.length}`);
 
   // Show detailed file list
