@@ -61,7 +61,10 @@ export async function resolveDependencies(
   requiredVersions: Map<string, string[]> = new Map(),
   globalConstraints?: Map<string, string[]>,
   rootOverrides?: Map<string, string[]>
-): Promise<ResolvedFormula[]> {
+): Promise<{ resolvedFormulas: ResolvedFormula[]; missingFormulas: string[] }> {
+  // Track missing dependencies for this invocation subtree
+  const missing = new Set<string>();
+
   // 1. Cycle detection
   if (visitedStack.has(formulaName)) {
     const cycle = Array.from(visitedStack);
@@ -104,7 +107,9 @@ export async function resolveDependencies(
     // Intersect ranges by filtering available versions
     const availableVersions = await listFormulaVersions(formulaName);
     if (availableVersions.length === 0) {
-      throw new FormulaNotFoundError(formulaName);
+      // Treat as missing dependency rather than hard error
+      missing.add(formulaName);
+      return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
     }
 
     const satisfying = availableVersions.filter(versionCandidate => {
@@ -186,7 +191,9 @@ export async function resolveDependencies(
           formula = await formulaManager.loadFormula(formulaName, version);
           logger.info(`Successfully repaired and loaded formula '${formulaName}'`);
         } else {
-          throw error; // Formula truly doesn't exist in registry
+          // Formula truly doesn't exist - treat as missing dependency
+          missing.add(formulaName);
+          return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
         }
       } catch (repairError) {
         // If this is a version-specific error we created, re-throw it directly
@@ -194,28 +201,9 @@ export async function resolveDependencies(
           throw repairError;
         }
         
-        // Repair failed - create helpful error message with dependency chain context
-        const dependencyChain = Array.from(visitedStack);
-        let errorMessage = `❌ Auto-repair failed: Formula '${formulaName}' not available in local registry\n\n`;
-        
-        if (dependencyChain.length > 0) {
-          errorMessage += `📋 Dependency chain:\n`;
-          for (let i = 0; i < dependencyChain.length; i++) {
-            const indent = '  '.repeat(i);
-            errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
-          }
-          errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName} ❌ (not available)\n\n`;
-        }
-        
-        errorMessage += `🔧 Auto-repair attempted but failed:\n`;
-        errorMessage += `   • Checked local registry: ${repairError instanceof FormulaNotFoundError ? 'not found' : 'access failed'}\n`;
-        errorMessage += `   • Formula is not available in the local registry\n\n`;
-        errorMessage += `💡 To resolve this issue:\n`;
-        errorMessage += `   • Create the formula locally: g0 init && g0 save\n`;
-        errorMessage += `   • Pull from remote registry: g0 pull ${formulaName}\n`;
-        errorMessage += `   • Remove the dependency from the requiring formula\n`;
-        
-        throw new Error(errorMessage);
+        // Repair failed - treat as missing dependency
+        missing.add(formulaName);
+        return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
       }
     } else {
       // Re-throw other errors
@@ -244,7 +232,7 @@ export async function resolveDependencies(
       // Existing version is same or newer - keep existing
       existing.conflictResolution = 'kept';
     }
-    return Array.from(resolvedFormulas.values());
+    return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
   }
   
   // 3.1. Check for already installed version in groundzero
@@ -265,7 +253,7 @@ export async function resolveDependencies(
         isRoot,
         conflictResolution: 'kept'
       });
-      return Array.from(resolvedFormulas.values());
+      return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
     } else {
       // New version is older than installed - skip installation
       logger.debug(`Formula '${formulaName}' has newer version installed (v${installedVersion} > v${currentVersion}), skipping`);
@@ -276,7 +264,7 @@ export async function resolveDependencies(
         isRoot,
         conflictResolution: 'kept'
       });
-      return Array.from(resolvedFormulas.values());
+      return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
     }
   }
   
@@ -311,7 +299,8 @@ export async function resolveDependencies(
     
     for (const dep of dependencies) {
       // Pass the required version from the dependency specification
-      await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
+      const child = await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
+      for (const m of child.missingFormulas) missing.add(m);
     }
     
     // For root formula, also process dev-formulas
@@ -319,7 +308,8 @@ export async function resolveDependencies(
       const devDependencies = config['dev-formulas'] || [];
       for (const dep of devDependencies) {
         // Pass the required version from the dev dependency specification
-        await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
+        const child = await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedFormulas, dep.version, requiredVersions, globalConstraints, rootOverrides);
+        for (const m of child.missingFormulas) missing.add(m);
       }
     }
     
@@ -331,8 +321,8 @@ export async function resolveDependencies(
   for (const resolved of resolvedArray) {
     (resolved as any).requiredVersions = requiredVersions;
   }
-  
-  return resolvedArray;
+
+  return { resolvedFormulas: resolvedArray, missingFormulas: Array.from(missing) };
 }
 
 /**

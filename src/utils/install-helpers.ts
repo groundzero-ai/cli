@@ -44,7 +44,7 @@ export async function resolveDependenciesWithOverrides(
   skippedFormulas: string[],
   globalConstraints?: Map<string, string[]>,
   version?: string
-): Promise<ResolvedFormula[]> {
+): Promise<{ resolvedFormulas: ResolvedFormula[]; missingFormulas: string[] }> {
   // Re-gather root constraints (which now includes any newly persisted versions)
   const rootConstraints = await gatherRootVersionConstraints(targetDir);
   
@@ -59,12 +59,12 @@ export async function resolveDependenciesWithOverrides(
     requiredVersions: Map<string, string[]> = new Map(),
     globalConst?: Map<string, string[]>,
     rootOver?: Map<string, string[]>
-  ): Promise<ResolvedFormula[]> => {
+  ): Promise<{ resolvedFormulas: ResolvedFormula[]; missingFormulas: string[] }> => {
     // Skip if this formula is in the skipped list
     if (skippedFormulas.includes(name)) {
-      return Array.from(resolvedFormulas.values());
+      return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: [] };
     }
-    
+
     return await resolveDependencies(
       name,
       dir,

@@ -20,6 +20,7 @@ export interface RemotePullOptions {
   quiet?: boolean;
   preFetchedResponse?: PullFormulaResponse;
   httpClient?: HttpClient;
+  recursive?: boolean;
 }
 
 export type RemotePullFailureReason =
@@ -68,7 +69,7 @@ export async function fetchRemoteFormulaMetadata(
     await ensureRegistryDirectories();
 
     const context = await createContext(options);
-    const response = await getRemoteFormula(context.httpClient, name, version);
+    const response = await getRemoteFormula(context.httpClient, name, version, options.recursive);
 
     return {
       success: true,
@@ -95,7 +96,16 @@ export async function pullFormulaFromRemote(
     }
 
     const { context, response } = metadataResult;
-    const tarballBuffer = await downloadFormulaTarball(context.httpClient, response.downloadUrl);
+    const downloadUrl = resolveDownloadUrl(response);
+    if (!downloadUrl) {
+      return {
+        success: false,
+        reason: 'access-denied',
+        message: 'Formula download not available for this account',
+      };
+    }
+
+    const tarballBuffer = await downloadFormulaTarball(context.httpClient, downloadUrl);
 
     if (!verifyTarballIntegrity(tarballBuffer, response.version.tarballSize)) {
       return {
@@ -117,12 +127,26 @@ export async function pullFormulaFromRemote(
       extracted,
       registryUrl: context.registryUrl,
       profile: context.profile,
-      downloadUrl: response.downloadUrl,
+      downloadUrl,
       tarballSize: response.version.tarballSize
     };
   } catch (error) {
     return mapErrorToFailure(error);
   }
+}
+
+function resolveDownloadUrl(response: PullFormulaResponse): string | undefined {
+  if (!Array.isArray(response.downloads) || response.downloads.length === 0) {
+    return undefined;
+  }
+
+  const primaryMatch = response.downloads.find(download => download.name === response.formula.name && download.downloadUrl);
+  if (primaryMatch?.downloadUrl) {
+    return primaryMatch.downloadUrl;
+  }
+
+  const fallbackMatch = response.downloads.find(download => download.downloadUrl);
+  return fallbackMatch?.downloadUrl;
 }
 
 async function createResultFromPrefetched(options: RemotePullOptions): Promise<RemoteFormulaMetadataResult> {
@@ -156,15 +180,21 @@ async function createContext(options: RemotePullOptions): Promise<RemotePullCont
   };
 }
 
-async function getRemoteFormula(httpClient: HttpClient, name: string, version?: string): Promise<PullFormulaResponse> {
+async function getRemoteFormula(
+  httpClient: HttpClient,
+  name: string,
+  version?: string,
+  recursive?: boolean,
+): Promise<PullFormulaResponse> {
   const encodedName = name.split('/').map(segment => encodeURIComponent(segment)).join('/');
-  const endpoint = version && version !== 'latest'
+  let endpoint = version && version !== 'latest'
     ? `/formulas/pull/by-name/${encodedName}/v/${encodeURIComponent(version)}`
     : `/formulas/pull/by-name/${encodedName}`;
-
-  logger.debug(`Fetching remote formula metadata`, { name, version: version ?? 'latest', endpoint });
-
-  return await httpClient.get<PullFormulaResponse>(endpoint);
+  const finalEndpoint = recursive
+    ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}recursive=true`
+    : endpoint;
+  logger.debug(`Fetching remote formula metadata`, { name, version: version ?? 'latest', endpoint: finalEndpoint, recursive: !!recursive });
+  return await httpClient.get<PullFormulaResponse>(finalEndpoint);
 }
 
 async function downloadFormulaTarball(httpClient: HttpClient, downloadUrl: string): Promise<Buffer> {

@@ -60,7 +60,8 @@ export function displayInstallationResults(
   mainFormula?: any,
   allAddedFiles?: string[],
   allUpdatedFiles?: string[],
-  rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] }
+  rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] },
+  missingFormulas?: string[]
 ): void {
   // Build installation summary
   let summaryText = `✓ Installed ${formulaName}`;
@@ -123,6 +124,19 @@ export function displayInstallationResults(
   // Platform and IDE template output
   if (platformResult.created.length > 0) {
     console.log(`✓ Created platform directories: ${platformResult.created.join(', ')}`);
+  }
+
+  // Report missing formulas (displayed last)
+  if (missingFormulas && missingFormulas.length > 0) {
+    console.log(`\n⚠️  Missing dependencies detected:`);
+    for (const missing of missingFormulas) {
+      console.log(`   • ${missing} (not found in registry)`);
+    }
+    console.log(`\n💡 To resolve missing dependencies:`);
+    console.log(`   • Create locally: g0 init && g0 save`);
+    console.log(`   • Pull from remote: g0 pull ${missingFormulas.join(' ')}`);
+    console.log(`   • Remove from formula.yml`);
+    console.log('');
   }
 
 }

@@ -24,10 +24,15 @@ export interface PushFormulaResponse {
   version: ApiFormulaVersion;
 }
 
+export interface PullFormulaDownload {
+  name: string;
+  downloadUrl?: string;
+}
+
 export interface PullFormulaResponse {
   formula: ApiFormula;
   version: ApiFormulaVersion;
-  downloadUrl: string;
+  downloads: PullFormulaDownload[];
 }
 
 export interface ApiError {

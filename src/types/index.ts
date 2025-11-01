@@ -137,6 +137,7 @@ export interface PushOptions {
 export interface PullOptions {
   profile?: string;
   apiKey?: string;
+  recursive?: boolean;
 }
 
 export interface SaveOptions {

@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import { PullOptions, CommandResult } from '../types/index.js';
 import { formulaManager } from '../core/formula.js';
 import { hasFormulaVersion } from '../core/directory.js';
-import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
@@ -27,7 +26,8 @@ async function pullFormulaCommand(
   try {
     const authOptions = {
       profile: options.profile,
-      apiKey: options.apiKey
+      apiKey: options.apiKey,
+      recursive: !!options.recursive,
     };
 
     console.log(`✓ Pulling formula '${parsedName}' from remote registry...`);
@@ -55,6 +55,15 @@ async function pullFormulaCommand(
     const registryUrl = context.registryUrl;
     const profile = context.profile;
     const versionToPull = response.version.version;
+
+    const inaccessibleDownloads = (response.downloads ?? []).filter(download => !download.downloadUrl);
+    if (inaccessibleDownloads.length > 0) {
+      console.log(`⚠️  Skipping ${inaccessibleDownloads.length} downloads:`);
+      inaccessibleDownloads.forEach(download => {
+        console.log(`  • ${download.name}: not found or insufficient permissions`);
+      });
+      console.log('');
+    }
 
     console.log('✓ Formula found in registry');
     console.log(`✓ Version: ${parsedVersion ?? 'latest'} (resolved: ${versionToPull})`);
@@ -139,7 +148,7 @@ async function pullFormulaCommand(
         registry: registryUrl,
         profile,
         isPrivate: pullResult.response.formula.isPrivate,
-        downloadUrl: pullResult.response.downloadUrl,
+        downloadUrl: pullResult.downloadUrl,
         message: 'Formula pulled and installed successfully'
       }
     };
@@ -160,6 +169,7 @@ export function setupPullCommand(program: Command): void {
     .argument('<formula-name>', 'name of the formula to pull. Supports formula@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
+    .option('--recursive', 'include dependency metadata (no additional downloads)')
     .action(withErrorHandling(async (formulaName: string, options: PullOptions) => {
       const result = await pullFormulaCommand(formulaName, options);
       if (!result.success) {

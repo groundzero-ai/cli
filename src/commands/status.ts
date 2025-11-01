@@ -319,7 +319,7 @@ async function buildFormulaDependencyTree(
     // Use the install command's dependency resolver to get the complete tree
     const constraints = await gatherGlobalVersionConstraints(cwd);
     const rootConstraints = await gatherRootVersionConstraints(cwd);
-    const resolvedFormulas = await resolveDependencies(
+    const result = await resolveDependencies(
       formulaName,
       cwd,
       true,
@@ -330,7 +330,9 @@ async function buildFormulaDependencyTree(
       constraints,
       rootConstraints
     );
-    
+    const resolvedFormulas = result.resolvedFormulas;
+    const missingFormulas = result.missingFormulas;
+
     // Convert resolved formulas to status info in parallel
     const dependencyPromises = resolvedFormulas
       .filter(resolved => !resolved.isRoot) // Skip the root formula
@@ -357,8 +359,25 @@ async function buildFormulaDependencyTree(
         
         return depStatus;
       });
-    
-    return Promise.all(dependencyPromises);
+
+    // Add status info for missing formulas
+    const missingPromises = missingFormulas.map(async (missingName) => {
+      const dependency: FormulaDependency = {
+        name: missingName,
+        version: 'latest'
+      };
+
+      return await analyzeFormulaStatus(
+        dependency,
+        null, // no available formula
+        null, // no local metadata
+        'dependency',
+        registryCheck
+      );
+    });
+
+    const allPromises = [...dependencyPromises, ...missingPromises];
+    return Promise.all(allPromises);
   } catch (error) {
     logger.warn(`Failed to resolve dependencies for ${formulaName}`, { error });
     
@@ -432,7 +451,7 @@ async function performStatusAnalysis(
     try {
       const constraints = await gatherGlobalVersionConstraints(cwd);
       const rootConstraints = await gatherRootVersionConstraints(cwd);
-      const resolvedFormulas = await resolveDependencies(
+      const result = await resolveDependencies(
         formula.name,
         cwd,
         true,
@@ -443,11 +462,19 @@ async function performStatusAnalysis(
         constraints,
         rootConstraints
       );
+      const resolvedFormulas = result.resolvedFormulas;
+      const missingFormulas = result.missingFormulas;
+
       // Add all resolved dependency names to the set
       for (const resolved of resolvedFormulas) {
         if (!resolved.isRoot) {
           formulaNames.add(normalizeFormulaName(resolved.name));
         }
+      }
+
+      // Add missing formula names to the set
+      for (const missing of missingFormulas) {
+        formulaNames.add(normalizeFormulaName(missing));
       }
     } catch (error) {
       logger.debug(`Failed to resolve dependencies for ${formula.name}`, { error });

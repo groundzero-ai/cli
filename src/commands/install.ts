@@ -41,7 +41,8 @@ import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { promptVersionSelection, promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formulaManager } from '../core/formula.js';
-import { pullFormulaFromRemote } from '../core/remote-pull.js';
+import { fetchRemoteFormulaMetadata, pullFormulaFromRemote } from '../core/remote-pull.js';
+import type { RemotePullFailure } from '../core/remote-pull.js';
 import { Spinner } from '../utils/spinner.js';
 
 type AvailabilityStatus = 'local' | 'pulled' | 'missing' | 'not-found' | 'failed';
@@ -309,6 +310,20 @@ async function ensureFormulaAvailable(
       }
     }
 
+    const metadataResult = await fetchRemoteFormulaMetadata(formulaName, version);
+    if (!metadataResult.success) {
+      return mapFailureToAvailability(label, metadataResult);
+    }
+
+    const inaccessibleDownloads = (metadataResult.response.downloads ?? []).filter(download => !download.downloadUrl);
+    if (inaccessibleDownloads.length > 0) {
+      console.log(`⚠️  Skipping ${inaccessibleDownloads.length} downloads:`);
+      inaccessibleDownloads.forEach(download => {
+        console.log(`  • ${download.name}: not found or insufficient permissions`);
+      });
+      console.log('');
+    }
+
     if (options.dryRun) {
       const action = options.forceRemote ? 'pull' : 'pull';
       console.log(`↪ Would ${action} ${label} from remote`);
@@ -320,7 +335,12 @@ async function ensureFormulaAvailable(
     
     let pullResult;
     try {
-      pullResult = await pullFormulaFromRemote(formulaName, version);
+      pullResult = await pullFormulaFromRemote(formulaName, version, {
+        preFetchedResponse: metadataResult.response,
+        httpClient: metadataResult.context.httpClient,
+        profile: metadataResult.context.profile,
+        recursive: true, // Installations are always recursive
+      });
       pullSpinner.stop();
     } catch (error) {
       pullSpinner.stop();
@@ -333,35 +353,7 @@ async function ensureFormulaAvailable(
       return { status: 'pulled' };
     }
 
-    switch (pullResult.reason) {
-      case 'not-found': {
-        const message = `Formula '${label}' not found in remote registry`;
-        console.log(`❌ ${message}`);
-        return { status: 'not-found', message };
-      }
-      case 'access-denied': {
-        const message = pullResult.message || `Access denied pulling ${label}`;
-        console.log(`❌ ${message}`);
-        console.log('   Use g0 configure to authenticate or check permissions.');
-        return { status: 'failed', message };
-      }
-      case 'network': {
-        const message = pullResult.message || `Network error pulling ${label}`;
-        console.log(`❌ ${message}`);
-        console.log('   Check your internet connection and try again.');
-        return { status: 'failed', message };
-      }
-      case 'integrity': {
-        const message = pullResult.message || `Integrity check failed pulling ${label}`;
-        console.log(`❌ ${message}`);
-        return { status: 'failed', message };
-      }
-      default: {
-        const message = pullResult.message || `Failed to pull ${label}`;
-        console.log(`❌ ${message}`);
-        return { status: 'failed', message };
-      }
-    }
+    return mapFailureToAvailability(label, pullResult);
   } catch (error) {
     if (error instanceof UserCancellationError) {
       throw error; // Re-throw to allow clean exit
@@ -369,6 +361,38 @@ async function ensureFormulaAvailable(
     const message = error instanceof Error ? error.message : String(error);
     console.log(`❌ Unexpected error ensuring ${label}: ${message}`);
     return { status: 'failed', message };
+  }
+}
+
+function mapFailureToAvailability(label: string, failure: RemotePullFailure): AvailabilityResult {
+  switch (failure.reason) {
+    case 'not-found': {
+      const message = `Formula '${label}' not found in remote registry`;
+      console.log(`❌ ${message}`);
+      return { status: 'not-found', message };
+    }
+    case 'access-denied': {
+      const message = failure.message || `Access denied pulling ${label}`;
+      console.log(`❌ ${message}`);
+      console.log('   Use g0 configure to authenticate or check permissions.');
+      return { status: 'failed', message };
+    }
+    case 'network': {
+      const message = failure.message || `Network error pulling ${label}`;
+      console.log(`❌ ${message}`);
+      console.log('   Check your internet connection and try again.');
+      return { status: 'failed', message };
+    }
+    case 'integrity': {
+      const message = failure.message || `Integrity check failed pulling ${label}`;
+      console.log(`❌ ${message}`);
+      return { status: 'failed', message };
+    }
+    default: {
+      const message = failure.message || `Failed to pull ${label}`;
+      console.log(`❌ ${message}`);
+      return { status: 'failed', message };
+    }
   }
 }
 
@@ -408,8 +432,8 @@ async function installFormulaCommand(
   const availability = availabilityHint ?? await ensureFormulaAvailable(formulaName, version, { dryRun, forceRemote });
 
   if (availability.status === 'not-found') {
-    console.log('❌ Formula not found');
-    return { success: false, error: 'Formula not found' };
+    console.log(`❌ Formula '${formulaName}' not found in remote registry`);
+    return { success: false, error: `Formula '${formulaName}' not found in remote registry` };
   }
 
   if (availability.status === 'failed') {
@@ -449,9 +473,10 @@ async function installFormulaCommand(
   // Resolve complete dependency tree first, with conflict handling and persistence
   const globalConstraints = await gatherGlobalVersionConstraints(cwd);
   let resolvedFormulas: ResolvedFormula[];
+  let missingFormulas: string[] = [];
   try {
     const rootConstraints = await gatherRootVersionConstraints(cwd);
-    resolvedFormulas = await resolveDependencies(
+    const result = await resolveDependencies(
       formulaName,
       cwd,
       true,
@@ -462,6 +487,8 @@ async function installFormulaCommand(
       globalConstraints,
       rootConstraints
     );
+    resolvedFormulas = result.resolvedFormulas;
+    missingFormulas = result.missingFormulas;
   } catch (error) {
     if (error instanceof VersionConflictError) {
       // Decide version: if --force, take highest available; else prompt user to select
@@ -488,14 +515,16 @@ async function installFormulaCommand(
 
       // Recompute constraints (now includes the persisted version in root) and re-resolve
       const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
-      const overrideResolvedFormulas = await resolveDependenciesWithOverrides(
+      const overrideResult = await resolveDependenciesWithOverrides(
         formulaName,
         cwd,
         [],
         updatedConstraints,
         version
       );
-      resolvedFormulas = overrideResolvedFormulas;
+      resolvedFormulas = overrideResult.resolvedFormulas;
+      // Merge any new missing formulas
+      missingFormulas = [...missingFormulas, ...overrideResult.missingFormulas];
     } else if (
       error instanceof FormulaNotFoundError ||
       (error instanceof Error && (
@@ -509,7 +538,7 @@ async function installFormulaCommand(
       throw error;
     }
   }
-  
+
   // Check for conflicts with all formulas in the dependency tree
   const conflictResult = await checkAndHandleAllFormulaConflicts(resolvedFormulas as any, options);
   
@@ -712,7 +741,8 @@ async function installFormulaCommand(
     mainFormula,
     allAddedFiles,
     allUpdatedFiles,
-    rootFileResultsArrays
+    rootFileResultsArrays,
+    missingFormulas
   );
   
   return {
