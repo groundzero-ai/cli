@@ -1,22 +1,29 @@
-import * as semver from 'semver';
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
 import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
-import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
-import { resolveDependencies, displayDependencyTree } from '../core/dependency-resolver.js';
+import { displayDependencyTree } from '../core/dependency-resolver.js';
 import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
   CONFLICT_RESOLUTION,
-  type Platform
+  type Platform,
 } from '../constants/index.js';
 import {
   createPlatformDirectories
 } from '../core/platforms.js';
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import { resolvePlatforms } from '../core/install/platform-resolution.js';
+import {
+  handleAvailabilityOutcome,
+  prepareInstallEnvironment,
+  resolveDependenciesForInstall,
+  processConflictResolution,
+  performInstallationPhases,
+  type DependencyResolutionResult,
+  VersionResolutionAbortError
+} from '../core/install/install-flow.js';
 import {
   getLocalFormulaYmlPath,
   getAIDir,
@@ -30,16 +37,11 @@ import {
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
-import { installAiFiles, installAiFilesFromList } from '../utils/install-orchestrator.js';
-import { extractFormulasFromConfig, resolveDependenciesWithOverrides } from '../utils/install-helpers.js';
-import { checkAndHandleAllFormulaConflicts } from '../utils/install-conflict-handler.js';
+import { installAiFiles } from '../utils/install-orchestrator.js';
+import { extractFormulasFromConfig } from '../utils/install-helpers.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
-import { installIndexYmlDirectories } from '../utils/index-yml-based-installer.js';
-import { discoverAndCategorizeFiles } from '../utils/install-file-discovery.js';
-import { installFilesByIdWithMap } from '../utils/id-based-installer.js';
-import { installRootFilesFromMap } from '../utils/root-file-installer.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-import { promptVersionSelection, promptOverwriteConfirmation } from '../utils/prompts.js';
+import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formulaManager } from '../core/formula.js';
 import { fetchRemoteFormulaMetadata, pullFormulaFromRemote } from '../core/remote-pull.js';
 import type { RemotePullFailure } from '../core/remote-pull.js';
@@ -413,7 +415,6 @@ async function installFormulaCommand(
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
-  // Check if trying to install the root formula (circular dependency)
   if (await isRootFormula(cwd, formulaName)) {
     console.log(`⚠️  Cannot install ${formulaName} - it matches your project's root formula name`);
     console.log(`   This would create a circular dependency.`);
@@ -431,101 +432,22 @@ async function installFormulaCommand(
   const forceRemote = !!options.remote;
   const availability = availabilityHint ?? await ensureFormulaAvailable(formulaName, version, { dryRun, forceRemote });
 
-  if (availability.status === 'not-found') {
-    console.log(`❌ Formula '${formulaName}' not found in remote registry`);
-    return { success: false, error: `Formula '${formulaName}' not found in remote registry` };
+  const availabilityResult = handleAvailabilityOutcome(availability, formulaName, version, cwd, targetDir);
+  if (availabilityResult) {
+    return availabilityResult;
   }
 
-  if (availability.status === 'failed') {
-    return { success: false, error: availability.message || 'Failed to prepare formula for installation' };
-  }
+  const { specifiedPlatforms } = await prepareInstallEnvironment(cwd, options);
 
-  if (availability.status === 'missing') {
-    console.log(`Dry run: would pull ${formatFormulaLabel(formulaName, version)} from remote before installation.`);
-    return {
-      success: true,
-      data: {
-        formulaName,
-        targetDir: getAIDir(cwd),
-        resolvedFormulas: [],
-        totalFormulas: 0,
-        installed: 0,
-        skipped: 1,
-        totalGroundzeroFiles: 0,
-        dryRun: true
-      },
-      warnings: [`Dry run: ${formatFormulaLabel(formulaName, version)} not installed (formula unavailable locally)`]
-    };
-  }
-
-  await ensureRegistryDirectories();
-  
-  // Auto-create basic formula.yml if it doesn't exist
-  await createBasicFormulaYml(cwd);
-
-  // Prepare platform directories early if user specified platforms
-  const specifiedPlatforms = normalizePlatforms(options.platforms);
-  if (specifiedPlatforms && specifiedPlatforms.length > 0 && !options.dryRun) {
-    const earlyPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: false });
-    await createPlatformDirectories(cwd, earlyPlatforms as Platform[]);
-  }
-  
-  // Resolve complete dependency tree first, with conflict handling and persistence
-  const globalConstraints = await gatherGlobalVersionConstraints(cwd);
-  let resolvedFormulas: ResolvedFormula[];
-  let missingFormulas: string[] = [];
+  let dependencyResult: DependencyResolutionResult;
   try {
-    const rootConstraints = await gatherRootVersionConstraints(cwd);
-    const result = await resolveDependencies(
-      formulaName,
-      cwd,
-      true,
-      new Set(),
-      new Map(),
-      version,
-      new Map(),
-      globalConstraints,
-      rootConstraints
-    );
-    resolvedFormulas = result.resolvedFormulas;
-    missingFormulas = result.missingFormulas;
+    dependencyResult = await resolveDependenciesForInstall(formulaName, cwd, version, options);
   } catch (error) {
-    if (error instanceof VersionConflictError) {
-      // Decide version: if --force, take highest available; else prompt user to select
-      const { details } = (error as any) || {};
-      const depName = details?.formulaName || (error as any).details?.formulaName || (error as any).code;
-      const name = (error as any).details?.formulaName || (error as any).details?.formula || formulaName; // fallback
-      const available: string[] = details?.availableVersions || (error as any).details?.availableVersions || [];
+    if (error instanceof VersionResolutionAbortError) {
+      return { success: false, error: error.message };
+    }
 
-      let chosenVersion: string | null = null;
-      if (options.force) {
-        // pick highest available version
-        chosenVersion = available.sort((a, b) => semver.rcompare(a, b))[0] || null;
-      } else {
-        // ask user to pick a version from available
-        chosenVersion = await promptVersionSelection(details?.formulaName || name, available, 'to install');
-      }
-
-      if (!chosenVersion) {
-        return { success: false, error: `Unable to resolve version for ${(error as any).details?.formulaName || name}` };
-      }
-
-      // Persist chosen version by promoting to direct dependency in main formula.yml
-      await addFormulaToYml(cwd, (error as any).details?.formulaName || name, chosenVersion!, false, chosenVersion!, true);
-
-      // Recompute constraints (now includes the persisted version in root) and re-resolve
-      const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
-      const overrideResult = await resolveDependenciesWithOverrides(
-        formulaName,
-        cwd,
-        [],
-        updatedConstraints,
-        version
-      );
-      resolvedFormulas = overrideResult.resolvedFormulas;
-      // Merge any new missing formulas
-      missingFormulas = [...missingFormulas, ...overrideResult.missingFormulas];
-    } else if (
+    if (
       error instanceof FormulaNotFoundError ||
       (error instanceof Error && (
         error.message.includes('not available in local registry') ||
@@ -534,15 +456,15 @@ async function installFormulaCommand(
     ) {
       console.log('❌ Formula not found');
       return { success: false, error: 'Formula not found' };
-    } else {
-      throw error;
     }
+
+    throw error;
   }
 
-  // Check for conflicts with all formulas in the dependency tree
-  const conflictResult = await checkAndHandleAllFormulaConflicts(resolvedFormulas as any, options);
-  
-  if (!conflictResult.shouldProceed) {
+  const { resolvedFormulas, missingFormulas } = dependencyResult;
+
+  const conflictProcessing = await processConflictResolution(resolvedFormulas, options);
+  if ('cancelled' in conflictProcessing) {
     console.log(`Installation cancelled by user`);
     return {
       success: true,
@@ -557,194 +479,52 @@ async function installFormulaCommand(
       }
     };
   }
-  
-  // Filter out skipped formulas
-  const finalResolvedFormulas = resolvedFormulas.filter(formula => 
-    !conflictResult.skippedFormulas.includes(formula.name)
-  );
-    
+
+  const { finalResolvedFormulas, conflictResult } = conflictProcessing;
+
   displayDependencyTree(finalResolvedFormulas, true);
-  
-  // Check if formula.yml exists (cache the result for later use)
+
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   const formulaYmlExists = await exists(formulaYmlPath);
 
-  // Handle dry-run mode
   if (options.dryRun) {
     return await handleDryRunMode(finalResolvedFormulas, formulaName, targetDir, options, formulaYmlExists);
   }
 
-  // Process resolved formulas (will be called with platforms later after detection)
-  // Note: Platform files will be installed after platform detection below
-
-  // Get main formula for formula.yml updates and display
-  const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
-
-  // Resolve platforms (specified > detected > prompt)
   const finalPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: true });
-
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 
-  // Prepare containers for file tracking
-  const allAddedFiles: string[] = [];
-  const allUpdatedFiles: string[] = [];
+  const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
 
-  // Phase 1: Discover and categorize files for each formula
-  const categorizedByFormula = new Map<string, Awaited<ReturnType<typeof discoverAndCategorizeFiles>>>();
-  for (const resolved of finalResolvedFormulas) {
-    const categorized = await discoverAndCategorizeFiles(
-      resolved.name,
-      resolved.version,
-      finalPlatforms as Platform[]
-    );
-    categorizedByFormula.set(resolved.name, categorized);
-  }
+  const installationOutcome = await performInstallationPhases({
+    cwd,
+    formulas: finalResolvedFormulas,
+    platforms: finalPlatforms as Platform[],
+    conflictResult,
+    options,
+    targetDir
+  });
 
-  // Phase 2a: ID-based files (priority)
-  let installedCount = 0;
-  let skippedCount = 0;
-  const groundzeroResults: Array<{ name: string; filesInstalled: number; filesUpdated: number; installedFiles: string[]; updatedFiles: string[]; overwritten: boolean }> = [];
-  for (const resolved of finalResolvedFormulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    if (categorized.idBasedFiles.size === 0) continue;
-    try {
-      const platformResult = await installFilesByIdWithMap(
-        cwd,
-        resolved.name,
-        resolved.version,
-        finalPlatforms as Platform[],
-        categorized.idBasedFiles,
-        options,
-        conflictResult.forceOverwriteFormulas.has(resolved.name)
-      );
-      if (platformResult.installed > 0 || platformResult.updated > 0) {
-        installedCount++;
-        groundzeroResults.push({
-          name: resolved.name,
-          filesInstalled: platformResult.installed,
-          filesUpdated: platformResult.updated,
-          installedFiles: platformResult.installedFiles,
-          updatedFiles: platformResult.updatedFiles,
-          overwritten: platformResult.updated > 0
-        });
-      }
-    } catch (error) {
-      logger.error(`Failed ID-based install for ${resolved.name}: ${error}`);
-      skippedCount++;
-    }
-  }
-
-  // Phase 2b: Index.yml directories (excluding files already claimed by ID-based)
-  let indexInstalledTotal = 0;
-  let indexUpdatedTotal = 0;
-  for (const resolved of finalResolvedFormulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    if (categorized.indexYmlDirs.length === 0) continue;
-    const indexResult = await installIndexYmlDirectories(
-      cwd,
-      categorized.indexYmlDirs,
-      finalPlatforms as Platform[],
-      options
-    );
-    indexInstalledTotal += indexResult.installed;
-    indexUpdatedTotal += indexResult.updated;
-    allAddedFiles.push(...indexResult.installedFiles);
-    allUpdatedFiles.push(...indexResult.updatedFiles);
-  }
-
-  // Phase 2c: Path-based remaining files
-  for (const resolved of finalResolvedFormulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    const aiFiles = categorized.pathBasedFiles.filter(f => f.path.startsWith('ai/'));
-    if (aiFiles.length === 0) continue;
-    const aiResult = await installAiFilesFromList(
-      cwd,
-      targetDir,
-      aiFiles,
-      options,
-      conflictResult.forceOverwriteFormulas.has(resolved.name)
-    );
-    if (!aiResult.skipped && aiResult.installedCount > 0) {
-      installedCount++;
-      const relativeInstalledFiles = aiResult.files.map(filePath => filePath.replace(cwd + '/', ''));
-      const existing = groundzeroResults.find(r => r.name === resolved.name);
-      if (existing) {
-        existing.filesInstalled += aiResult.installedCount;
-        existing.installedFiles.push(...relativeInstalledFiles);
-        existing.overwritten = existing.overwritten || aiResult.overwritten;
-      } else {
-        groundzeroResults.push({
-          name: resolved.name,
-          filesInstalled: aiResult.installedCount,
-          filesUpdated: 0,
-          installedFiles: relativeInstalledFiles,
-          updatedFiles: [],
-          overwritten: aiResult.overwritten
-        });
-      }
-    }
-  }
-
-  // Phase 2d: Root files
-  const allRootFileResults = {
-    installed: new Set<string>(),
-    updated: new Set<string>(),
-    skipped: new Set<string>()
-  };
-  for (const resolved of finalResolvedFormulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    const rootFileResult = await installRootFilesFromMap(
-      cwd,
-      resolved.name,
-      categorized.rootFiles,
-      finalPlatforms as Platform[]
-    );
-    rootFileResult.installed.forEach(file => allRootFileResults.installed.add(file));
-    rootFileResult.updated.forEach(file => allRootFileResults.updated.add(file));
-    rootFileResult.skipped.forEach(file => allRootFileResults.skipped.add(file));
-  }
-
-  // Convert Sets back to arrays for compatibility
-  const rootFileResultsArrays = {
-    installed: Array.from(allRootFileResults.installed),
-    updated: Array.from(allRootFileResults.updated),
-    skipped: Array.from(allRootFileResults.skipped)
-  };
-
-  // Write local formula metadata for all successfully installed formulas
   for (const resolved of finalResolvedFormulas) {
     await writeLocalFormulaMetadata(cwd, resolved.name, resolved.formula.metadata);
   }
 
-  // Add formula to formula.yml if it exists and we have a main formula
   if (formulaYmlExists && mainFormula) {
     await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
   }
-  
-  
-  // Add AI files from groundzero results
-  groundzeroResults.forEach(result => {
-    allAddedFiles.push(...result.installedFiles);
-    allUpdatedFiles.push(...result.updatedFiles);
-  });
 
-
-  // Calculate total groundzero files
-  const totalGroundzeroFiles = groundzeroResults.reduce((sum, result) => sum + result.filesInstalled + result.filesUpdated, 0) + indexInstalledTotal + indexUpdatedTotal;
-  
-  // Display results
   displayInstallationResults(
     formulaName,
     finalResolvedFormulas,
     { platforms: finalPlatforms, created: createdDirs },
     options,
     mainFormula,
-    allAddedFiles,
-    allUpdatedFiles,
-    rootFileResultsArrays,
+    installationOutcome.allAddedFiles,
+    installationOutcome.allUpdatedFiles,
+    installationOutcome.rootFileResults,
     missingFormulas
   );
-  
+
   return {
     success: true,
     data: {
@@ -752,12 +532,13 @@ async function installFormulaCommand(
       targetDir: getAIDir(cwd),
       resolvedFormulas: finalResolvedFormulas,
       totalFormulas: finalResolvedFormulas.length,
-      installed: installedCount,
-      skipped: skippedCount,
-      totalGroundzeroFiles
+      installed: installationOutcome.installedCount,
+      skipped: installationOutcome.skippedCount,
+      totalGroundzeroFiles: installationOutcome.totalGroundzeroFiles
     }
   };
 }
+
 
 /**
  * Main install command router - handles both individual and bulk install
