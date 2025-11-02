@@ -122,6 +122,8 @@ export interface InstallOptions {
   dev?: boolean;
   platforms?: string[];
   remote?: boolean;
+  profile?: string;
+  apiKey?: string;
 }
 
 export interface UninstallOptions {

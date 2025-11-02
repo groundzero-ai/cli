@@ -15,7 +15,7 @@ import { describeRemoteFailure } from './remote-reporting.js';
 export async function fetchMissingDependencyMetadata(
   missing: string[],
   resolvedFormulas: ResolvedFormula[],
-  opts: { dryRun: boolean }
+  opts: { dryRun: boolean; profile?: string; apiKey?: string }
 ): Promise<RemoteFormulaMetadataSuccess[]> {
   const { dryRun } = opts;
   const uniqueMissing = Array.from(new Set(missing));
@@ -34,7 +34,7 @@ export async function fetchMissingDependencyMetadata(
         logger.debug('Failed to determine required version for missing dependency', { missingName, error });
       }
 
-      const metadataResult = await fetchRemoteFormulaMetadata(missingName, requiredVersion, { recursive: true });
+      const metadataResult = await fetchRemoteFormulaMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
       if (!metadataResult.success) {
         const message = describeRemoteFailure(requiredVersion ? `${missingName}@${requiredVersion}` : missingName, metadataResult);
         console.log(`⚠️  ${message}`);
@@ -56,7 +56,7 @@ export async function fetchMissingDependencyMetadata(
 export async function pullMissingDependencies(
   metadata: RemoteFormulaMetadataSuccess[],
   keysToDownload: Set<string>,
-  opts: { dryRun: boolean }
+  opts: { dryRun: boolean; profile?: string; apiKey?: string }
 ): Promise<RemoteBatchPullResult[]> {
   const { dryRun } = opts;
   const batchResults: RemoteBatchPullResult[] = [];
@@ -76,7 +76,8 @@ export async function pullMissingDependencies(
 
         const batchResult = await pullDownloadsBatchFromRemote(metadataResult.response, {
           httpClient: metadataResult.context.httpClient,
-          profile: metadataResult.context.profile,
+          profile: opts.profile || metadataResult.context.profile,
+          apiKey: opts.apiKey,
           dryRun,
           filter: (dependencyName, dependencyVersion) => {
             const key = createDownloadKey(dependencyName, dependencyVersion);

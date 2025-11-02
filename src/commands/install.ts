@@ -279,7 +279,7 @@ async function installFormulaCommand(
     if (missingFormulas.length > 0) {
 
       // Fetch metadata via fetchMissingDependencyMetadata
-      const metadataResults = await fetchMissingDependencyMetadata(missingFormulas, resolvedFormulas, { dryRun });
+      const metadataResults = await fetchMissingDependencyMetadata(missingFormulas, resolvedFormulas, { dryRun, profile: options.profile, apiKey: options.apiKey });
 
       if (metadataResults.length > 0) {
         // Build keysToDownload with computeMissingDownloadKeys
@@ -291,7 +291,7 @@ async function installFormulaCommand(
         }
 
         // Pull batches via pullMissingDependencies and log with recordBatchOutcome
-        const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, { dryRun });
+        const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, { dryRun, profile: options.profile, apiKey: options.apiKey });
         for (const batchResult of batchResults) {
           recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
         }
@@ -315,7 +315,7 @@ async function installFormulaCommand(
 
     let metadataResult;
     try {
-      metadataResult = await fetchRemoteFormulaMetadata(formulaName, version, { recursive: true });
+      metadataResult = await fetchRemoteFormulaMetadata(formulaName, version, { recursive: true, profile: options.profile, apiKey: options.apiKey });
     } finally {
       if (metadataSpinner) metadataSpinner.stop();
     }
@@ -499,6 +499,8 @@ export function setupInstallCommand(program: Command): void {
     .option('--dev', 'add formula to dev-formulas instead of formulas')
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .option('--remote', 'pull and install from remote registry, ignoring local versions')
+    .option('--profile <profile>', 'profile to use for authentication')
+    .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
       // Normalize platforms option early for downstream logic
       options.platforms = normalizePlatforms(options.platforms);
