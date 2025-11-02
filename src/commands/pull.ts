@@ -69,17 +69,6 @@ async function pullFormulaCommand(
     console.log(`✓ Version: ${parsedVersion ?? 'latest'} (resolved: ${versionToPull})`);
     console.log(`✓ Profile: ${profile}`);
     console.log('');
-    console.log('✓ Formula Details:');
-    console.log(`  • Name: ${response.formula.name}`);
-    console.log(`  • Version: ${versionToPull}`);
-    console.log(`  • Description: ${response.formula.description || '(no description)'}`);
-    console.log(`  • Size: ${formatFileSize(response.version.tarballSize)}`);
-    const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
-    if (keywords.length > 0) {
-      console.log(`  • Keywords: ${keywords.join(', ')}`);
-    }
-    console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
-    console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
 
     const localVersionExists = await hasFormulaVersion(parsedName, versionToPull);
     if (localVersionExists) {
@@ -129,8 +118,14 @@ async function pullFormulaCommand(
     console.log('✓ Formula Details:');
     console.log(`  • Name: ${pullResult.response.formula.name}`);
     console.log(`  • Version: ${pullResult.response.version.version}`);
-    console.log(`  • Files: ${extracted.files.length}`);
+    console.log(`  • Description: ${pullResult.response.formula.description || '(no description)'}`);
     console.log(`  • Size: ${formatFileSize(pullResult.response.version.tarballSize)}`);
+    const keywords = Array.isArray(pullResult.response.formula.keywords) ? pullResult.response.formula.keywords : [];
+    if (keywords.length > 0) {
+      console.log(`  • Keywords: ${keywords.join(', ')}`);
+    }
+    console.log(`  • Private: ${pullResult.response.formula.isPrivate ? 'Yes' : 'No'}`);
+    console.log(`  • Files: ${extracted.files.length}`);
     console.log(`  • Checksum: ${extracted.checksum.substring(0, 16)}...`);
     console.log('');
     console.log('✓ Next steps:');
