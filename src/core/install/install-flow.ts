@@ -69,43 +69,6 @@ type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllFormulaConflic
 /**
  * Handle formula availability outcomes and return appropriate command results
  */
-export function handleAvailabilityOutcome(
-  availability: AvailabilityResult,
-  formulaName: string,
-  version: string | undefined,
-  cwd: string,
-  targetDir: string
-): CommandResult | null {
-  if (availability.status === 'not-found') {
-    console.log(`❌ Formula '${formulaName}' not found in remote registry`);
-    return { success: false, error: `Formula '${formulaName}' not found in remote registry` };
-  }
-
-  if (availability.status === 'failed') {
-    return { success: false, error: availability.message || 'Failed to prepare formula for installation' };
-  }
-
-  if (availability.status === 'missing') {
-    console.log(`Dry run: would pull ${formatFormulaLabel(formulaName, version)} from remote before installation.`);
-    return {
-      success: true,
-      data: {
-        formulaName,
-        targetDir: getAIDir(cwd),
-        resolvedFormulas: [],
-        totalFormulas: 0,
-        installed: 0,
-        skipped: 1,
-        totalGroundzeroFiles: 0,
-        dryRun: true
-      },
-      warnings: [`Dry run: ${formatFormulaLabel(formulaName, version)} not installed (formula unavailable locally)`]
-    };
-  }
-
-  return null;
-}
-
 /**
  * Prepare the installation environment by ensuring directories and basic files exist
  */
@@ -372,12 +335,6 @@ function formatFormulaLabel(formulaName: string, version?: string): string {
 
 function getAIDir(cwd: string): string {
   return `${cwd}/ai`;
-}
-
-// Type definitions for imports
-interface AvailabilityResult {
-  status: 'local' | 'pulled' | 'missing' | 'not-found' | 'failed';
-  message?: string;
 }
 
 // Import the resolvePlatforms function from the platform-resolution file

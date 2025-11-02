@@ -69,7 +69,7 @@ export function displayInstallationResults(
     summaryText += `@${mainFormula.version}`;
   }
 
-  console.log(`\n${summaryText}`);
+  console.log(`${summaryText}`);
 
   const dependencyFormulas = resolvedFormulas.filter(f => !f.isRoot);
   if (dependencyFormulas.length > 0) {

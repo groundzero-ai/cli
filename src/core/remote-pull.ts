@@ -1,4 +1,5 @@
-import { PullFormulaResponse } from '../types/api.js';
+import * as yaml from 'js-yaml';
+import { PullFormulaDownload, PullFormulaResponse } from '../types/api.js';
 import { Formula, FormulaYml } from '../types/index.js';
 import { formulaManager } from './formula.js';
 import { ensureRegistryDirectories } from './directory.js';
@@ -21,6 +22,11 @@ export interface RemotePullOptions {
   preFetchedResponse?: PullFormulaResponse;
   httpClient?: HttpClient;
   recursive?: boolean;
+}
+
+export interface RemoteBatchPullOptions extends RemotePullOptions {
+  dryRun?: boolean;
+  filter?: (name: string, version: string, download: PullFormulaDownload) => boolean;
 }
 
 export type RemotePullFailureReason =
@@ -59,6 +65,180 @@ export interface RemoteFormulaMetadataSuccess {
 }
 
 export type RemoteFormulaMetadataResult = RemoteFormulaMetadataSuccess | RemotePullFailure;
+
+export interface BatchDownloadItemResult {
+  name: string;
+  version: string;
+  downloadUrl?: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface RemoteBatchPullResult {
+  success: boolean;
+  pulled: BatchDownloadItemResult[];
+  failed: BatchDownloadItemResult[];
+  warnings?: string[];
+}
+
+export function parseDownloadName(downloadName: string): { name: string; version: string } {
+  const atIndex = downloadName.lastIndexOf('@');
+
+  if (atIndex <= 0 || atIndex === downloadName.length - 1) {
+    throw new Error(`Invalid download name '${downloadName}'. Expected format '<formula>@<version>'.`);
+  }
+
+  return {
+    name: downloadName.slice(0, atIndex),
+    version: downloadName.slice(atIndex + 1)
+  };
+}
+
+export function aggregateRecursiveDownloads(responses: PullFormulaResponse[]): PullFormulaDownload[] {
+  const aggregated = new Map<string, PullFormulaDownload>();
+
+  for (const response of responses) {
+    if (!Array.isArray(response.downloads)) {
+      continue;
+    }
+
+    for (const download of response.downloads) {
+      if (!download?.name) {
+        continue;
+      }
+
+      const existing = aggregated.get(download.name);
+
+      if (!existing) {
+        aggregated.set(download.name, download);
+        continue;
+      }
+
+      if (!existing.downloadUrl && download.downloadUrl) {
+        aggregated.set(download.name, download);
+      }
+    }
+  }
+
+  return Array.from(aggregated.values());
+}
+
+export async function pullDownloadsBatchFromRemote(
+  responses: PullFormulaResponse | PullFormulaResponse[],
+  options: RemoteBatchPullOptions = {}
+): Promise<RemoteBatchPullResult> {
+  const responseArray = Array.isArray(responses) ? responses : [responses];
+
+  if (responseArray.length === 0) {
+    return { success: true, pulled: [], failed: [] };
+  }
+
+  await ensureRegistryDirectories();
+
+  const context = await createContext(options);
+  const httpClient = context.httpClient;
+
+  const downloads = aggregateRecursiveDownloads(responseArray);
+  const pulled: BatchDownloadItemResult[] = [];
+  const failed: BatchDownloadItemResult[] = [];
+  const warnings: string[] = [];
+
+  const tasks = downloads.map(async (download) => {
+    const identifier = download.name;
+
+    let parsedName: { name: string; version: string };
+
+    try {
+      parsedName = parseDownloadName(identifier);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Skipping download '${identifier}': ${message}`);
+      failed.push({ name: identifier, version: '', downloadUrl: download.downloadUrl, success: false, error: message });
+      return;
+    }
+
+    const { name, version } = parsedName;
+
+    try {
+      if (options.filter && !options.filter(name, version, download)) {
+        return;
+      }
+
+      if (!download.downloadUrl) {
+        const warning = `Download URL missing for ${identifier}`;
+        logger.warn(warning);
+        warnings.push(warning);
+        failed.push({ name, version, downloadUrl: download.downloadUrl, success: false, error: 'download-url-missing' });
+        return;
+      }
+
+      if (options.dryRun) {
+        pulled.push({ name, version, downloadUrl: download.downloadUrl, success: true });
+        return;
+      }
+
+      const tarballBuffer = await downloadFormulaTarball(httpClient, download.downloadUrl);
+      const extracted = await extractFormulaFromTarball(tarballBuffer);
+      const metadata = buildFormulaMetadata(extracted, name, version);
+
+      await formulaManager.saveFormula({ metadata, files: extracted.files });
+
+      pulled.push({ name, version, downloadUrl: download.downloadUrl, success: true });
+    } catch (error) {
+      logger.debug('Batch download failed', { identifier, error });
+      failed.push({
+        name,
+        version,
+        downloadUrl: download.downloadUrl,
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  await Promise.all(tasks);
+
+  return {
+    success: failed.length === 0,
+    pulled,
+    failed,
+    warnings: warnings.length > 0 ? warnings : undefined
+  };
+}
+
+function buildFormulaMetadata(
+  extracted: ExtractedFormula,
+  fallbackName: string,
+  fallbackVersion: string
+): FormulaYml {
+  const formulaFile = extracted.files.find(file => file.path === 'formula.yml');
+
+  if (formulaFile) {
+    try {
+      const parsed = yaml.load(formulaFile.content) as FormulaYml | undefined;
+
+      if (parsed && typeof parsed === 'object' && parsed.name && parsed.version) {
+        return parsed;
+      }
+
+      logger.debug('Parsed formula.yml missing required fields, falling back to inferred metadata', {
+        fallbackName,
+        fallbackVersion
+      });
+    } catch (error) {
+      logger.debug('Failed to parse formula.yml from extracted tarball', {
+        fallbackName,
+        fallbackVersion,
+        error
+      });
+    }
+  }
+
+  return {
+    name: fallbackName,
+    version: fallbackVersion,
+  } as FormulaYml;
+}
 
 export async function fetchRemoteFormulaMetadata(
   name: string,

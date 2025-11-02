@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
+import type { PullFormulaDownload } from '../types/api.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
 import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
 import { displayDependencyTree } from '../core/dependency-resolver.js';
@@ -16,7 +17,6 @@ import {
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import { resolvePlatforms } from '../core/install/platform-resolution.js';
 import {
-  handleAvailabilityOutcome,
   prepareInstallEnvironment,
   resolveDependenciesForInstall,
   processConflictResolution,
@@ -43,16 +43,15 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formulaManager } from '../core/formula.js';
-import { fetchRemoteFormulaMetadata, pullFormulaFromRemote } from '../core/remote-pull.js';
-import type { RemotePullFailure } from '../core/remote-pull.js';
+import {
+  fetchRemoteFormulaMetadata,
+  pullDownloadsBatchFromRemote,
+  aggregateRecursiveDownloads,
+  parseDownloadName,
+  type RemoteBatchPullResult,
+} from '../core/remote-pull.js';
+import type { RemotePullFailure, RemoteFormulaMetadataSuccess } from '../core/remote-pull.js';
 import { Spinner } from '../utils/spinner.js';
-
-type AvailabilityStatus = 'local' | 'pulled' | 'missing' | 'not-found' | 'failed';
-
-interface AvailabilityResult {
-  status: AvailabilityStatus;
-  message?: string;
-}
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -122,40 +121,14 @@ async function installAllFormulasCommand(
     console.log(`  • ${skippedRootFormulas.length} formulas skipped (matched root formula)`);
   }
   console.log('');
-  
-  const availabilityStates = await Promise.all(
-    formulasToInstall.map(formula =>
-      ensureFormulaAvailable(formula.name, formula.version, { dryRun: !!options.dryRun, forceRemote: !!options.remote })
-    )
-  );
 
   // Install formulas sequentially to avoid conflicts
   let totalInstalled = 0;
   let totalSkipped = 0;
   const results: Array<{ name: string; success: boolean; error?: string }> = [];
+  const aggregateWarnings = new Set<string>();
   
-  for (let index = 0; index < formulasToInstall.length; index++) {
-    const formula = formulasToInstall[index];
-    const availability = availabilityStates[index];
-
-    if (availability.status === 'not-found') {
-      totalSkipped++;
-      results.push({ name: formula.name, success: false, error: availability.message || 'Formula not found in remote registry' });
-      continue;
-    }
-
-    if (availability.status === 'failed') {
-      totalSkipped++;
-      results.push({ name: formula.name, success: false, error: availability.message || 'Failed to prepare formula for installation' });
-      continue;
-    }
-
-    if (availability.status === 'missing') {
-      console.log(`🛠️  Dry run: skipping installation for ${formatFormulaLabel(formula.name, formula.version)} (formula not pulled)`);
-      results.push({ name: formula.name, success: true });
-      continue;
-    }
-
+  for (const formula of formulasToInstall) {
     try {
       const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
       console.log(`\n🔧 Installing ${formula.isDev ? '[dev] ' : ''}${label}...`);
@@ -165,14 +138,17 @@ async function installAllFormulasCommand(
         formula.name,
         targetDir,
         installOptions,
-        formula.version,
-        availability
+        formula.version
       );
       
       if (result.success) {
         totalInstalled++;
         results.push({ name: formula.name, success: true });
         console.log(`✓ Successfully installed ${formula.name}`);
+
+        if (result.warnings && result.warnings.length > 0) {
+          result.warnings.forEach(warning => aggregateWarnings.add(warning));
+        }
       } else {
         totalSkipped++;
         results.push({ name: formula.name, success: false, error: result.error });
@@ -189,6 +165,13 @@ async function installAllFormulasCommand(
   }
   
   displayInstallationSummary(totalInstalled, totalSkipped, formulasToInstall.length, results);
+
+  if (aggregateWarnings.size > 0) {
+    console.log('\n⚠️  Warnings during installation:');
+    aggregateWarnings.forEach(warning => {
+      console.log(`  • ${warning}`);
+    });
+  }
   
   const allSuccessful = totalSkipped === 0;
   
@@ -272,129 +255,96 @@ function formatFormulaLabel(formulaName: string, version?: string): string {
   return version ? `${formulaName}@${version}` : formulaName;
 }
 
-async function ensureFormulaAvailable(
-  formulaName: string,
-  version: string | undefined,
-  options: { dryRun: boolean; forceRemote?: boolean }
-): Promise<AvailabilityResult> {
-  const label = formatFormulaLabel(formulaName, version);
+function createDownloadKey(name: string, version: string): string {
+  return `${name}@${version}`;
+}
 
-  try {
-    // Skip local checks if forceRemote is enabled
-    if (!options.forceRemote) {
-      if (version) {
-        if (await hasFormulaVersion(formulaName, version)) {
-          console.log(`✓ Using local ${label}`);
-          return { status: 'local' };
-        }
-      } else if (await formulaManager.formulaExists(formulaName)) {
-        console.log(`✓ Using local ${label}`);
-        return { status: 'local' };
-      }
-    } else {
-      // When forceRemote is enabled, still check if version exists locally and prompt for confirmation
-      let localVersionExists = false;
-      if (version) {
-        localVersionExists = await hasFormulaVersion(formulaName, version);
-      } else {
-        localVersionExists = await formulaManager.formulaExists(formulaName);
-      }
+async function computeMissingDownloadKeys(downloads: PullFormulaDownload[]): Promise<Set<string>> {
+  const missingKeys = new Set<string>();
 
-      if (localVersionExists) {
-        console.log(`⚠️  Version '${version || 'latest'}' of formula '${formulaName}' already exists locally`);
-        console.log('');
-
-        const shouldProceed = await promptOverwriteConfirmation(formulaName, version || 'latest');
-        if (!shouldProceed) {
-          throw new UserCancellationError('User declined to overwrite existing formula version');
-        }
-        console.log('');
-      }
+  for (const download of downloads) {
+    if (!download?.name) {
+      continue;
     }
 
-    const metadataResult = await fetchRemoteFormulaMetadata(formulaName, version);
-    if (!metadataResult.success) {
-      return mapFailureToAvailability(label, metadataResult);
-    }
-
-    const inaccessibleDownloads = (metadataResult.response.downloads ?? []).filter(download => !download.downloadUrl);
-    if (inaccessibleDownloads.length > 0) {
-      console.log(`⚠️  Skipping ${inaccessibleDownloads.length} downloads:`);
-      inaccessibleDownloads.forEach(download => {
-        console.log(`  • ${download.name}: not found or insufficient permissions`);
-      });
-      console.log('');
-    }
-
-    if (options.dryRun) {
-      const action = options.forceRemote ? 'pull' : 'pull';
-      console.log(`↪ Would ${action} ${label} from remote`);
-      return { status: 'missing', message: `Dry run: would ${action} ${label}` };
-    }
-
-    const pullSpinner = new Spinner(`Pulling ${label} from remote registry...`);
-    pullSpinner.start();
-    
-    let pullResult;
     try {
-      pullResult = await pullFormulaFromRemote(formulaName, version, {
-        preFetchedResponse: metadataResult.response,
-        httpClient: metadataResult.context.httpClient,
-        profile: metadataResult.context.profile,
-        recursive: true, // Installations are always recursive
-      });
-      pullSpinner.stop();
+      const { name, version } = parseDownloadName(download.name);
+      if (!version) {
+        continue;
+      }
+
+      const existsLocally = await hasFormulaVersion(name, version);
+      if (!existsLocally) {
+        missingKeys.add(createDownloadKey(name, version));
+      }
     } catch (error) {
-      pullSpinner.stop();
-      throw error;
+      logger.debug('Skipping download due to invalid name', { download: download.name, error });
+    }
+  }
+
+  return missingKeys;
+}
+
+function recordBatchOutcome(
+  label: string,
+  result: RemoteBatchPullResult,
+  warnings: string[],
+  dryRun: boolean
+): void {
+  if (result.warnings) {
+    warnings.push(...result.warnings);
+  }
+
+  const successful = result.pulled.map(item => createDownloadKey(item.name, item.version));
+  const failed = result.failed.map(item => ({
+    key: createDownloadKey(item.name, item.version),
+    error: item.error ?? 'Unknown error'
+  }));
+
+  if (dryRun) {
+    if (successful.length > 0) {
+      console.log(`↪ Would ${label}: ${successful.join(', ')}`);
     }
 
-    if (pullResult.success) {
-      const resolvedLabel = formatFormulaLabel(pullResult.name, pullResult.version);
-      console.log(`✓ Pulled ${resolvedLabel} from remote registry`);
-      return { status: 'pulled' };
+    if (failed.length > 0) {
+      for (const failure of failed) {
+        const message = `Dry run: would fail to ${label} ${failure.key}: ${failure.error}`;
+        console.log(`⚠️  ${message}`);
+        warnings.push(message);
+      }
     }
 
-    return mapFailureToAvailability(label, pullResult);
-  } catch (error) {
-    if (error instanceof UserCancellationError) {
-      throw error; // Re-throw to allow clean exit
+    return;
+  }
+
+  if (successful.length > 0) {
+    console.log(`✓ ${label}: ${successful.length}`);
+      for (const key of successful) {
+        console.log(`   ├── ${key}`);
+      }
+  }
+
+  if (failed.length > 0) {
+    for (const failure of failed) {
+      const message = `Failed to ${label} ${failure.key}: ${failure.error}`;
+      console.log(`⚠️  ${message}`);
+      warnings.push(message);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(`❌ Unexpected error ensuring ${label}: ${message}`);
-    return { status: 'failed', message };
   }
 }
 
-function mapFailureToAvailability(label: string, failure: RemotePullFailure): AvailabilityResult {
+function describeRemoteFailure(label: string, failure: RemotePullFailure): string {
   switch (failure.reason) {
-    case 'not-found': {
-      const message = `Formula '${label}' not found in remote registry`;
-      console.log(`❌ ${message}`);
-      return { status: 'not-found', message };
-    }
-    case 'access-denied': {
-      const message = failure.message || `Access denied pulling ${label}`;
-      console.log(`❌ ${message}`);
-      console.log('   Use g0 configure to authenticate or check permissions.');
-      return { status: 'failed', message };
-    }
-    case 'network': {
-      const message = failure.message || `Network error pulling ${label}`;
-      console.log(`❌ ${message}`);
-      console.log('   Check your internet connection and try again.');
-      return { status: 'failed', message };
-    }
-    case 'integrity': {
-      const message = failure.message || `Integrity check failed pulling ${label}`;
-      console.log(`❌ ${message}`);
-      return { status: 'failed', message };
-    }
-    default: {
-      const message = failure.message || `Failed to pull ${label}`;
-      console.log(`❌ ${message}`);
-      return { status: 'failed', message };
-    }
+    case 'not-found':
+      return `Formula '${label}' not found in remote registry`;
+    case 'access-denied':
+      return failure.message || `Access denied pulling ${label}`;
+    case 'network':
+      return failure.message || `Network error pulling ${label}`;
+    case 'integrity':
+      return failure.message || `Integrity check failed pulling ${label}`;
+    default:
+      return failure.message || `Failed to pull ${label}`;
   }
 }
 
@@ -410,8 +360,7 @@ async function installFormulaCommand(
   formulaName: string,
   targetDir: string,
   options: InstallOptions,
-  version?: string,
-  availabilityHint?: AvailabilityResult
+  version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
@@ -430,21 +379,33 @@ async function installFormulaCommand(
 
   const dryRun = !!options.dryRun;
   const forceRemote = !!options.remote;
-  const availability = availabilityHint ?? await ensureFormulaAvailable(formulaName, version, { dryRun, forceRemote });
+  const warnings: string[] = [];
 
-  const availabilityResult = handleAvailabilityOutcome(availability, formulaName, version, cwd, targetDir);
-  if (availabilityResult) {
-    return availabilityResult;
-  }
+  const mainFormulaAvailableLocally = version
+    ? await hasFormulaVersion(formulaName, version)
+    : await formulaManager.formulaExists(formulaName);
+
+  const scenario = forceRemote
+    ? 'force-remote'
+    : mainFormulaAvailableLocally
+      ? 'local-primary'
+      : 'remote-primary';
 
   const { specifiedPlatforms } = await prepareInstallEnvironment(cwd, options);
 
-  let dependencyResult: DependencyResolutionResult;
-  try {
-    dependencyResult = await resolveDependenciesForInstall(formulaName, cwd, version, options);
+  let resolvedFormulas: ResolvedFormula[] = [];
+  let missingFormulas: string[] = [];
+
+  const resolveDependenciesOutcome = async (): Promise<
+    | { success: true; data: DependencyResolutionResult }
+    | { success: false; commandResult: CommandResult }
+  > => {
+    try {
+      const data = await resolveDependenciesForInstall(formulaName, cwd, version, options);
+      return { success: true, data };
   } catch (error) {
     if (error instanceof VersionResolutionAbortError) {
-      return { success: false, error: error.message };
+        return { success: false, commandResult: { success: false, error: error.message } };
     }
 
     if (
@@ -455,56 +416,215 @@ async function installFormulaCommand(
       ))
     ) {
       console.log('❌ Formula not found');
-      return { success: false, error: 'Formula not found' };
+        return { success: false, commandResult: { success: false, error: 'Formula not found' } };
     }
 
     throw error;
   }
+  };
 
-  let { resolvedFormulas, missingFormulas } = dependencyResult;
+  if (scenario === 'local-primary') {
+    const initialResolution = await resolveDependenciesOutcome();
+    if (!initialResolution.success) {
+      return initialResolution.commandResult;
+    }
 
-  if (!options.dryRun && missingFormulas.length > 0) {
-    const pullSpinner = new Spinner(`Pulling ${missingFormulas.length} missing formula(s) from remote...`);
-    pullSpinner.start();
+    resolvedFormulas = initialResolution.data.resolvedFormulas;
+    missingFormulas = initialResolution.data.missingFormulas;
 
-    const pullResults = await Promise.allSettled(
-      missingFormulas.map(async (missingName) => {
-        try {
-          const { requiredVersion } = await getVersionInfoFromDependencyTree(missingName, resolvedFormulas);
-          const pullResult = await pullFormulaFromRemote(missingName, requiredVersion, {
-            recursive: true,
-          });
+    if (missingFormulas.length > 0) {
+      const uniqueMissing = Array.from(new Set(missingFormulas));
+      const metadataResults: RemoteFormulaMetadataSuccess[] = [];
 
-          return { name: missingName, requiredVersion, result: pullResult };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return { name: missingName, requiredVersion: undefined, result: { success: false, message } };
+      const metadataSpinner = dryRun ? null : new Spinner(`Fetching metadata for ${uniqueMissing.length} missing formula(s)...`);
+      if (metadataSpinner) metadataSpinner.start();
+
+      try {
+        for (const missingName of uniqueMissing) {
+          let requiredVersion: string | undefined;
+          try {
+            const versionInfo = await getVersionInfoFromDependencyTree(missingName, resolvedFormulas);
+            requiredVersion = versionInfo.requiredVersion;
+          } catch (error) {
+            logger.debug('Failed to determine required version for missing dependency', { missingName, error });
+          }
+
+          const metadataResult = await fetchRemoteFormulaMetadata(missingName, requiredVersion, { recursive: true });
+          if (!metadataResult.success) {
+            const message = describeRemoteFailure(formatFormulaLabel(missingName, requiredVersion), metadataResult);
+            console.log(`⚠️  ${message}`);
+            warnings.push(message);
+            continue;
+          }
+
+          metadataResults.push(metadataResult);
         }
-      })
-    );
+      } finally {
+        if (metadataSpinner) metadataSpinner.stop();
+      }
 
-    pullSpinner.stop();
+      if (metadataResults.length > 0) {
+        const keysToDownload = new Set<string>();
 
-    // Now print results after spinner is stopped
-    for (const settled of pullResults) {
-      if (settled.status === 'fulfilled') {
-        const { name, requiredVersion, result } = settled.value;
+        for (const metadata of metadataResults) {
+          const aggregated = aggregateRecursiveDownloads([metadata.response]);
+          const missingKeys = await computeMissingDownloadKeys(aggregated);
+          missingKeys.forEach(key => keysToDownload.add(key));
+        }
 
-        if (result.success && 'name' in result && 'version' in result) {
-          const pulledLabel = formatFormulaLabel(result.name, result.version);
-          console.log(`✓ Pulled ${pulledLabel} from remote registry`);
+        if (keysToDownload.size > 0 || dryRun) {
+          const spinner = dryRun ? null : new Spinner(`Pulling ${keysToDownload.size} missing dependency formula(s) from remote...`);
+          if (spinner) spinner.start();
+
+          const batchResults: RemoteBatchPullResult[] = [];
+          try {
+            const remainingKeys = new Set(keysToDownload);
+
+            for (const metadata of metadataResults) {
+              if (!dryRun && remainingKeys.size === 0) {
+                break;
+              }
+
+              const batchResult = await pullDownloadsBatchFromRemote(metadata.response, {
+                httpClient: metadata.context.httpClient,
+                profile: metadata.context.profile,
+                dryRun,
+                filter: (dependencyName, dependencyVersion) => {
+                  const key = createDownloadKey(dependencyName, dependencyVersion);
+                  if (!keysToDownload.has(key)) {
+                    return false;
+                  }
+
+                  if (dryRun) {
+                    return true;
+                  }
+
+                  if (!remainingKeys.has(key)) {
+                    return false;
+                  }
+
+                  remainingKeys.delete(key);
+                  return true;
+                }
+              });
+
+              batchResults.push(batchResult);
+            }
+          } finally {
+            if (spinner) spinner.stop();
+          }
+
+          for (const batchResult of batchResults) {
+            recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
+          }
+        }
+
+        const refreshedResolution = await resolveDependenciesOutcome();
+        if (!refreshedResolution.success) {
+          return refreshedResolution.commandResult;
+        }
+
+        resolvedFormulas = refreshedResolution.data.resolvedFormulas;
+        missingFormulas = refreshedResolution.data.missingFormulas;
+      }
+    }
+  } else {
+    const metadataSpinner = dryRun ? null : new Spinner('Fetching formula metadata...');
+    if (metadataSpinner) metadataSpinner.start();
+
+    let metadataResult;
+    try {
+      metadataResult = await fetchRemoteFormulaMetadata(formulaName, version, { recursive: true });
+    } finally {
+      if (metadataSpinner) metadataSpinner.stop();
+    }
+
+    if (!metadataResult.success) {
+      const message = describeRemoteFailure(formatFormulaLabel(formulaName, version), metadataResult);
+      console.log(`❌ ${message}`);
+      return { success: false, error: metadataResult.reason === 'not-found' ? 'Formula not found' : message };
+    }
+
+    const aggregatedDownloads = aggregateRecursiveDownloads([metadataResult.response]);
+    const downloadKeys = new Set<string>();
+
+    for (const download of aggregatedDownloads) {
+      try {
+        const { name: downloadName, version: downloadVersion } = parseDownloadName(download.name);
+        const key = createDownloadKey(downloadName, downloadVersion);
+        const existsLocally = await hasFormulaVersion(downloadName, downloadVersion);
+
+        if (forceRemote) {
+          let shouldDownload = true;
+          if (existsLocally) {
+            if (dryRun) {
+              console.log(`↪ Would prompt to overwrite ${key}`);
         } else {
-          const versionLabel = requiredVersion ? `@${requiredVersion}` : '';
-          console.log(`⚠️  Failed to pull ${name}${versionLabel}: ${result.message}`);
+              console.log(`⚠️  ${key} already exists locally`);
+              const shouldOverwrite = await promptOverwriteConfirmation(downloadName, downloadVersion);
+              if (!shouldOverwrite) {
+                const skipMessage = `Skipped overwrite for ${key}`;
+                warnings.push(skipMessage);
+                shouldDownload = false;
+              }
+            }
+          }
+
+          if (shouldDownload) {
+            downloadKeys.add(key);
+          }
+        } else if (!existsLocally) {
+          downloadKeys.add(key);
         }
-      } else {
-        console.log(`⚠️  Failed to pull ${settled.reason?.name || 'unknown formula'}: ${settled.reason}`);
+      } catch (error) {
+        logger.debug('Skipping download due to invalid identifier', { download: download.name, error });
       }
     }
 
-    const refreshedDependencies = await resolveDependenciesForInstall(formulaName, cwd, version, options);
-    resolvedFormulas = refreshedDependencies.resolvedFormulas;
-    missingFormulas = refreshedDependencies.missingFormulas;
+    if (downloadKeys.size > 0 || dryRun) {
+      const spinner = dryRun ? null : new Spinner(`Pulling ${downloadKeys.size} formula(s) from remote registry...`);
+      if (spinner) spinner.start();
+
+      let batchResult: RemoteBatchPullResult;
+      try {
+        batchResult = await pullDownloadsBatchFromRemote(metadataResult.response, {
+          httpClient: metadataResult.context.httpClient,
+          profile: metadataResult.context.profile,
+          dryRun,
+          filter: (dependencyName, dependencyVersion) => {
+            const key = createDownloadKey(dependencyName, dependencyVersion);
+            if (!downloadKeys.has(key)) {
+              return false;
+            }
+
+            if (dryRun) {
+              return true;
+            }
+
+            downloadKeys.delete(key);
+            return true;
+          }
+        });
+      } finally {
+        if (spinner) spinner.stop();
+      }
+
+      recordBatchOutcome('Pulled from remote', batchResult, warnings, dryRun);
+    }
+
+    const finalResolution = await resolveDependenciesOutcome();
+    if (!finalResolution.success) {
+      return finalResolution.commandResult;
+    }
+
+    resolvedFormulas = finalResolution.data.resolvedFormulas;
+    missingFormulas = finalResolution.data.missingFormulas;
+  }
+
+  if (missingFormulas.length > 0) {
+    const missingSummary = `Missing formulas after pull: ${Array.from(new Set(missingFormulas)).join(', ')}`;
+    console.log(`⚠️  ${missingSummary}`);
+    warnings.push(missingSummary);
   }
 
   const conflictProcessing = await processConflictResolution(resolvedFormulas, options);
@@ -579,7 +699,8 @@ async function installFormulaCommand(
       installed: installationOutcome.installedCount,
       skipped: installationOutcome.skippedCount,
       totalGroundzeroFiles: installationOutcome.totalGroundzeroFiles
-    }
+    },
+    warnings: warnings.length > 0 ? Array.from(new Set(warnings)) : undefined
   };
 }
 
