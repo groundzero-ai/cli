@@ -9,7 +9,7 @@ import { extractFormulaFromTarball, verifyTarballIntegrity, ExtractedFormula } f
 import { logger } from '../utils/logger.js';
 import { ConfigError, ValidationError } from '../utils/errors.js';
 
-interface RemotePullContext {
+export interface RemotePullContext {
   httpClient: HttpClient;
   profile: string;
   registryUrl: string;
