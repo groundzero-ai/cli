@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
-import type { PullFormulaDownload } from '../types/api.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
 import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
 import { displayDependencyTree } from '../core/dependency-resolver.js';
@@ -8,7 +7,6 @@ import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
 import {
-  CONFLICT_RESOLUTION,
   type Platform,
 } from '../constants/index.js';
 import {
@@ -37,21 +35,22 @@ import {
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
-import { installAiFiles } from '../utils/install-orchestrator.js';
-import { extractFormulasFromConfig, getVersionInfoFromDependencyTree } from '../utils/install-helpers.js';
+import { extractFormulasFromConfig } from '../utils/install-helpers.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
-import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formulaManager } from '../core/formula.js';
 import {
   fetchRemoteFormulaMetadata,
   pullDownloadsBatchFromRemote,
   aggregateRecursiveDownloads,
-  parseDownloadName,
   type RemoteBatchPullResult,
 } from '../core/remote-pull.js';
-import type { RemotePullFailure, RemoteFormulaMetadataSuccess } from '../core/remote-pull.js';
 import { Spinner } from '../utils/spinner.js';
+import { createDownloadKey, computeMissingDownloadKeys } from '../core/install/download-keys.js';
+import { fetchMissingDependencyMetadata, pullMissingDependencies, planRemoteDownloadsForFormula } from '../core/install/remote-flow.js';
+import { recordBatchOutcome, describeRemoteFailure } from '../core/install/remote-reporting.js';
+import { handleDryRunMode } from '../core/install/dry-run.js';
+import { InstallScenario } from '../core/install/types.js';
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -187,166 +186,6 @@ async function installAllFormulasCommand(
   };
 }
 
-/**
- * Handle dry run mode for formula installation
- */
-async function handleDryRunMode(
-  resolvedFormulas: ResolvedFormula[],
-  formulaName: string,
-  targetDir: string,
-  options: InstallOptions,
-  formulaYmlExists: boolean
-): Promise<CommandResult> {
-  console.log(`✓ Dry run - showing what would be installed:\n`);
-  
-  const mainFormula = resolvedFormulas.find(f => f.isRoot);
-  if (mainFormula) {
-    console.log(`Formula: ${mainFormula.name} v${mainFormula.version}`);
-    if (mainFormula.formula.metadata.description) {
-      console.log(`Description: ${mainFormula.formula.metadata.description}`);
-    }
-    console.log('');
-  }
-  
-  // Show what would be installed to ai
-  for (const resolved of resolvedFormulas) {
-    if (resolved.conflictResolution === CONFLICT_RESOLUTION.SKIPPED) {
-      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (user would decline overwrite)`);
-      continue;
-    }
-    
-    if (resolved.conflictResolution === CONFLICT_RESOLUTION.KEPT) {
-      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
-      continue;
-    }
-    
-    const dryRunResult = await installAiFiles(resolved.name, targetDir, options, resolved.version, true);
-    
-    if (dryRunResult.skipped) {
-      console.log(`✓ Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);
-      continue;
-    }
-    
-    console.log(`✓ Would install to ai${targetDir !== '.' ? '/' + targetDir : ''}: ${dryRunResult.installedCount} files`);
-    
-    if (dryRunResult.overwritten) {
-      console.log(`  ⚠️  Would overwrite existing directory`);
-    }
-  }
-  
-  // Show formula.yml update
-  if (formulaYmlExists) {
-    console.log(`\n✓ Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
-  } else {
-    console.log('\nNo .groundzero/formula.yml found - skipping dependency addition');
-  }
-  
-  return {
-    success: true,
-    data: { 
-      dryRun: true, 
-      resolvedFormulas,
-      totalFormulas: resolvedFormulas.length
-    }
-  };
-}
-
-function formatFormulaLabel(formulaName: string, version?: string): string {
-  return version ? `${formulaName}@${version}` : formulaName;
-}
-
-function createDownloadKey(name: string, version: string): string {
-  return `${name}@${version}`;
-}
-
-async function computeMissingDownloadKeys(downloads: PullFormulaDownload[]): Promise<Set<string>> {
-  const missingKeys = new Set<string>();
-
-  for (const download of downloads) {
-    if (!download?.name) {
-      continue;
-    }
-
-    try {
-      const { name, version } = parseDownloadName(download.name);
-      if (!version) {
-        continue;
-      }
-
-      const existsLocally = await hasFormulaVersion(name, version);
-      if (!existsLocally) {
-        missingKeys.add(createDownloadKey(name, version));
-      }
-    } catch (error) {
-      logger.debug('Skipping download due to invalid name', { download: download.name, error });
-    }
-  }
-
-  return missingKeys;
-}
-
-function recordBatchOutcome(
-  label: string,
-  result: RemoteBatchPullResult,
-  warnings: string[],
-  dryRun: boolean
-): void {
-  if (result.warnings) {
-    warnings.push(...result.warnings);
-  }
-
-  const successful = result.pulled.map(item => createDownloadKey(item.name, item.version));
-  const failed = result.failed.map(item => ({
-    key: createDownloadKey(item.name, item.version),
-    error: item.error ?? 'Unknown error'
-  }));
-
-  if (dryRun) {
-    if (successful.length > 0) {
-      console.log(`↪ Would ${label}: ${successful.join(', ')}`);
-    }
-
-    if (failed.length > 0) {
-      for (const failure of failed) {
-        const message = `Dry run: would fail to ${label} ${failure.key}: ${failure.error}`;
-        console.log(`⚠️  ${message}`);
-        warnings.push(message);
-      }
-    }
-
-    return;
-  }
-
-  if (successful.length > 0) {
-    console.log(`✓ ${label}: ${successful.length}`);
-      for (const key of successful) {
-        console.log(`   ├── ${key}`);
-      }
-  }
-
-  if (failed.length > 0) {
-    for (const failure of failed) {
-      const message = `Failed to ${label} ${failure.key}: ${failure.error}`;
-      console.log(`⚠️  ${message}`);
-      warnings.push(message);
-    }
-  }
-}
-
-function describeRemoteFailure(label: string, failure: RemotePullFailure): string {
-  switch (failure.reason) {
-    case 'not-found':
-      return `Formula '${label}' not found in remote registry`;
-    case 'access-denied':
-      return failure.message || `Access denied pulling ${label}`;
-    case 'network':
-      return failure.message || `Network error pulling ${label}`;
-    case 'integrity':
-      return failure.message || `Integrity check failed pulling ${label}`;
-    default:
-      return failure.message || `Failed to pull ${label}`;
-  }
-}
 
 /**
  * Install formula command implementation with recursive dependency resolution
@@ -364,6 +203,7 @@ async function installFormulaCommand(
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
+  // 1) Validate root formula and early return
   if (await isRootFormula(cwd, formulaName)) {
     console.log(`⚠️  Cannot install ${formulaName} - it matches your project's root formula name`);
     console.log(`   This would create a circular dependency.`);
@@ -385,12 +225,14 @@ async function installFormulaCommand(
     ? await hasFormulaVersion(formulaName, version)
     : await formulaManager.formulaExists(formulaName);
 
-  const scenario = forceRemote
+  // 2) Determine install scenario
+  const scenario: InstallScenario = forceRemote
     ? 'force-remote'
     : mainFormulaAvailableLocally
       ? 'local-primary'
       : 'remote-primary';
 
+  // 3) Prepare env via prepareInstallEnvironment
   const { specifiedPlatforms } = await prepareInstallEnvironment(cwd, options);
 
   let resolvedFormulas: ResolvedFormula[] = [];
@@ -403,26 +245,28 @@ async function installFormulaCommand(
     try {
       const data = await resolveDependenciesForInstall(formulaName, cwd, version, options);
       return { success: true, data };
-  } catch (error) {
-    if (error instanceof VersionResolutionAbortError) {
+    } catch (error) {
+      if (error instanceof VersionResolutionAbortError) {
         return { success: false, commandResult: { success: false, error: error.message } };
-    }
+      }
 
-    if (
-      error instanceof FormulaNotFoundError ||
-      (error instanceof Error && (
-        error.message.includes('not available in local registry') ||
-        (error.message.includes('Formula') && error.message.includes('not found'))
-      ))
-    ) {
-      console.log('❌ Formula not found');
+      if (
+        error instanceof FormulaNotFoundError ||
+        (error instanceof Error && (
+          error.message.includes('not available in local registry') ||
+          (error.message.includes('Formula') && error.message.includes('not found'))
+        ))
+      ) {
+        console.log('❌ Formula not found');
         return { success: false, commandResult: { success: false, error: 'Formula not found' } };
-    }
+      }
 
-    throw error;
-  }
+      throw error;
+    }
   };
 
+  // 4) Resolve deps via resolveDependenciesForInstall (wrapped helper retained locally)
+  // 5) If scenario is local-primary and there are missing deps
   if (scenario === 'local-primary') {
     const initialResolution = await resolveDependenciesOutcome();
     if (!initialResolution.success) {
@@ -433,92 +277,26 @@ async function installFormulaCommand(
     missingFormulas = initialResolution.data.missingFormulas;
 
     if (missingFormulas.length > 0) {
-      const uniqueMissing = Array.from(new Set(missingFormulas));
-      const metadataResults: RemoteFormulaMetadataSuccess[] = [];
 
-      const metadataSpinner = dryRun ? null : new Spinner(`Fetching metadata for ${uniqueMissing.length} missing formula(s)...`);
-      if (metadataSpinner) metadataSpinner.start();
-
-      try {
-        for (const missingName of uniqueMissing) {
-          let requiredVersion: string | undefined;
-          try {
-            const versionInfo = await getVersionInfoFromDependencyTree(missingName, resolvedFormulas);
-            requiredVersion = versionInfo.requiredVersion;
-          } catch (error) {
-            logger.debug('Failed to determine required version for missing dependency', { missingName, error });
-          }
-
-          const metadataResult = await fetchRemoteFormulaMetadata(missingName, requiredVersion, { recursive: true });
-          if (!metadataResult.success) {
-            const message = describeRemoteFailure(formatFormulaLabel(missingName, requiredVersion), metadataResult);
-            console.log(`⚠️  ${message}`);
-            warnings.push(message);
-            continue;
-          }
-
-          metadataResults.push(metadataResult);
-        }
-      } finally {
-        if (metadataSpinner) metadataSpinner.stop();
-      }
+      // Fetch metadata via fetchMissingDependencyMetadata
+      const metadataResults = await fetchMissingDependencyMetadata(missingFormulas, resolvedFormulas, { dryRun });
 
       if (metadataResults.length > 0) {
+        // Build keysToDownload with computeMissingDownloadKeys
         const keysToDownload = new Set<string>();
-
         for (const metadata of metadataResults) {
           const aggregated = aggregateRecursiveDownloads([metadata.response]);
           const missingKeys = await computeMissingDownloadKeys(aggregated);
-          missingKeys.forEach(key => keysToDownload.add(key));
+          missingKeys.forEach((key: string) => keysToDownload.add(key));
         }
 
-        if (keysToDownload.size > 0 || dryRun) {
-          const spinner = dryRun ? null : new Spinner(`Pulling ${keysToDownload.size} missing dependency formula(s) from remote...`);
-          if (spinner) spinner.start();
-
-          const batchResults: RemoteBatchPullResult[] = [];
-          try {
-            const remainingKeys = new Set(keysToDownload);
-
-            for (const metadata of metadataResults) {
-              if (!dryRun && remainingKeys.size === 0) {
-                break;
-              }
-
-              const batchResult = await pullDownloadsBatchFromRemote(metadata.response, {
-                httpClient: metadata.context.httpClient,
-                profile: metadata.context.profile,
-                dryRun,
-                filter: (dependencyName, dependencyVersion) => {
-                  const key = createDownloadKey(dependencyName, dependencyVersion);
-                  if (!keysToDownload.has(key)) {
-                    return false;
-                  }
-
-                  if (dryRun) {
-                    return true;
-                  }
-
-                  if (!remainingKeys.has(key)) {
-                    return false;
-                  }
-
-                  remainingKeys.delete(key);
-                  return true;
-                }
-              });
-
-              batchResults.push(batchResult);
-            }
-          } finally {
-            if (spinner) spinner.stop();
-          }
-
-          for (const batchResult of batchResults) {
-            recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
-          }
+        // Pull batches via pullMissingDependencies and log with recordBatchOutcome
+        const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, { dryRun });
+        for (const batchResult of batchResults) {
+          recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
         }
 
+        // Re-resolve deps
         const refreshedResolution = await resolveDependenciesOutcome();
         if (!refreshedResolution.success) {
           return refreshedResolution.commandResult;
@@ -529,6 +307,9 @@ async function installFormulaCommand(
       }
     }
   } else {
+    // 6) Else (remote-primary / force-remote)
+
+    // Fetch metadata for root
     const metadataSpinner = dryRun ? null : new Spinner('Fetching formula metadata...');
     if (metadataSpinner) metadataSpinner.start();
 
@@ -540,46 +321,14 @@ async function installFormulaCommand(
     }
 
     if (!metadataResult.success) {
-      const message = describeRemoteFailure(formatFormulaLabel(formulaName, version), metadataResult);
+      const message = describeRemoteFailure(version ? `${formulaName}@${version}` : formulaName, metadataResult);
       console.log(`❌ ${message}`);
       return { success: false, error: metadataResult.reason === 'not-found' ? 'Formula not found' : message };
     }
 
-    const aggregatedDownloads = aggregateRecursiveDownloads([metadataResult.response]);
-    const downloadKeys = new Set<string>();
-
-    for (const download of aggregatedDownloads) {
-      try {
-        const { name: downloadName, version: downloadVersion } = parseDownloadName(download.name);
-        const key = createDownloadKey(downloadName, downloadVersion);
-        const existsLocally = await hasFormulaVersion(downloadName, downloadVersion);
-
-        if (forceRemote) {
-          let shouldDownload = true;
-          if (existsLocally) {
-            if (dryRun) {
-              console.log(`↪ Would prompt to overwrite ${key}`);
-        } else {
-              console.log(`⚠️  ${key} already exists locally`);
-              const shouldOverwrite = await promptOverwriteConfirmation(downloadName, downloadVersion);
-              if (!shouldOverwrite) {
-                const skipMessage = `Skipped overwrite for ${key}`;
-                warnings.push(skipMessage);
-                shouldDownload = false;
-              }
-            }
-          }
-
-          if (shouldDownload) {
-            downloadKeys.add(key);
-          }
-        } else if (!existsLocally) {
-          downloadKeys.add(key);
-        }
-      } catch (error) {
-        logger.debug('Skipping download due to invalid identifier', { download: download.name, error });
-      }
-    }
+    // Decide which downloads to pull (respecting forceRemote, prompts, dryRun)
+    const { downloadKeys, warnings: planWarnings } = await planRemoteDownloadsForFormula(metadataResult, { forceRemote, dryRun });
+    warnings.push(...planWarnings);
 
     if (downloadKeys.size > 0 || dryRun) {
       const spinner = dryRun ? null : new Spinner(`Pulling ${downloadKeys.size} formula(s) from remote registry...`);
@@ -612,6 +361,7 @@ async function installFormulaCommand(
       recordBatchOutcome('Pulled from remote', batchResult, warnings, dryRun);
     }
 
+    // Resolve deps
     const finalResolution = await resolveDependenciesOutcome();
     if (!finalResolution.success) {
       return finalResolution.commandResult;
@@ -621,12 +371,14 @@ async function installFormulaCommand(
     missingFormulas = finalResolution.data.missingFormulas;
   }
 
+  // 7) Warn if still missing
   if (missingFormulas.length > 0) {
     const missingSummary = `Missing formulas after pull: ${Array.from(new Set(missingFormulas)).join(', ')}`;
     console.log(`⚠️  ${missingSummary}`);
     warnings.push(missingSummary);
   }
 
+  // 8) Process conflicts
   const conflictProcessing = await processConflictResolution(resolvedFormulas, options);
   if ('cancelled' in conflictProcessing) {
     console.log(`Installation cancelled by user`);
@@ -651,10 +403,12 @@ async function installFormulaCommand(
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   const formulaYmlExists = await exists(formulaYmlPath);
 
+  // 9) If dryRun, delegate to handleDryRunMode and return
   if (options.dryRun) {
     return await handleDryRunMode(finalResolvedFormulas, formulaName, targetDir, options, formulaYmlExists);
   }
 
+  // 10) Resolve platforms, create dirs, perform phases, write metadata, update formula.yml, display results, return
   const finalPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: true });
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 

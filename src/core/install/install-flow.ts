@@ -1,14 +1,13 @@
 import * as semver from 'semver';
-import { CommandResult, InstallOptions, FormulaYml } from '../../types/index.js';
+import { InstallOptions } from '../../types/index.js';
 import { ResolvedFormula } from '../dependency-resolver.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { createPlatformDirectories } from '../platforms.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../groundzero.js';
 import { resolveDependencies } from '../dependency-resolver.js';
 import { resolveDependenciesWithOverrides } from '../../utils/install-helpers.js';
-import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
-import { VersionConflictError, UserCancellationError, FormulaNotFoundError } from '../../utils/errors.js';
+import { VersionConflictError } from '../../utils/errors.js';
 import type { Platform } from '../../constants/index.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
 import { createBasicFormulaYml, addFormulaToYml } from '../../utils/formula-management.js';
