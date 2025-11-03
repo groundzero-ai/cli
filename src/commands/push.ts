@@ -189,9 +189,9 @@ async function pushFormulaCommand(
         console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for formula '${parsedName}'`);
         console.log('');
         console.log('💡 Try one of these options:');
-        console.log('  • Increment the version in your formula.yml');
-        console.log('  • Specify a version explicitly using formula@<version>');
-        console.log('  • Contact the registry administrator if you need to replace this version');
+        console.log('  • Increment version with command "g0 save <formula> stable"');
+        console.log('  • Update version with command "g0 save <formula>@<version>"');
+        console.log('  • Specify a version explicitly using <formula>@<version>');
         return { success: false, error: 'Version already exists' };
       }
       
