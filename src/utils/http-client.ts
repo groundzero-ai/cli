@@ -176,8 +176,9 @@ export class HttpClient {
     try {
       return await authManager.getAuthHeaders(this.authOptions);
     } catch (error) {
-      logger.error('Failed to get authentication headers', { error });
-      throw error;
+      // For public resources, allow requests without authentication
+      logger.debug('No authentication available, proceeding without auth headers', { error });
+      return {};
     }
   }
 
@@ -251,8 +252,8 @@ export class HttpClient {
  * Create an HTTP client instance for the configured registry
  */
 export async function createHttpClient(authOptions?: AuthOptions): Promise<HttpClient> {
-  const { registryUrl } = await authManager.validateAuth(authOptions);
-  
+  const registryUrl = authManager.getRegistryUrl();
+
   return new HttpClient({
     baseUrl: registryUrl,
     authOptions,

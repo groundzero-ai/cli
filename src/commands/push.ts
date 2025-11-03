@@ -102,13 +102,18 @@ async function pushFormulaCommand(
     }
     
     // Authenticate and create HTTP client
-    const httpClient = await createHttpClient({
+    const authOptions = {
       profile: options.profile,
       apiKey: options.apiKey
-    });
+    };
+
+    // Authentication required for push operation
+    await authManager.validateAuth(authOptions);
+    
+    const httpClient = await createHttpClient(authOptions);
     
     const registryUrl = authManager.getRegistryUrl();
-    const profile = authManager.getCurrentProfile({ profile: options.profile });
+    const profile = authManager.getCurrentProfile(authOptions);
     
     console.log(`✓ Pushing formula '${parsedName}' to remote registry...`);
     console.log(`✓ Version: ${versionToPush}`);

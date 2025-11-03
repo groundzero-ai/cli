@@ -14,20 +14,29 @@ class AuthManager {
   /**
    * Get API key following credential precedence:
    * 1. Command line options (--api-key)
-   * 2. Profile credentials file
-   * 3. Default profile
+   * 2. Profile credentials file (explicit profile, env var, or default)
+   * 
+   * If an explicit profile is requested via options.profile but doesn't exist
+   * or has no credentials, an error is thrown instead of falling back to default.
    */
   async getApiKey(options: AuthOptions = {}): Promise<string | null> {
     try {
       // 1. Command line API key override
-      if (options.apiKey) {
+      // Check if apiKey was explicitly provided (not undefined)
+      if (options.apiKey !== undefined) {
+        if (!options.apiKey || options.apiKey.trim() === '') {
+          throw new ConfigError(
+            'API key provided via --api-key is empty. Please provide a valid API key.'
+          );
+        }
         logger.debug('Using API key from command line options');
         return options.apiKey;
       }
 
       // 2. Profile-based authentication
       const profileName = options.profile || process.env.G0_PROFILE || 'default';
-      logger.debug(`Using profile: ${profileName}`);
+      const isExplicitProfile = !!options.profile; // Profile was explicitly requested
+      logger.debug(`Using profile: ${profileName}${isExplicitProfile ? ' (explicit)' : ''}`);
 
       const profile = await profileManager.getProfile(profileName);
       if (profile?.credentials?.api_key) {
@@ -35,7 +44,21 @@ class AuthManager {
         return profile.credentials.api_key;
       }
 
-      // 3. Try default profile if not already tried
+      // 3. If explicit profile was requested but doesn't exist or has no credentials, error
+      if (isExplicitProfile) {
+        if (!profile) {
+          throw new ConfigError(
+            `Profile '${profileName}' not found. Please configure it with "g0 configure --profile ${profileName}"`
+          );
+        }
+        if (!profile.credentials?.api_key) {
+          throw new ConfigError(
+            `Profile '${profileName}' has no API key configured. Please configure it with "g0 configure --profile ${profileName}"`
+          );
+        }
+      }
+
+      // 4. Try default profile if not already tried (only for non-explicit profiles)
       if (profileName !== 'default') {
         const defaultProfile = await profileManager.getProfile('default');
         if (defaultProfile?.credentials?.api_key) {
@@ -48,6 +71,9 @@ class AuthManager {
       return null;
     } catch (error) {
       logger.error('Failed to get API key', { error });
+      if (error instanceof ConfigError) {
+        throw error; // Re-throw ConfigError as-is
+      }
       throw new ConfigError(`Failed to get API key: ${error}`);
     }
   }
@@ -80,8 +106,13 @@ class AuthManager {
 
   /**
    * Get current profile name being used
+   * Returns 'api-key' when API key is provided directly via command line
    */
   getCurrentProfile(options: AuthOptions = {}): string {
+    // If API key is provided directly, it takes precedence over profile
+    if (options.apiKey !== undefined && options.apiKey) {
+      return '<api-key>';
+    }
     return options.profile || process.env.G0_PROFILE || 'default';
   }
 
