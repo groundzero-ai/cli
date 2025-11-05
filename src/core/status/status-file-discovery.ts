@@ -1,7 +1,7 @@
 import { join, dirname } from 'path';
-import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
-import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
+import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
 import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
 import { findMatchingIndexYmlDirsRecursive } from '../discovery/index-files-discovery.js';
@@ -18,7 +18,8 @@ export async function discoverFormulasForStatus(
   platforms: Record<string, {
     rules?: { found: number };
     commands?: { found: number };
-    agents?: { found: number }
+    agents?: { found: number };
+    skills?: { found: number }
   }>;
   rootFiles?: string[];
   anyPath?: string
@@ -29,7 +30,8 @@ export async function discoverFormulasForStatus(
     platforms: Record<string, {
       rules?: { found: number };
       commands?: { found: number };
-      agents?: { found: number }
+      agents?: { found: number };
+      skills?: { found: number }
     }>;
     rootFiles?: string[];
     anyPath?: string
@@ -131,8 +133,9 @@ async function discoverPlatformForFormulas(
     if (!(await exists(targetDir))) continue;
 
     for await (const fp of walkFiles(targetDir)) {
-      const allowedExts: string[] = ((subDef as any).readExts) || [FILE_PATTERNS.MD_FILES];
-      if (!allowedExts.some((ext) => fp.endsWith(ext))) continue;
+      const allowedExts: string[] = (subDef as any).readExts;
+      // If readExts is empty, include all files (don't filter by extension)
+      if (allowedExts.length > 0 && !allowedExts.some((ext) => fp.endsWith(ext))) continue;
 
       try {
         const content = await readTextFile(fp);
@@ -143,15 +146,10 @@ async function discoverPlatformForFormulas(
           const entry = result.get(formulaName)!;
           entry.platforms[platform] = entry.platforms[platform] || {};
 
-          if (subKey === UNIVERSAL_SUBDIRS.RULES) {
-            entry.platforms[platform].rules = entry.platforms[platform].rules || { found: 0 };
-            entry.platforms[platform].rules!.found++;
-          } else if (subKey === UNIVERSAL_SUBDIRS.COMMANDS) {
-            entry.platforms[platform].commands = entry.platforms[platform].commands || { found: 0 };
-            entry.platforms[platform].commands!.found++;
-          } else if (subKey === UNIVERSAL_SUBDIRS.AGENTS) {
-            entry.platforms[platform].agents = entry.platforms[platform].agents || { found: 0 };
-            entry.platforms[platform].agents!.found++;
+          if (isValidUniversalSubdir(subKey)) {
+            const propertyName = subKey as keyof typeof entry.platforms[string];
+            entry.platforms[platform][propertyName] = entry.platforms[platform][propertyName] || { found: 0 };
+            entry.platforms[platform][propertyName]!.found++;
           }
 
           if (!entry.anyPath) entry.anyPath = dirname(fp);

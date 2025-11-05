@@ -56,6 +56,7 @@ interface FormulaStatusInfo {
       rules?: { found: number };
       commands?: { found: number };
       agents?: { found: number };
+      skills?: { found: number };
     }>;
     rootFiles?: { found: number; paths: string[] };
   };

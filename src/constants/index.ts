@@ -76,7 +76,8 @@ export const FILE_PATTERNS = {
 export const UNIVERSAL_SUBDIRS = {
   RULES: 'rules',
   COMMANDS: 'commands',
-  AGENTS: 'agents'
+  AGENTS: 'agents',
+  SKILLS: 'skills'
 } as const;
 
 export const FORMULA_DIRS = {

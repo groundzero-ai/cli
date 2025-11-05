@@ -1,9 +1,10 @@
 import { join } from 'path';
 import { isJunk } from 'junk';
-import { PLATFORM_AI, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {
   getPlatformDefinition,
+  isUniversalSubdirPath
 } from '../../core/platforms.js';
 import type { DiscoveredFile } from '../../types/index.js';
 
@@ -61,9 +62,7 @@ function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): Discover
     // Normalize registry path to use forward slashes for consistent comparison
     const normalizedPath = normalizePathForProcessing(file.registryPath);
 
-    if (normalizedPath.startsWith(`${UNIVERSAL_SUBDIRS.RULES}/`) || normalizedPath === UNIVERSAL_SUBDIRS.RULES) return 3;
-    if (normalizedPath.startsWith(`${UNIVERSAL_SUBDIRS.COMMANDS}/`) || normalizedPath === UNIVERSAL_SUBDIRS.COMMANDS) return 3;
-    if (normalizedPath.startsWith(`${UNIVERSAL_SUBDIRS.AGENTS}/`) || normalizedPath === UNIVERSAL_SUBDIRS.AGENTS) return 3;
+    if (isUniversalSubdirPath(normalizedPath)) return 3;
     if (normalizedPath.startsWith(`${PLATFORM_DIRS.AI}/`) || normalizedPath === PLATFORM_DIRS.AI) return 2;
     return 1;
   };

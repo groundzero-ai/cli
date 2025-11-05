@@ -24,7 +24,8 @@ import {
   getPlatformDirectoryPaths,
   createPlatformDirectories,
   validatePlatformStructure,
-  getPlatformRulesDirFilePatterns
+  getPlatformRulesDirFilePatterns,
+  getPlatformUniversalSubdirs
 } from '../core/platforms.js';
 import { PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
 import { discoverFiles } from '../core/discovery/file-discovery.js';
@@ -129,11 +130,8 @@ export async function cleanupPlatformFiles(
   const errors: string[] = [];
 
   try {
-    // Build subdir list: rules, commands, agents
-    const subdirs: Array<{ dir: string; label: string; leaf: string }> = [];
-    if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: UNIVERSAL_SUBDIRS.RULES, leaf: getPathLeaf(platformPaths.rulesDir) });
-    if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: getPathLeaf(platformPaths.commandsDir) });
-    if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: getPathLeaf(platformPaths.agentsDir) });
+    // Build subdir list using centralized helper
+    const subdirs = getPlatformUniversalSubdirs(targetDir, platform);
 
     // const filePatterns = getPlatformRulesDirFilePatterns(platform);
 

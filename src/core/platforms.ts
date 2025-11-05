@@ -7,6 +7,7 @@
 import { join, relative } from 'path';
 import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
+import { getPathLeaf } from '../utils/path-normalization.js';
 import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir } from '../constants/index.js';
 
 // All platforms
@@ -256,6 +257,7 @@ export interface PlatformDirectoryPaths {
     rootFile?: string;
     commandsDir?: string;
     agentsDir?: string;
+    skillsDir?: string;
   };
 }
 
@@ -300,6 +302,11 @@ export function getPlatformDirectoryPaths(cwd: string): PlatformDirectoryPaths {
     const agentsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.AGENTS];
     if (agentsSubdir) {
       paths[platform].agentsDir = join(cwd, definition.rootDir, agentsSubdir.path);
+    }
+
+    const skillsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.SKILLS];
+    if (skillsSubdir) {
+      paths[platform].skillsDir = join(cwd, definition.rootDir, skillsSubdir.path);
     }
   }
 
@@ -440,5 +447,38 @@ export async function validatePlatformStructure(
 export function getPlatformRulesDirFilePatterns(platform: Platform): string[] {
   const definition = getPlatformDefinition(platform);
   return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
+}
+
+/**
+ * Get all universal subdirs that exist for a platform
+ */
+export function getPlatformUniversalSubdirs(cwd: string, platform: Platform): Array<{ dir: string; label: string; leaf: string }> {
+  const paths = getPlatformDirectoryPaths(cwd);
+  const platformPaths = paths[platform];
+  const subdirs: Array<{ dir: string; label: string; leaf: string }> = [];
+
+  if (platformPaths.rulesDir) subdirs.push({ dir: platformPaths.rulesDir, label: UNIVERSAL_SUBDIRS.RULES, leaf: getPathLeaf(platformPaths.rulesDir) });
+  if (platformPaths.commandsDir) subdirs.push({ dir: platformPaths.commandsDir, label: UNIVERSAL_SUBDIRS.COMMANDS, leaf: getPathLeaf(platformPaths.commandsDir) });
+  if (platformPaths.agentsDir) subdirs.push({ dir: platformPaths.agentsDir, label: UNIVERSAL_SUBDIRS.AGENTS, leaf: getPathLeaf(platformPaths.agentsDir) });
+  if (platformPaths.skillsDir) subdirs.push({ dir: platformPaths.skillsDir, label: UNIVERSAL_SUBDIRS.SKILLS, leaf: getPathLeaf(platformPaths.skillsDir) });
+
+  return subdirs;
+}
+
+/**
+ * Check if a normalized path represents a universal subdir
+ */
+export function isUniversalSubdirPath(normalizedPath: string): boolean {
+  return Object.values(UNIVERSAL_SUBDIRS).some(subdir =>
+    normalizedPath.startsWith(`${subdir}/`) || normalizedPath === subdir
+  );
+}
+
+/**
+ * Check if a subKey is a valid universal subdir
+ * Used for validating subdir keys before processing
+ */
+export function isValidUniversalSubdir(subKey: string): boolean {
+  return Object.values(UNIVERSAL_SUBDIRS).includes(subKey as typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS]);
 }
 
