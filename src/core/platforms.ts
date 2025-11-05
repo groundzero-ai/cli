@@ -19,9 +19,11 @@ export interface SubdirDef {
   // Examples: 'rules', 'memories', 'commands'
   path: string;
   // File patterns/extensions to read from this subdir (supports multiple, e.g. '.md', '.mdc', '.toml')
+  // Empty array [] means allow all file extensions
   readExts: string[];
   // Preferred write extension for this subdir (e.g. '.mdc' for Cursor rules; '.md' default)
-  writeExt: string;
+  // If undefined, preserve original file extension without conversion
+  writeExt?: string;
 }
 
 export interface PlatformDefinition {
@@ -68,6 +70,11 @@ export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
         path: 'agents',
         readExts: [FILE_PATTERNS.MD_FILES],
         writeExt: FILE_PATTERNS.MD_FILES
+      },
+      [UNIVERSAL_SUBDIRS.SKILLS]: {
+        path: 'skills',
+        readExts: [],
+        writeExt: undefined
       }
     }
   },
@@ -446,7 +453,7 @@ export async function validatePlatformStructure(
  */
 export function getPlatformRulesDirFilePatterns(platform: Platform): string[] {
   const definition = getPlatformDefinition(platform);
-  return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [FILE_PATTERNS.MD_FILES];
+  return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [];
 }
 
 /**

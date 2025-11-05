@@ -118,7 +118,10 @@ export function getPlatformSpecificFilename(universalPath: string, platform: Pla
   // Get the base name without extension
   const baseName = registryFileName.replace(/\.[^.]+$/, '');
 
-  // Apply platform-specific write extension
+  // Apply platform-specific write extension, or preserve original if undefined
+  if (subdirDef.writeExt === undefined) {
+    return registryFileName; // Preserve original extension
+  }
   return baseName + subdirDef.writeExt;
 }
 

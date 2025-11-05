@@ -40,7 +40,7 @@ export function mapUniversalToPlatform(
 
   // Build the absolute file path with correct extension
   const baseName = relPath.replace(/\.[^.]+$/, ''); // Remove any existing extension from full relPath
-  const targetFileName = baseName + subdirDef.writeExt;
+  const targetFileName = subdirDef.writeExt === undefined ? relPath : baseName + subdirDef.writeExt;
   const absFile = join(absDir, targetFileName);
 
   return { absDir, absFile };
@@ -78,7 +78,8 @@ export function mapPlatformFileToUniversal(
         let relPath = normalizedPath.substring(relPathStart);
 
         // Normalize extension to canonical form (.md)
-        if (relPath.endsWith(subdirDef.writeExt)) {
+        // Only normalize if writeExt is defined
+        if (subdirDef.writeExt !== undefined && relPath.endsWith(subdirDef.writeExt)) {
           relPath = relPath.replace(new RegExp(`${subdirDef.writeExt}$`), FILE_PATTERNS.MD_FILES);
         }
 

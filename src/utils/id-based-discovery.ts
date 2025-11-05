@@ -105,7 +105,7 @@ export async function buildCwdIdMap(
         continue;
       }
 
-      const patterns = subdirDef.readExts && subdirDef.readExts.length > 0 ? subdirDef.readExts : [FILE_PATTERNS.MD_FILES];
+      const patterns = subdirDef.readExts.length > 0 ? subdirDef.readExts : [];
 
       // Find files for each supported extension in this subdir
       const files = await findFilesByExtension(subdirPath, patterns);
@@ -295,7 +295,7 @@ export async function cleanupInvalidFormulaFiles(
         continue;
       }
 
-      const patterns = subdirDef.readExts && subdirDef.readExts.length > 0 ? subdirDef.readExts : [FILE_PATTERNS.MD_FILES];
+      const patterns = subdirDef.readExts.length > 0 ? subdirDef.readExts : [];
       const files = await findFilesByExtension(subdirPath, patterns);
       await Promise.all(files.map(f => processFileForCleanup(f.fullPath)));
     }
