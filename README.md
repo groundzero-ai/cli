@@ -137,20 +137,20 @@ Files and paths will be automatically converted to platform specific designation
 > [!NOTE]  
 > GroundZero only searches and includes markdown files under supported platform directories and the root `ai/` directory.
 
-| Platform | Directory | Root file | Rules | Commands | Agents |
-| --- | --- | --- | --- | --- | --- |
-| Augment Code | .augment/ | | rules/ | commands/ |  |
-| Claude Code | .claude/ | CLAUDE.md | | commands/ | agents/ |
-| Codex | .codex/ | AGENTS.md | | prompts/ | |
-| Cursor | .cursor/ | AGENTS.md | rules/ | commands/ | |
-| Factory | .factory/ | AGENTS.md | | commands/ | droids/ |
-| Kilo Code | .kilocode/ | AGENTS.md | rules/ | workflows/ | | 
-| Kiro | .kiro/ | | steering/ |  | |
-| OpenCode | .opencode/ | AGENTS.md | | command/ | agent/ |
-| Qwen Code | .qwen/ | QWEN.md | | | agents/ |
-| Roo | .roo/ | AGENTS.md | | commands/ | |
-| Warp | .warp/ | WARP.md | | |
-| Windsurf | .windsurf/ | | rules/ |  | |
+| Platform | Directory | Root file | Rules | Commands | Agents | Skills |
+| --- | --- | --- | --- | --- | --- | --- |
+| Augment Code | .augment/ | | rules/ | commands/ | | |
+| Claude Code | .claude/ | CLAUDE.md | | commands/ | agents/ | skills/ |
+| Codex | .codex/ | AGENTS.md | | prompts/ | | |
+| Cursor | .cursor/ | AGENTS.md | rules/ | commands/ | | |
+| Factory | .factory/ | AGENTS.md | | commands/ | droids/ | |
+| Kilo Code | .kilocode/ | AGENTS.md | rules/ | workflows/ | | |
+| Kiro | .kiro/ | | steering/ | | | |
+| OpenCode | .opencode/ | AGENTS.md | | command/ | agent/ | |
+| Qwen Code | .qwen/ | QWEN.md | | | agents/ | |
+| Roo | .roo/ | AGENTS.md | | commands/ | | |
+| Warp | .warp/ | WARP.md | | | |
+| Windsurf | .windsurf/ | | rules/ | | | |
 
 ## Contributing
 
