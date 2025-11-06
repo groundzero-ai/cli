@@ -29,6 +29,7 @@ import type { FormulaFile } from '../types/index.js';
 import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
 import { parseUniversalPath } from './platform-file.js';
 import { loadRegistryYamlOverrides } from './id-based-discovery.js';
+import { getPlatformDefinition } from '../core/platforms.js';
 
 import {
   FORMULA_INDEX_FILENAME,
@@ -999,22 +1000,54 @@ async function checkPlatformDirectoryOccupancy(
   return false;
 }
 
+function hadPreviousDirForPlatform(
+  previousIndex: FormulaIndexRecord | null,
+  groupKey: string,
+  platform: Platform | 'ai' | 'other'
+): boolean {
+  if (!previousIndex || platform === 'other') {
+    return false;
+  }
+
+  const prevValues = previousIndex.files[groupKey] ?? [];
+  if (prevValues.length === 0) {
+    return false;
+  }
+
+  const rootDir = platform === 'ai'
+    ? normalizePathForProcessing(PLATFORM_DIRS.AI)
+    : normalizePathForProcessing(getPlatformDefinition(platform as Platform).rootDir);
+
+  for (const value of prevValues) {
+    const normalizedValue = normalizePathForProcessing(value);
+    if (
+      normalizedValue === rootDir ||
+      normalizedValue.startsWith(`${rootDir}/`)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function determinePlatformDecisions(
   cwd: string,
   targetDirsByPlatform: Map<Platform | 'ai' | 'other', Set<string>>,
-  wasDirKey: boolean
+  wasDirKey: boolean,
+  previousIndex: FormulaIndexRecord | null,
+  groupKey: string
 ): Promise<Map<Platform | 'ai' | 'other', 'dir' | 'file'>> {
   const platformDecisions = new Map<Platform | 'ai' | 'other', 'dir' | 'file'>();
 
   for (const [platform, platformDirs] of targetDirsByPlatform.entries()) {
-    if (wasDirKey) {
-      // If it was a dir key before, keep it as dir for this platform
+    if (wasDirKey && hadPreviousDirForPlatform(previousIndex, groupKey, platform)) {
       platformDecisions.set(platform, 'dir');
-    } else {
-      // Check if this platform's directories have entries
-      const directoryOccupied = await checkPlatformDirectoryOccupancy(cwd, platformDirs);
-      platformDecisions.set(platform, directoryOccupied ? 'file' : 'dir');
+      continue;
     }
+
+    const directoryOccupied = await checkPlatformDirectoryOccupancy(cwd, platformDirs);
+    platformDecisions.set(platform, directoryOccupied ? 'file' : 'dir');
   }
 
   return platformDecisions;
@@ -1056,7 +1089,9 @@ async function decideGroupPlans(
       const computedDecisions = await determinePlatformDecisions(
         cwd,
         targetDirsByPlatform,
-        wasDirKey
+        wasDirKey,
+        previousIndex,
+        groupKey
       );
       platformDecisions.clear();
       computedDecisions.forEach((value, key) => platformDecisions.set(key, value));
