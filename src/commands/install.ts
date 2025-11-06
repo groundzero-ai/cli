@@ -27,7 +27,7 @@ import {
   getAIDir,
   isRootFormula
 } from '../utils/paths.js';
-import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaMetadata } from '../utils/formula-management.js';
+import { createBasicFormulaYml, addFormulaToYml, writeLocalFormulaFromRegistry } from '../utils/formula-management.js';
 import {
   displayInstallationSummary,
   displayInstallationResults,
@@ -424,7 +424,7 @@ async function installFormulaCommand(
   });
 
   for (const resolved of finalResolvedFormulas) {
-    await writeLocalFormulaMetadata(cwd, resolved.name, resolved.formula.metadata);
+    await writeLocalFormulaFromRegistry(cwd, resolved.name, resolved.version);
   }
 
   if (formulaYmlExists && mainFormula) {

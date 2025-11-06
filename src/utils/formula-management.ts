@@ -8,6 +8,7 @@ import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
 import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name.js';
+import { formulaManager } from '../core/formula.js';
 
 /**
  * Ensure local GroundZero directory structure exists
@@ -153,6 +154,28 @@ export async function writeLocalFormulaMetadata(
   if (readmeContent) {
     await writeTextFile(join(localFormulaDir, FILE_PATTERNS.README_MD), readmeContent);
   }
+}
+
+/**
+ * Copy the full formula directory from the local registry into the project structure
+ */
+export async function writeLocalFormulaFromRegistry(
+  cwd: string,
+  formulaName: string,
+  version: string
+): Promise<void> {
+  const formula = await formulaManager.loadFormula(formulaName, version);
+  const localFormulaDir = getLocalFormulaDir(cwd, formulaName);
+
+  await ensureDir(localFormulaDir);
+
+  await Promise.all(
+    formula.files.map(async (file) => {
+      const targetPath = join(localFormulaDir, file.path);
+      const encoding = (file.encoding ?? 'utf8') as BufferEncoding;
+      await writeTextFile(targetPath, file.content, encoding);
+    })
+  );
 }
 
 /**
