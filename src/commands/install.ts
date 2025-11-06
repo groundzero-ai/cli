@@ -18,7 +18,7 @@ import {
   prepareInstallEnvironment,
   resolveDependenciesForInstall,
   processConflictResolution,
-  performInstallationPhases,
+  performIndexBasedInstallationPhases,
   type DependencyResolutionResult,
   VersionResolutionAbortError
 } from '../core/install/install-flow.js';
@@ -414,7 +414,7 @@ async function installFormulaCommand(
 
   const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
 
-  const installationOutcome = await performInstallationPhases({
+  const installationOutcome = await performIndexBasedInstallationPhases({
     cwd,
     formulas: finalResolvedFormulas,
     platforms: finalPlatforms as Platform[],

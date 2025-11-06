@@ -17,6 +17,7 @@ import { installFilesByIdWithMap } from '../../utils/id-based-installer.js';
 import { installIndexYmlDirectories } from '../../utils/index-yml-based-installer.js';
 import { installAiFilesFromList } from '../../utils/install-orchestrator.js';
 import { installRootFilesFromMap } from '../../utils/root-file-installer.js';
+import { installFormulaByIndex, type IndexInstallResult } from '../../utils/index-based-installer.js';
 import { promptVersionSelection } from '../../utils/prompts.js';
 
 export interface DependencyResolutionResult {
@@ -324,6 +325,90 @@ export async function performInstallationPhases(params: InstallationPhasesParams
       skipped: Array.from(rootFileResults.skipped)
     },
     totalGroundzeroFiles
+  };
+}
+
+/**
+ * Perform the index-based installation process
+ */
+export async function performIndexBasedInstallationPhases(params: InstallationPhasesParams): Promise<InstallationPhasesResult> {
+  const { cwd, formulas, platforms, conflictResult, options, targetDir } = params;
+
+  // Install each formula using index-based installer
+  let totalInstalled = 0;
+  let totalUpdated = 0;
+  let totalDeleted = 0;
+  let totalSkipped = 0;
+  const allAddedFiles: string[] = [];
+  const allUpdatedFiles: string[] = [];
+  const allDeletedFiles: string[] = [];
+
+  for (const resolved of formulas) {
+    try {
+      logger.debug(`Installing ${resolved.name}@${resolved.version} using index-based installer`);
+
+      const installResult: IndexInstallResult = await installFormulaByIndex(
+        cwd,
+        resolved.name,
+        resolved.version,
+        platforms,
+        options
+      );
+
+      totalInstalled += installResult.installed;
+      totalUpdated += installResult.updated;
+      totalDeleted += installResult.deleted;
+      totalSkipped += installResult.skipped;
+
+      allAddedFiles.push(...installResult.installedFiles);
+      allUpdatedFiles.push(...installResult.updatedFiles);
+      allDeletedFiles.push(...installResult.deletedFiles);
+
+      if (installResult.installed > 0 || installResult.updated > 0 || installResult.deleted > 0) {
+        logger.info(`Index-based install for ${resolved.name}: ${installResult.installed} installed, ${installResult.updated} updated, ${installResult.deleted} deleted`);
+      }
+    } catch (error) {
+      logger.error(`Failed index-based install for ${resolved.name}: ${error}`);
+      totalSkipped++;
+    }
+  }
+
+  // Handle root files separately
+  const rootFileResults = {
+    installed: new Set<string>(),
+    updated: new Set<string>(),
+    skipped: new Set<string>()
+  };
+
+  for (const resolved of formulas) {
+    try {
+      const categorized = await discoverAndCategorizeFiles(resolved.name, resolved.version, platforms);
+      const installResult = await installRootFilesFromMap(
+        cwd,
+        resolved.name,
+        categorized.rootFiles,
+        platforms
+      );
+
+      installResult.installed.forEach(file => rootFileResults.installed.add(file));
+      installResult.updated.forEach(file => rootFileResults.updated.add(file));
+      installResult.skipped.forEach(file => rootFileResults.skipped.add(file));
+    } catch (error) {
+      logger.error(`Failed root file install for ${resolved.name}: ${error}`);
+    }
+  }
+
+  return {
+    installedCount: totalInstalled,
+    skippedCount: totalSkipped,
+    allAddedFiles,
+    allUpdatedFiles,
+    rootFileResults: {
+      installed: Array.from(rootFileResults.installed),
+      updated: Array.from(rootFileResults.updated),
+      skipped: Array.from(rootFileResults.skipped)
+    },
+    totalGroundzeroFiles: totalInstalled + totalUpdated
   };
 }
 
