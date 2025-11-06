@@ -49,6 +49,10 @@ const ROOT_FILE_PATTERNS = [
   FILE_PATTERNS.WARP_MD
 ];
 
+// ============================================================================
+// Types and Interfaces
+// ============================================================================
+
 type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
 
 interface RegistryFileEntry {
@@ -74,6 +78,7 @@ interface GroupPlan {
   key: string;
   plannedFiles: PlannedFile[];
   decision: 'dir' | 'file';
+  platformDecisions: Map<Platform | 'ai' | 'other', 'dir' | 'file'>;
   targetDirs: Set<string>;
 }
 
@@ -97,6 +102,10 @@ interface PlannedTargetDetail {
   content: string;
   encoding?: string;
 }
+
+// ============================================================================
+// Conflict Resolution Functions
+// ============================================================================
 
 function generateConflictRenamePath(relPath: string): string {
   const parsed = parsePath(relPath);
@@ -278,6 +287,10 @@ export interface IndexInstallResult {
   deletedFiles: string[];
 }
 
+// ============================================================================
+// Path and File Utilities
+// ============================================================================
+
 function normalizeRelativePath(cwd: string, absPath: string): string {
   const rel = relative(cwd, absPath);
   const normalized = normalizePathForProcessing(rel);
@@ -405,6 +418,10 @@ async function buildExpandedIndexesContext(
   return { dirKeyOwners, installedPathOwners };
 }
 
+// ============================================================================
+// Registry File Loading Functions
+// ============================================================================
+
 function normalizeRegistryPath(registryPath: string): string {
   return normalizePathForProcessing(registryPath);
 }
@@ -517,6 +534,10 @@ function groupPlannedFiles(plannedFiles: PlannedFile[]): Map<string, PlannedFile
   }
   return groups;
 }
+
+// ============================================================================
+// Planning Functions
+// ============================================================================
 
 function buildPlannedTargetMap(plannedFiles: PlannedFile[], yamlOverrides: FormulaFile[]): Map<string, PlannedTargetDetail> {
   const map = new Map<string, PlannedTargetDetail>();
@@ -646,8 +667,101 @@ async function applyFileOperations(
   return result;
 }
 
+// ============================================================================
+// Index Mapping Building Functions
+// ============================================================================
+
 function refreshGroupTargetDirs(plan: GroupPlan): void {
   plan.targetDirs = collectTargetDirectories(plan.plannedFiles);
+}
+
+interface SeparatedTargets {
+  dirTargets: PlannedTarget[];
+  fileTargetsByRegistryPath: Map<string, PlannedTarget[]>;
+}
+
+function separateTargetsByPlatformDecision(plan: GroupPlan): SeparatedTargets {
+  const dirTargets: PlannedTarget[] = [];
+  const fileTargetsByRegistryPath = new Map<string, PlannedTarget[]>();
+
+  for (const file of plan.plannedFiles) {
+    const registryPath = normalizeRegistryPath(file.registryPath);
+    for (const target of file.targets) {
+      const platform = target.platform ?? 'other';
+      const platformDecision = plan.platformDecisions.get(platform) ?? plan.decision;
+      
+      if (platformDecision === 'dir') {
+        dirTargets.push(target);
+      } else {
+        if (!fileTargetsByRegistryPath.has(registryPath)) {
+          fileTargetsByRegistryPath.set(registryPath, []);
+        }
+        fileTargetsByRegistryPath.get(registryPath)!.push(target);
+      }
+    }
+  }
+
+  return { dirTargets, fileTargetsByRegistryPath };
+}
+
+function buildDirKeyMapping(
+  plan: GroupPlan,
+  dirTargets: PlannedTarget[]
+): Record<string, string[]> {
+  const mapping: Record<string, string[]> = {};
+  
+  if (dirTargets.length === 0 || plan.decision !== 'dir') {
+    return mapping;
+  }
+
+  const dirsForDirKey = new Set<string>();
+  for (const target of dirTargets) {
+    const dirName = dirname(target.relPath);
+    if (dirName && dirName !== '.') {
+      dirsForDirKey.add(ensureTrailingSlash(normalizePathForProcessing(dirName)));
+    }
+  }
+
+  if (dirsForDirKey.size > 0) {
+    const key = ensureTrailingSlash(plan.key);
+    const values = Array.from(dirsForDirKey).map(dir => ensureTrailingSlash(dir)).sort();
+    mapping[key] = values;
+  }
+
+  return mapping;
+}
+
+function buildFileMappings(
+  fileTargetsByRegistryPath: Map<string, PlannedTarget[]>
+): Record<string, string[]> {
+  const mapping: Record<string, string[]> = {};
+
+  for (const [registryPath, targets] of fileTargetsByRegistryPath.entries()) {
+    const values = Array.from(
+      new Set(
+        targets.map(target => normalizePathForProcessing(target.relPath))
+      )
+    ).sort();
+    mapping[registryPath] = values;
+  }
+
+  return mapping;
+}
+
+function buildFallbackFileMappings(plan: GroupPlan): Record<string, string[]> {
+  const mapping: Record<string, string[]> = {};
+
+  for (const file of plan.plannedFiles) {
+    if (file.targets.length === 0) continue;
+    const values = Array.from(
+      new Set(
+        file.targets.map(target => normalizePathForProcessing(target.relPath))
+      )
+    ).sort();
+    mapping[normalizeRegistryPath(file.registryPath)] = values;
+  }
+
+  return mapping;
 }
 
 function buildIndexMappingFromPlans(plans: GroupPlan[]): Record<string, string[]> {
@@ -656,26 +770,28 @@ function buildIndexMappingFromPlans(plans: GroupPlan[]): Record<string, string[]
   for (const plan of plans) {
     refreshGroupTargetDirs(plan);
 
-    if (plan.decision === 'dir' && plan.key !== '' && plan.targetDirs.size > 0) {
-      const key = ensureTrailingSlash(plan.key);
-      const values = Array.from(plan.targetDirs).map(dir => ensureTrailingSlash(dir)).sort();
-      mapping[key] = values;
+    if (plan.key !== '' && plan.targetDirs.size > 0) {
+      const { dirTargets, fileTargetsByRegistryPath } = separateTargetsByPlatformDecision(plan);
+
+      // Build dir key mapping for platforms that can use it
+      Object.assign(mapping, buildDirKeyMapping(plan, dirTargets));
+
+      // Build individual file mappings for platforms that need it
+      Object.assign(mapping, buildFileMappings(fileTargetsByRegistryPath));
+      
       continue;
     }
 
-    for (const file of plan.plannedFiles) {
-      if (file.targets.length === 0) continue;
-      const values = Array.from(
-        new Set(
-          file.targets.map(target => normalizePathForProcessing(target.relPath))
-        )
-      ).sort();
-      mapping[normalizeRegistryPath(file.registryPath)] = values;
-    }
+    // Fallback: use individual file entries for all targets
+    Object.assign(mapping, buildFallbackFileMappings(plan));
   }
 
   return sortMapping(mapping);
 }
+
+// ============================================================================
+// Main Install Function
+// ============================================================================
 
 export async function installFormulaByIndex(
   cwd: string,
@@ -733,6 +849,10 @@ export async function installFormulaByIndex(
 
 
 
+
+// ============================================================================
+// Target Mapping Functions
+// ============================================================================
 
 async function expandIndexToFilePaths(
   cwd: string,
@@ -818,6 +938,10 @@ function attachTargetsToPlannedFiles(
   }
 }
 
+// ============================================================================
+// Directory Collection Functions
+// ============================================================================
+
 function collectTargetDirectories(plannedFiles: PlannedFile[]): Set<string> {
   const dirs = new Set<string>();
   for (const planned of plannedFiles) {
@@ -830,6 +954,25 @@ function collectTargetDirectories(plannedFiles: PlannedFile[]): Set<string> {
   return dirs;
 }
 
+function collectTargetDirectoriesByPlatform(
+  plannedFiles: PlannedFile[]
+): Map<Platform | 'ai' | 'other', Set<string>> {
+  const dirsByPlatform = new Map<Platform | 'ai' | 'other', Set<string>>();
+  
+  for (const planned of plannedFiles) {
+    for (const target of planned.targets) {
+      const platform = target.platform ?? 'other';
+      if (!dirsByPlatform.has(platform)) {
+        dirsByPlatform.set(platform, new Set());
+      }
+      const dirName = dirname(target.relPath);
+      if (!dirName || dirName === '.') continue;
+      dirsByPlatform.get(platform)!.add(ensureTrailingSlash(normalizePathForProcessing(dirName)));
+    }
+  }
+  
+  return dirsByPlatform;
+}
 
 async function directoryHasEntries(absDir: string): Promise<boolean> {
   if (!(await exists(absDir))) return false;
@@ -837,6 +980,53 @@ async function directoryHasEntries(absDir: string): Promise<boolean> {
   if (files.length > 0) return true;
   const subdirs = await listDirectories(absDir).catch(() => [] as string[]);
   return subdirs.length > 0;
+}
+
+// ============================================================================
+// Platform Decision Functions
+// ============================================================================
+
+async function checkPlatformDirectoryOccupancy(
+  cwd: string,
+  platformDirs: Set<string>
+): Promise<boolean> {
+  for (const dirRel of platformDirs) {
+    const absDir = join(cwd, dirRel);
+    if (await directoryHasEntries(absDir)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function determinePlatformDecisions(
+  cwd: string,
+  targetDirsByPlatform: Map<Platform | 'ai' | 'other', Set<string>>,
+  wasDirKey: boolean
+): Promise<Map<Platform | 'ai' | 'other', 'dir' | 'file'>> {
+  const platformDecisions = new Map<Platform | 'ai' | 'other', 'dir' | 'file'>();
+
+  for (const [platform, platformDirs] of targetDirsByPlatform.entries()) {
+    if (wasDirKey) {
+      // If it was a dir key before, keep it as dir for this platform
+      platformDecisions.set(platform, 'dir');
+    } else {
+      // Check if this platform's directories have entries
+      const directoryOccupied = await checkPlatformDirectoryOccupancy(cwd, platformDirs);
+      platformDecisions.set(platform, directoryOccupied ? 'file' : 'dir');
+    }
+  }
+
+  return platformDecisions;
+}
+
+function computeOverallDecision(
+  platformDecisions: Map<Platform | 'ai' | 'other', 'dir' | 'file'>
+): 'dir' | 'file' {
+  // Use 'dir' if at least one platform can use it
+  // (buildIndexMappingFromPlans will handle per-platform logic)
+  const hasAnyDirDecision = Array.from(platformDecisions.values()).some(d => d === 'dir');
+  return hasAnyDirDecision ? 'dir' : 'file';
 }
 
 async function decideGroupPlans(
@@ -854,35 +1044,30 @@ async function decideGroupPlans(
 
   for (const [groupKey, plannedFiles] of groups.entries()) {
     const targetDirs = collectTargetDirectories(plannedFiles);
+    const targetDirsByPlatform = collectTargetDirectoriesByPlatform(plannedFiles);
     let decision: 'dir' | 'file' = 'file';
+    const platformDecisions = new Map<Platform | 'ai' | 'other', 'dir' | 'file'>();
 
     const otherDirOwners = context.dirKeyOwners.get(groupKey) ?? [];
     const hasTargets = plannedFiles.some(file => file.targets.length > 0);
 
-    if (
-      groupKey !== '' &&
-      hasTargets &&
-      otherDirOwners.length === 0
-    ) {
-      if (previousDirKeys.has(groupKey)) {
-        decision = 'dir';
-      } else {
-        let directoryOccupied = false;
-        for (const dirRel of targetDirs) {
-          const absDir = join(cwd, dirRel);
-          if (await directoryHasEntries(absDir)) {
-            directoryOccupied = true;
-            break;
-          }
-        }
-        decision = directoryOccupied ? 'file' : 'dir';
-      }
+    if (groupKey !== '' && hasTargets && otherDirOwners.length === 0) {
+      const wasDirKey = previousDirKeys.has(groupKey);
+      const computedDecisions = await determinePlatformDecisions(
+        cwd,
+        targetDirsByPlatform,
+        wasDirKey
+      );
+      platformDecisions.clear();
+      computedDecisions.forEach((value, key) => platformDecisions.set(key, value));
+      decision = computeOverallDecision(platformDecisions);
     }
 
     plans.push({
       key: groupKey,
       plannedFiles,
       decision,
+      platformDecisions,
       targetDirs
     });
   }
