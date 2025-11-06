@@ -202,7 +202,7 @@ export async function loadRegistryYamlOverrides(
     // Must be in a universal subdir
     if (!subdirs.some(sd => path.startsWith(sd + '/'))) continue;
     // Must end with .yml and have a platform suffix before it
-    if (!path.endsWith('.yml')) continue;
+    if (!path.endsWith(FILE_PATTERNS.YML_FILE)) continue;
 
     const lastDot = path.lastIndexOf('.');
     const secondLastDot = path.lastIndexOf('.', lastDot - 1);

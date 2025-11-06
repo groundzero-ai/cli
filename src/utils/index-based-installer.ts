@@ -18,6 +18,7 @@ import {
   PLATFORM_DIRS,
   FILE_PATTERNS,
   UNIVERSAL_SUBDIRS,
+  PLATFORMS,
   type Platform
 } from '../constants/index.js';
 import { getFirstPathComponent, getPathAfterFirstComponent, normalizePathForProcessing } from './path-normalization.js';
@@ -411,6 +412,23 @@ function normalizeRegistryPath(registryPath: string): string {
 function isSkippableRegistryPath(registryPath: string): boolean {
   const normalized = normalizeRegistryPath(registryPath);
   if (normalized === FILE_PATTERNS.FORMULA_YML) return true;
+
+  // Filter out platform YAML override files (e.g., rules/file.cursor.yml)
+  // These are used only for merging frontmatter, not for installation
+  const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
+  const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
+
+  // Must be in a universal subdir
+  if (!subdirs.some(sd => normalized.startsWith(sd + '/'))) return false;
+  // Must end with .yml and have a platform suffix before it
+  if (!normalized.endsWith(FILE_PATTERNS.YML_FILE)) return false;
+
+  const lastDot = normalized.lastIndexOf('.');
+  const secondLastDot = normalized.lastIndexOf('.', lastDot - 1);
+  if (secondLastDot === -1) return false;
+  const possiblePlatform = normalized.slice(secondLastDot + 1, lastDot);
+  if (platformValues.includes(possiblePlatform)) return true;
+
   return false;
 }
 

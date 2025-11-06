@@ -69,7 +69,8 @@ export const FILE_PATTERNS = {
   QWEN_MD: 'QWEN.md',
   WARP_MD: 'WARP.md',
   // File patterns arrays
-  MARKDOWN_FILES: ['.md', '.mdc']
+  MARKDOWN_FILES: ['.md', '.mdc'],
+  YML_FILE: '.yml',
 } as const;
 
 // Universal subdirectory names used across all platforms

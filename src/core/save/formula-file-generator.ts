@@ -133,7 +133,7 @@ async function processFiles(formulaConfig: FormulaYml, discoveredFiles: Discover
       continue;
     }
     // Keep the first .md instance and allow distinct .yml files to accumulate
-    if (file.path.endsWith('.yml')) {
+    if (file.path.endsWith(FILE_PATTERNS.YML_FILE)) {
       deduped.set(file.path, file);
     }
   }
