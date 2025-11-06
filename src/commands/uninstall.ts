@@ -362,6 +362,11 @@ async function uninstallFormulaCommand(
       await removeEmptyDirectories(groundzeroPath);
     }
 
+    // Discover platform-specific files BEFORE removing formula directories (to access formula.index.yml files)
+    const discoveredByFormula = await Promise.all(
+      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
+    );
+
     // Remove formula.yml files and directories for all formulas being removed
     const formulasDir = getLocalFormulasDir(cwd);
     for (const formula of formulasToRemove) {
@@ -386,10 +391,7 @@ async function uninstallFormulaCommand(
       await removeEmptyDirectories(formulasDir);
     }
 
-    // Discover platform-specific files for all formulas being removed and delete them
-    const discoveredByFormula = await Promise.all(
-      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
-    );
+    // Now remove the discovered platform-specific files
     const platformCleanup: Record<string, string[]> = {};
     const seen = new Set<string>();
     for (const { files } of discoveredByFormula) {

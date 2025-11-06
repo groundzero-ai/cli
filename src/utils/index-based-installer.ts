@@ -1,5 +1,4 @@
 import { dirname, join, relative, parse as parsePath, sep } from 'path';
-import * as yaml from 'js-yaml';
 import { promises as fs } from 'fs';
 
 import {
@@ -7,14 +6,12 @@ import {
   ensureDir,
   listDirectories,
   listFiles,
-  readTextFile,
-  writeTextFile,
   remove,
   removeEmptyDirectories,
   walkFiles
 } from './fs.js';
 import { writeIfChanged } from '../core/install/file-updater.js';
-import { getLocalFormulaDir, getLocalFormulasDir } from './paths.js';
+import { getLocalFormulasDir } from './paths.js';
 import { formulaManager } from '../core/formula.js';
 import { logger } from './logger.js';
 import {
@@ -32,8 +29,16 @@ import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
 import { parseUniversalPath } from './platform-file.js';
 import { loadRegistryYamlOverrides } from './id-based-discovery.js';
 
-const FORMULA_INDEX_FILENAME = 'formula.index.yml';
-const HEADER_COMMENT = '# This file is managed by GroundZero. Do not edit manually.';
+import {
+  FORMULA_INDEX_FILENAME,
+  getFormulaIndexPath,
+  readFormulaIndex,
+  writeFormulaIndex,
+  sortMapping,
+  ensureTrailingSlash,
+  isDirKey,
+  type FormulaIndexRecord,
+} from './formula-index-yml.js';
 
 const ROOT_FILE_PATTERNS = [
   FILE_PATTERNS.AGENTS_MD,
@@ -44,16 +49,6 @@ const ROOT_FILE_PATTERNS = [
 ];
 
 type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
-
-interface FormulaIndexData {
-  version: string;
-  files: Record<string, string[]>;
-}
-
-interface FormulaIndexRecord extends FormulaIndexData {
-  path: string;
-  formulaName: string;
-}
 
 interface RegistryFileEntry {
   registryPath: string;
@@ -282,110 +277,10 @@ export interface IndexInstallResult {
   deletedFiles: string[];
 }
 
-function getFormulaIndexPath(cwd: string, formulaName: string): string {
-  const formulaDir = getLocalFormulaDir(cwd, formulaName);
-  return join(formulaDir, FORMULA_INDEX_FILENAME);
-}
-
 function normalizeRelativePath(cwd: string, absPath: string): string {
   const rel = relative(cwd, absPath);
   const normalized = normalizePathForProcessing(rel);
   return normalized.replace(/\\/g, '/');
-}
-
-function ensureTrailingSlash(value: string): string {
-  return value.endsWith('/') ? value : `${value}/`;
-}
-
-function sortMapping(record: Record<string, string[]>): Record<string, string[]> {
-  const sortedKeys = Object.keys(record).sort();
-  const normalized: Record<string, string[]> = {};
-  for (const key of sortedKeys) {
-    const values = record[key] || [];
-    const sortedValues = [...new Set(values)].sort();
-    normalized[key] = sortedValues;
-  }
-  return normalized;
-}
-
-function sanitizeIndexData(data: any): FormulaIndexData | null {
-  if (!data || typeof data !== 'object') return null;
-  const { version, files } = data as { version?: unknown; files?: unknown };
-  if (typeof version !== 'string') return null;
-  if (!files || typeof files !== 'object') return null;
-
-  const entries: Record<string, string[]> = {};
-  for (const [rawKey, rawValue] of Object.entries(files as Record<string, unknown>)) {
-    if (typeof rawKey !== 'string') continue;
-    if (!Array.isArray(rawValue)) continue;
-
-    const cleanedValues = rawValue
-      .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
-      .map(value => normalizePathForProcessing(value));
-
-    entries[normalizePathForProcessing(rawKey)] = cleanedValues;
-  }
-
-  return {
-    version,
-    files: sortMapping(entries)
-  };
-}
-
-async function readFormulaIndex(cwd: string, formulaName: string): Promise<FormulaIndexRecord | null> {
-  const indexPath = getFormulaIndexPath(cwd, formulaName);
-  if (!(await exists(indexPath))) {
-    return null;
-  }
-
-  try {
-    const content = await readTextFile(indexPath);
-    const parsed = yaml.load(content) as any;
-    const sanitized = sanitizeIndexData(parsed);
-    if (!sanitized) {
-      logger.warn(`Invalid formula index detected at ${indexPath}, will repair on write.`);
-      return {
-        path: indexPath,
-        formulaName,
-        version: '',
-        files: {}
-      };
-    }
-    return {
-      path: indexPath,
-      formulaName,
-      version: sanitized.version,
-      files: sanitized.files
-    };
-  } catch (error) {
-    logger.warn(`Failed to read formula index at ${indexPath}: ${error}`);
-    return {
-      path: indexPath,
-      formulaName,
-      version: '',
-      files: {}
-    };
-  }
-}
-
-async function writeFormulaIndex(record: FormulaIndexRecord): Promise<void> {
-  const { path: indexPath, version, files } = record;
-  await ensureDir(dirname(indexPath));
-
-  const normalizedFiles = sortMapping(files);
-  const body = yaml.dump(
-    {
-      version,
-      files: normalizedFiles
-    },
-    {
-      lineWidth: 120,
-      sortKeys: true
-    }
-  );
-
-  const serialized = `${HEADER_COMMENT}\n\n${body}`;
-  await writeTextFile(indexPath, serialized);
 }
 
 async function collectFormulaDirectories(
@@ -917,9 +812,6 @@ function collectTargetDirectories(plannedFiles: PlannedFile[]): Set<string> {
   return dirs;
 }
 
-function isDirKey(key: string): boolean {
-  return key.endsWith('/');
-}
 
 async function directoryHasEntries(absDir: string): Promise<boolean> {
   if (!(await exists(absDir))) return false;

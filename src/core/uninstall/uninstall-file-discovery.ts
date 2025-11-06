@@ -1,52 +1,72 @@
 import { join } from 'path';
-import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
+import { PLATFORM_DIRS } from '../../constants/index.js';
 import { type UninstallDiscoveredFile } from '../../types/index.js';
-import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
-import { exists, isDirectory } from '../../utils/fs.js';
-import { findFilesByExtension, type Platformish } from '../../utils/file-processing.js';
-import { shouldIncludeMarkdownFile } from '../discovery/md-files-discovery.js';
-import { readTextFile } from '../../utils/fs.js';
+import { exists, isDirectory, walkFiles, readTextFile } from '../../utils/fs.js';
 import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
 import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
-import { findMatchingIndexYmlDirsRecursive } from '../discovery/index-files-discovery.js';
+import { readFormulaIndex, type FormulaIndexRecord, isDirKey } from '../../utils/formula-index-yml.js';
+import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 
-async function discoverLightweightInDir(
-  absDir: string,
-  platform: Platformish,
-  formulaName: string
-): Promise<UninstallDiscoveredFile[]> {
+async function collectFilesUnderDirectory(cwd: string, dirRel: string): Promise<string[]> {
+  const rel = normalizePathForProcessing(dirRel.endsWith('/') ? dirRel : `${dirRel}/`);
+  const absDir = join(cwd, rel);
   if (!(await exists(absDir)) || !(await isDirectory(absDir))) return [];
-
-  const files = await findFilesByExtension(absDir, [FILE_PATTERNS.MD_FILES, FILE_PATTERNS.MDC_FILES]);
-  const results: UninstallDiscoveredFile[] = [];
-
-  for (const f of files) {
-    try {
-      const content = await readTextFile(f.fullPath);
-      const frontmatter = parseMarkdownFrontmatter(content);
-      if (!shouldIncludeMarkdownFile(f, frontmatter, platform, formulaName)) continue;
-
-      const sourceDir = platform === PLATFORM_AI ? PLATFORM_DIRS.AI : getPlatformDefinition(platform as any).rootDir;
-      results.push({ fullPath: f.fullPath, sourceDir });
-    } catch {
-      // Skip unreadable/invalid files silently for uninstall
-    }
+  const collected: string[] = [];
+  for await (const absFile of walkFiles(absDir)) {
+    const relPath = normalizePathForProcessing(absFile.slice(cwd.length + 1).replace(/\\/g, '/'));
+    collected.push(relPath);
   }
-
-  return results;
+  return collected;
 }
 
-async function discoverIndexYmlMarkedDirs(
-  rootDir: string,
-  platform: Platformish,
+async function expandIndexToFilePaths(
+  cwd: string,
+  index: FormulaIndexRecord | null
+): Promise<Set<string>> {
+  const owned = new Set<string>();
+  if (!index) return owned;
+
+  for (const [key, values] of Object.entries(index.files)) {
+    if (isDirKey(key)) {
+      for (const dirRel of values) {
+        const files = await collectFilesUnderDirectory(cwd, dirRel);
+        for (const rel of files) {
+          owned.add(normalizePathForProcessing(rel));
+        }
+      }
+    } else {
+      for (const value of values) {
+        owned.add(normalizePathForProcessing(value));
+      }
+    }
+  }
+  return owned;
+}
+
+function deriveSourceDir(relPath: string): string {
+  const first = normalizePathForProcessing(relPath).split('/')[0] || '';
+  return first || PLATFORM_DIRS.AI; // default to 'ai' if uncertain
+}
+
+async function discoverViaIndex(
   formulaName: string
 ): Promise<UninstallDiscoveredFile[]> {
-  const matchingDirs = await findMatchingIndexYmlDirsRecursive(rootDir, formulaName);
-  return matchingDirs.map((dir: string) => ({
-    fullPath: dir,
-    sourceDir: platform
-  }));
+  const cwd = process.cwd();
+  const index = await readFormulaIndex(cwd, formulaName);
+  const owned = await expandIndexToFilePaths(cwd, index);
+  const results: UninstallDiscoveredFile[] = [];
+
+  for (const rel of owned) {
+    const fullPath = join(cwd, rel);
+    if (await exists(fullPath)) {
+      results.push({
+        fullPath,
+        sourceDir: deriveSourceDir(rel)
+      });
+    }
+  }
+  return results;
 }
 
 async function discoverLightweightRootFiles(cwd: string, formulaName: string): Promise<UninstallDiscoveredFile[]> {
@@ -76,35 +96,13 @@ async function discoverLightweightRootFiles(cwd: string, formulaName: string): P
 
 export async function discoverFormulaFilesForUninstall(formulaName: string): Promise<UninstallDiscoveredFile[]> {
   const cwd = process.cwd();
-  const configs = await buildPlatformSearchConfig(cwd);
   const results: UninstallDiscoveredFile[] = [];
 
-  // AI directory
-  for (const cfg of configs) {
-    if (cfg.platform === PLATFORM_AI) {
-      const aiFiles = await discoverLightweightInDir(cfg.rulesDir, PLATFORM_AI, formulaName);
-      results.push(...aiFiles);
+  // Index-based discovery (exact ownership from installation)
+  const indexFiles = await discoverViaIndex(formulaName);
+  results.push(...indexFiles);
 
-      // Add index.yml marked directories for AI
-      const aiIndexDirs = await discoverIndexYmlMarkedDirs(cfg.rulesDir, PLATFORM_AI, formulaName);
-      results.push(...aiIndexDirs);
-      continue;
-    }
-
-    // Platform subdirs
-    const def = getPlatformDefinition(cfg.platform as any);
-    for (const [subdirName, subdirDef] of Object.entries(def.subdirs)) {
-      const subdirPath = join(cwd, def.rootDir, (subdirDef as any).path);
-      const files = await discoverLightweightInDir(subdirPath, cfg.platform, formulaName);
-      results.push(...files);
-    }
-
-    // Add index.yml marked directories for platform
-    const platformIndexDirs = await discoverIndexYmlMarkedDirs(join(cwd, def.rootDir), cfg.platform, formulaName);
-    results.push(...platformIndexDirs);
-  }
-
-  // Root files
+  // Root files are updated (not deleted) — still detect them for reporting
   const rootFiles = await discoverLightweightRootFiles(cwd, formulaName);
   results.push(...rootFiles);
 
