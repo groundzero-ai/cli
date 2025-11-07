@@ -32,6 +32,7 @@ import {
   displayInstallationSummary,
   displayInstallationResults,
 } from '../utils/formula-installation.js';
+import { planConflictsForFormula } from '../utils/index-based-installer.js';
 import {
   withOperationErrorHandling,
 } from '../utils/error-handling.js';
@@ -39,6 +40,7 @@ import { extractFormulasFromConfig } from '../utils/install-helpers.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { formulaManager } from '../core/formula.js';
+import { safePrompts } from '../utils/prompts.js';
 import {
   fetchRemoteFormulaMetadata,
   pullDownloadsBatchFromRemote,
@@ -121,6 +123,10 @@ async function installAllFormulasCommand(
   }
   console.log('');
 
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const normalizedPlatforms = normalizePlatforms(options.platforms);
+  const resolvedPlatforms = await resolvePlatforms(cwd, normalizedPlatforms, { interactive });
+
   // Install formulas sequentially to avoid conflicts
   let totalInstalled = 0;
   let totalSkipped = 0;
@@ -130,9 +136,89 @@ async function installAllFormulasCommand(
   for (const formula of formulasToInstall) {
     try {
       const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
+
+      const baseConflictDecisions = options.conflictDecisions
+        ? { ...options.conflictDecisions }
+        : undefined;
+
+      const installOptions: InstallOptions = {
+        ...options,
+        dev: formula.isDev,
+        resolvedPlatforms,
+        conflictDecisions: baseConflictDecisions
+      };
+
+      if (formula.version) {
+        try {
+          const conflicts = await planConflictsForFormula(
+            cwd,
+            formula.name,
+            formula.version,
+            resolvedPlatforms
+          );
+
+          if (conflicts.length > 0) {
+            const shouldPrompt = interactive && (!installOptions.conflictStrategy || installOptions.conflictStrategy === 'ask');
+
+            if (shouldPrompt) {
+              console.log(`\n⚠️  Detected ${conflicts.length} potential file conflict${conflicts.length === 1 ? '' : 's'} for ${label}.`);
+              const preview = conflicts.slice(0, 5);
+              for (const conflict of preview) {
+                const ownerInfo = conflict.ownerFormula ? `owned by ${conflict.ownerFormula}` : 'already exists locally';
+                console.log(`  • ${conflict.relPath} (${ownerInfo})`);
+              }
+              if (conflicts.length > preview.length) {
+                console.log(`  • ... and ${conflicts.length - preview.length} more`);
+              }
+
+              const selection = await safePrompts({
+                type: 'select',
+                name: 'strategy',
+                message: `Choose conflict handling for ${label}:`,
+                choices: [
+                  { title: 'Keep both (rename existing files)', value: 'keep-both' },
+                  { title: 'Overwrite existing files', value: 'overwrite' },
+                  { title: 'Skip conflicting files', value: 'skip' },
+                  { title: 'Review individually', value: 'ask' }
+                ],
+                initial: installOptions.conflictStrategy === 'ask' ? 3 : 0
+              });
+
+              const chosenStrategy = (selection as any).strategy as InstallOptions['conflictStrategy'];
+              installOptions.conflictStrategy = chosenStrategy;
+
+              if (chosenStrategy === 'ask') {
+                const decisions: Record<string, 'keep-both' | 'overwrite' | 'skip'> = {};
+                for (const conflict of conflicts) {
+                  const detail = await safePrompts({
+                    type: 'select',
+                    name: 'decision',
+                    message: `${conflict.relPath}${conflict.ownerFormula ? ` (owned by ${conflict.ownerFormula})` : ''}:`,
+                    choices: [
+                      { title: 'Keep both (rename existing)', value: 'keep-both' },
+                      { title: 'Overwrite existing', value: 'overwrite' },
+                      { title: 'Skip (keep existing)', value: 'skip' }
+                    ],
+                    initial: 0
+                  });
+                  const decisionValue = (detail as any).decision as 'keep-both' | 'overwrite' | 'skip';
+                  decisions[conflict.relPath] = decisionValue;
+                }
+                installOptions.conflictDecisions = decisions;
+              }
+            } else if (!interactive && (!installOptions.conflictStrategy || installOptions.conflictStrategy === 'ask')) {
+              logger.warn(
+                `Detected ${conflicts.length} potential conflict${conflicts.length === 1 ? '' : 's'} for ${label}, but running in non-interactive mode. Conflicting files will be skipped unless '--conflicts' is provided.`
+              );
+            }
+          }
+        } catch (planError) {
+          logger.warn(`Failed to evaluate conflicts for ${label}: ${planError}`);
+        }
+      }
+
       console.log(`\n🔧 Installing ${formula.isDev ? '[dev] ' : ''}${label}...`);
-      
-      const installOptions: InstallOptions = { ...options, dev: formula.isDev };
+
       const result = await installFormulaCommand(
         formula.name,
         targetDir,
@@ -409,7 +495,10 @@ async function installFormulaCommand(
   }
 
   // 10) Resolve platforms, create dirs, perform phases, write metadata, update formula.yml, display results, return
-  const finalPlatforms = await resolvePlatforms(cwd, specifiedPlatforms, { interactive: true });
+  const canPromptForPlatforms = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const finalPlatforms = options.resolvedPlatforms && options.resolvedPlatforms.length > 0
+    ? options.resolvedPlatforms
+    : await resolvePlatforms(cwd, specifiedPlatforms, { interactive: canPromptForPlatforms });
   const createdDirs = await createPlatformDirectories(cwd, finalPlatforms as Platform[]);
 
   const mainFormula = finalResolvedFormulas.find((f: any) => f.isRoot);
@@ -496,6 +585,7 @@ export function setupInstallCommand(program: Command): void {
     .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--force', 'overwrite existing files')
+    .option('--conflicts <strategy>', 'conflict handling strategy: keep-both, overwrite, skip, or ask')
     .option('--dev', 'add formula to dev-formulas instead of formulas')
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .option('--remote', 'pull and install from remote registry, ignoring local versions')
@@ -504,6 +594,18 @@ export function setupInstallCommand(program: Command): void {
     .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
       // Normalize platforms option early for downstream logic
       options.platforms = normalizePlatforms(options.platforms);
+
+      const commandOptions = options as InstallOptions & { conflicts?: string };
+      const rawConflictStrategy = commandOptions.conflicts ?? options.conflictStrategy;
+      if (rawConflictStrategy) {
+        const normalizedStrategy = (rawConflictStrategy as string).toLowerCase();
+        const allowedStrategies: InstallOptions['conflictStrategy'][] = ['keep-both', 'overwrite', 'skip', 'ask'];
+        if (!allowedStrategies.includes(normalizedStrategy as InstallOptions['conflictStrategy'])) {
+          throw new Error(`Invalid --conflicts value '${rawConflictStrategy}'. Use one of: keep-both, overwrite, skip, ask.`);
+        }
+        options.conflictStrategy = normalizedStrategy as InstallOptions['conflictStrategy'];
+      }
+
       const result = await installCommand(formulaName, targetDir, options);
       if (!result.success) {
         if (result.error === 'Formula not found') {

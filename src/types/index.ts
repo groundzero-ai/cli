@@ -2,6 +2,8 @@
  * Common types and interfaces for the G0 CLI application
  */
 
+import type { Platform } from '../constants/index.js';
+
 // Core application types
 export interface G0Directories {
   config: string;
@@ -121,9 +123,12 @@ export interface InstallOptions {
   variables?: Record<string, any>;
   dev?: boolean;
   platforms?: string[];
+  resolvedPlatforms?: Platform[];
   remote?: boolean;
   profile?: string;
   apiKey?: string;
+  conflictStrategy?: 'ask' | 'keep-both' | 'overwrite' | 'skip';
+  conflictDecisions?: Record<string, 'keep-both' | 'overwrite' | 'skip'>;
 }
 
 export interface UninstallOptions {

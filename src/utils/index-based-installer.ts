@@ -97,11 +97,73 @@ interface ExpandedIndexesContext {
 
 type ConflictResolution = 'keep-both' | 'skip' | 'overwrite';
 
+export interface PlannedConflict {
+  relPath: string;
+  reason: 'owned-by-other' | 'exists-unowned';
+  ownerFormula?: string;
+}
+
 interface PlannedTargetDetail {
   absPath: string;
   relPath: string;
   content: string;
   encoding?: string;
+}
+
+// ============================================================================
+// Conflict Planning Functions
+// ============================================================================
+
+export async function planConflictsForFormula(
+  cwd: string,
+  formulaName: string,
+  version: string,
+  platforms: Platform[]
+): Promise<PlannedConflict[]> {
+  const registryEntries = await loadRegistryFileEntries(formulaName, version);
+  const plannedFiles = createPlannedFiles(registryEntries);
+  attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
+
+  const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+  const context = await buildExpandedIndexesContext(cwd, otherIndexes);
+  const previousIndex = await readFormulaIndex(cwd, formulaName);
+  const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
+
+  const conflicts: PlannedConflict[] = [];
+  const seen = new Set<string>();
+
+  for (const planned of plannedFiles) {
+    for (const target of planned.targets) {
+      const normalizedRel = normalizePathForProcessing(target.relPath);
+      if (seen.has(normalizedRel)) {
+        continue;
+      }
+
+      const owner = context.installedPathOwners.get(normalizedRel);
+      if (owner) {
+        conflicts.push({
+          relPath: normalizedRel,
+          reason: 'owned-by-other',
+          ownerFormula: owner.formulaName
+        });
+        seen.add(normalizedRel);
+        continue;
+      }
+
+      if (!previousOwnedPaths.has(normalizedRel)) {
+        const absTarget = join(cwd, normalizedRel);
+        if (await exists(absTarget)) {
+          conflicts.push({
+            relPath: normalizedRel,
+            reason: 'exists-unowned'
+          });
+          seen.add(normalizedRel);
+        }
+      }
+    }
+  }
+
+  return conflicts.sort((a, b) => a.relPath.localeCompare(b.relPath));
 }
 
 // ============================================================================
@@ -197,6 +259,13 @@ async function resolveConflictsForPlannedFiles(
   const warnings: string[] = [];
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const isDryRun = Boolean(options.dryRun);
+  const defaultStrategy = options.conflictStrategy;
+  const perPathDecisions = new Map<string, ConflictResolution>();
+  if (options.conflictDecisions) {
+    for (const [rawPath, decision] of Object.entries(options.conflictDecisions)) {
+      perPathDecisions.set(normalizePathForProcessing(rawPath), decision as ConflictResolution);
+    }
+  }
   const indexByFormula = new Map<string, FormulaIndexRecord>();
   for (const record of otherIndexes) {
     indexByFormula.set(record.formulaName, record);
@@ -211,17 +280,24 @@ async function resolveConflictsForPlannedFiles(
       const owner = context.installedPathOwners.get(normalizedRel);
 
       if (owner) {
-        let decision: ConflictResolution | undefined;
+        let decision: ConflictResolution | undefined = perPathDecisions.get(normalizedRel);
 
-        if (options.force) {
-          decision = 'keep-both';
-        } else if (!interactive) {
-          warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to non-interactive conflict.`);
-          decision = 'skip';
-        } else {
-          decision = await promptConflictResolution(
-            `File ${normalizedRel} is managed by formula ${owner.formulaName}. How would you like to proceed?`
-          );
+        if (!decision) {
+          if (options.force) {
+            decision = 'keep-both';
+          } else if (defaultStrategy && defaultStrategy !== 'ask') {
+            decision = defaultStrategy as ConflictResolution;
+            if (decision === 'skip') {
+              warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to configured conflict strategy.`);
+            }
+          } else if (!interactive) {
+            warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to non-interactive conflict.`);
+            decision = 'skip';
+          } else {
+            decision = await promptConflictResolution(
+              `File ${normalizedRel} is managed by formula ${owner.formulaName}. How would you like to proceed?`
+            );
+          }
         }
 
         if (decision === 'skip') {
@@ -266,17 +342,24 @@ async function resolveConflictsForPlannedFiles(
       }
 
       if (!previousOwnedPaths.has(normalizedRel) && (await exists(absTarget))) {
-        let decision: ConflictResolution | undefined;
+        let decision: ConflictResolution | undefined = perPathDecisions.get(normalizedRel);
 
-        if (options.force) {
-          decision = 'keep-both';
-        } else if (!interactive) {
-          warnings.push(`Skipping ${normalizedRel} because it already exists and cannot prompt in non-interactive mode.`);
-          decision = 'skip';
-        } else {
-          decision = await promptConflictResolution(
-            `File ${normalizedRel} already exists in your project. How would you like to proceed?`
-          );
+        if (!decision) {
+          if (options.force) {
+            decision = 'keep-both';
+          } else if (defaultStrategy && defaultStrategy !== 'ask') {
+            decision = defaultStrategy as ConflictResolution;
+            if (decision === 'skip') {
+              warnings.push(`Skipping ${normalizedRel} because it already exists (configured conflict strategy).`);
+            }
+          } else if (!interactive) {
+            warnings.push(`Skipping ${normalizedRel} because it already exists and cannot prompt in non-interactive mode.`);
+            decision = 'skip';
+          } else {
+            decision = await promptConflictResolution(
+              `File ${normalizedRel} already exists in your project. How would you like to proceed?`
+            );
+          }
         }
 
         if (decision === 'skip') {
