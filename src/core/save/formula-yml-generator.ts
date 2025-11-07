@@ -30,7 +30,7 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   await ensureLocalGroundZeroStructure(cwd);
   await ensureDir(formulaDir);
   
-  // Create formula.yml in the formula directory (not the main .groundzero directory)
+  // Create formula.yml in the formula directory (rTnot the main .groundzero directory)
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
   
   // Create default formula config

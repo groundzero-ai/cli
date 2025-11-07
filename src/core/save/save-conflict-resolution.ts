@@ -358,12 +358,15 @@ async function readFilteredLocalFormulaFiles(formulaDir: string): Promise<Formul
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
     if (normalizedPath === FORMULA_INDEX_FILENAME) continue;
 
-    // Allow files that are either allowed by normal rules, root files, or YAML override files
+    // Allow files that are either allowed by normal rules, root files, YAML override files,
+    // or any root-level files adjacent to formula.yml (including formula.yml itself)
     const isAllowed = isAllowedRegistryPath(normalizedPath);
     const isRoot = isRootRegistryPath(normalizedPath);
     const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);
+    const isFormulaYml = normalizedPath === FILE_PATTERNS.FORMULA_YML;
+    const isRootLevelFile = !normalizedPath.includes('/');
 
-    if (!isAllowed && !isRoot && !isYamlOverride) continue;
+    if (!isAllowed && !isRoot && !isYamlOverride && !isFormulaYml && !isRootLevelFile) continue;
 
     const content = await readTextFile(entry.fullPath);
     files.push({
