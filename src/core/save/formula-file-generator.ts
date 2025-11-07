@@ -8,7 +8,7 @@ import { resolvePlatformFileConflicts } from "../../utils/platform-conflict-reso
 import { writeFormulaYml } from "../../utils/formula-yml.js";
 import { exists, readTextFile, writeTextFile } from "../../utils/fs.js";
 import { LOG_PREFIXES, UTF8_ENCODING } from "./constants.js";
-import { buildOpenMarker, CLOSE_MARKER, extractFormulaSection } from "../../utils/root-file-extractor.js";
+import { extractFormulaSection } from "../../utils/root-file-extractor.js";
 import { splitPlatformFileFrontmatter } from "../../utils/platform-frontmatter-split.js";
 import { FormulaYmlInfo } from "./formula-yml-generator.js";
 
@@ -30,7 +30,7 @@ async function processFiles(formulaConfig: FormulaYml, discoveredFiles: Discover
   const filePromises = discoveredFiles.map(async (file) => {
     const originalContent = await readTextFile(file.fullPath);
 
-    // Special handling for root files: include markers in registry content
+    // Special handling for root files: store only the section body (no markers)
     // Supports AGENTS.md and platform-native root files
     if (file.fullPath.endsWith(FILE_PATTERNS.MD_FILES) && rootFilenamesSet.has(basename(file.fullPath))) {
       const extracted = extractFormulaSection(originalContent, formulaConfig.name);
@@ -38,12 +38,11 @@ async function processFiles(formulaConfig: FormulaYml, discoveredFiles: Discover
         return null as any;
       }
 
-      const openMarker = buildOpenMarker(formulaConfig.name);
-      const wrapped = `${openMarker}\n${extracted.sectionBody}\n${CLOSE_MARKER}\n`;
+      const sectionBody = extracted.sectionBody.trim();
 
       return {
         path: file.registryPath,
-        content: wrapped,
+        content: sectionBody,
         encoding: UTF8_ENCODING
       };
     }

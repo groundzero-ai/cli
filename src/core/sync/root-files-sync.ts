@@ -9,9 +9,7 @@ import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
 import { type Platform, FILE_PATTERNS } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
 import type { FormulaFile } from '../../types/index.js';
-import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
 import { mergeFormulaContentIntoRootFile } from '../../utils/root-file-merger.js';
-import { extractFormulaSection, buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
 import { getPathLeaf } from '../../utils/path-normalization.js';
 
 /**
@@ -110,17 +108,12 @@ async function syncSingleRootFile(
   };
 
   const sourceFileName = getPathLeaf(rootFile.path);
-  const sourcePlatform = getPlatformForRootFile(sourceFileName);
-
-  // Extract the formula content from the source root file
-  const extracted = extractFormulaSection(rootFile.content, formulaName);
-  if (!extracted) {
-    logger.warn(`Invalid marker-wrapped content in ${sourceFileName}, skipping sync`);
+  const sectionBody = rootFile.content.trim();
+  if (!sectionBody) {
+    logger.warn(`Empty section for ${sourceFileName}, skipping sync`);
     result.skipped.push(rootFile.path);
     return result;
   }
-
-  const formulaContent = buildOpenMarker(formulaName) + '\n' + extracted.sectionBody + '\n' + CLOSE_MARKER;
 
   // Sync to each detected platform
   for (const platform of detectedPlatforms) {
@@ -150,7 +143,7 @@ async function syncSingleRootFile(
       const mergedContent = mergeFormulaContentIntoRootFile(
         existingContent,
         formulaName,
-        formulaContent
+        sectionBody
       );
 
       // Ensure target directory exists (though root files are at project root)

@@ -6,7 +6,6 @@ import { getFormulaVersionPath } from '../core/directory.js';
 import { exists } from './fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { isRootFile } from '../core/sync/root-files-sync.js';
-import { transformRootFileContent } from './root-file-transformer.js';
 
 /**
  * Compute stable version from a prerelease version
@@ -113,10 +112,10 @@ export function transformFormulaFilesMetadata(
       }
     }
 
-    // Handle root files (AGENTS.md, CLAUDE.md, etc.) - update markers with new name and ID
+    // Root files (AGENTS.md, CLAUDE.md, etc.) store only section bodies in the registry
+    // Marker updates happen when merging into workspace files
     if (isRootFile(file.path)) {
-      const updatedContent = transformRootFileContent(file.content, sourceName, newName);
-      return { ...file, content: updatedContent };
+      return file;
     }
 
     return file;

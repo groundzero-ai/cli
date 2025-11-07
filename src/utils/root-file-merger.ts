@@ -3,7 +3,7 @@
  * Handles marker-based content merging for root files (AGENTS.md, CLAUDE.md, etc.)
  */
 
-import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX, isMarkerWrappedContent, extractFormulaSection } from './root-file-extractor.js';
+import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX } from './root-file-extractor.js';
 
 /**
  * Merge formula-specific content into a root file while preserving all other content.
@@ -11,7 +11,7 @@ import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX
  * 
  * @param existingContent - The current content of the root file (or empty string)
  * @param formulaName - Name of the formula to merge
- * @param newContent - New content to insert between the markers (or marker-wrapped content)
+ * @param newContent - Section body to insert between the markers (without markers)
  * @returns Updated root file content with formula section merged
  */
 export function mergeFormulaContentIntoRootFile(
@@ -21,18 +21,6 @@ export function mergeFormulaContentIntoRootFile(
 ): string {
   if (!formulaName) {
     throw new Error('Formula name is required for merging');
-  }
-
-  // Check if newContent is already marker-wrapped (from registry)
-  const isMarkerWrapped = isMarkerWrappedContent(newContent, formulaName);
-
-  if (isMarkerWrapped) {
-    // Extract the section body from marker-wrapped content
-    const extracted = extractFormulaSection(newContent, formulaName);
-    if (!extracted) {
-      throw new Error('Invalid marker-wrapped content');
-    }
-    newContent = extracted.sectionBody;
   }
 
   const openMarker = buildOpenMarker(formulaName);

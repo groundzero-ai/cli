@@ -17,7 +17,6 @@ import { getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { UTF8_ENCODING } from './constants.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
-import { buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
 import { SaveCandidate } from './save-candidate-types.js';
 import {
   discoverWorkspaceRootSaveCandidates,
@@ -321,7 +320,7 @@ async function writeRootSelection(
 ): Promise<void> {
   const targetPath = `${formulaDir}/${FILE_PATTERNS.AGENTS_MD}`;
   const sectionBody = (selection.sectionBody ?? selection.content).trim();
-  const finalContent = `${buildOpenMarker(formulaName)}\n${sectionBody}\n${CLOSE_MARKER}\n`;
+  const finalContent = sectionBody;
 
   try {
     if (await exists(targetPath)) {

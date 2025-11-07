@@ -67,7 +67,7 @@ export async function installRootFilesFromMap(
  * @param cwd - Current working directory
  * @param rootFileName - Name of the root file (e.g., 'CLAUDE.md')
  * @param formulaName - Name of the formula
- * @param registryContent - Content from the registry to merge
+ * @param registryContent - Section body from the registry to merge (no markers)
  * @returns True if file was updated (existed before), false if newly created
  */
 async function installSingleRootFile(
@@ -87,11 +87,14 @@ async function installSingleRootFile(
     wasExisting = true;
   }
 
+  // Registry stores only the section body (markers are added during merge)
+  const sectionBody = registryContent.trim();
+
   // Merge formula content into the file
   const mergedContent = mergeFormulaContentIntoRootFile(
     existingContent,
     formulaName,
-    registryContent
+    sectionBody
   );
 
   // Write the merged content
