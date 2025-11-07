@@ -6,7 +6,7 @@ import { exists, readTextFile } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { logger } from '../../utils/logger.js';
-import { ensureRootMarkerIdAndExtract } from '../../utils/root-file-extractor.js';
+import { extractFormulaSection } from '../../utils/root-file-extractor.js';
 import { SaveCandidate } from './save-candidate-types.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 
@@ -25,9 +25,8 @@ export async function loadLocalRootSaveCandidates(
 
     try {
       const content = await readTextFile(fullPath);
-      const ensured = ensureRootMarkerIdAndExtract(content, formulaName);
-      const sectionBody = ensured?.sectionBody?.trim() ?? content.trim();
-      const markerId = ensured?.id;
+      const extracted = extractFormulaSection(content, formulaName);
+      const sectionBody = extracted?.sectionBody?.trim() ?? content.trim();
       const contentHash = await calculateFileHash(sectionBody);
       const mtime = await getFileMtime(fullPath);
 
@@ -40,7 +39,6 @@ export async function loadLocalRootSaveCandidates(
         mtime,
         displayPath: fileName,
         sectionBody,
-        markerId,
         isRootFile: true,
         originalContent: content
       });
@@ -64,14 +62,13 @@ export async function discoverWorkspaceRootSaveCandidates(
   for (const file of discovered) {
     try {
       const content = await readTextFile(file.fullPath);
-      const ensured = ensureRootMarkerIdAndExtract(content, formulaName);
-      const sectionBody = ensured?.sectionBody?.trim();
+      const extracted = extractFormulaSection(content, formulaName);
+      const sectionBody = extracted?.sectionBody?.trim();
 
       if (!sectionBody) {
         continue;
       }
 
-      const markerId = ensured?.id;
       const hash = file.contentHash || (await calculateFileHash(sectionBody));
 
       candidates.push({
@@ -83,7 +80,6 @@ export async function discoverWorkspaceRootSaveCandidates(
         mtime: file.mtime,
         displayPath: file.relativePath,
         sectionBody,
-        markerId,
         isRootFile: true,
         originalContent: content
       });

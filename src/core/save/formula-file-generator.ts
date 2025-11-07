@@ -8,7 +8,7 @@ import { resolvePlatformFileConflicts } from "../../utils/platform-conflict-reso
 import { writeFormulaYml } from "../../utils/formula-yml.js";
 import { exists, readTextFile, writeTextFile } from "../../utils/fs.js";
 import { LOG_PREFIXES, UTF8_ENCODING } from "./constants.js";
-import { buildOpenMarker, CLOSE_MARKER, ensureRootMarkerIdAndExtract } from "../../utils/root-file-extractor.js";
+import { buildOpenMarker, CLOSE_MARKER, extractFormulaSection } from "../../utils/root-file-extractor.js";
 import { splitPlatformFileFrontmatter } from "../../utils/platform-frontmatter-split.js";
 import { FormulaYmlInfo } from "./formula-yml-generator.js";
 
@@ -30,22 +30,16 @@ async function processFiles(formulaConfig: FormulaYml, discoveredFiles: Discover
   const filePromises = discoveredFiles.map(async (file) => {
     const originalContent = await readTextFile(file.fullPath);
 
-    // Special handling for root files: ensure marker id and include markers in registry content
+    // Special handling for root files: include markers in registry content
     // Supports AGENTS.md and platform-native root files
     if (file.fullPath.endsWith(FILE_PATTERNS.MD_FILES) && rootFilenamesSet.has(basename(file.fullPath))) {
-      const ensured = ensureRootMarkerIdAndExtract(originalContent, formulaConfig.name);
-      if (!ensured) {
+      const extracted = extractFormulaSection(originalContent, formulaConfig.name);
+      if (!extracted) {
         return null as any;
       }
 
-      // If source content changed (id added/updated), write it back to the workspace
-      if (ensured.updatedContent !== originalContent) {
-        await writeTextFile(file.fullPath, ensured.updatedContent);
-        console.log(`${LOG_PREFIXES.UPDATED} ${file.relativePath}`);
-      }
-
-      const openMarker = buildOpenMarker(formulaConfig.name, ensured.id);
-      const wrapped = `${openMarker}\n${ensured.sectionBody}\n${CLOSE_MARKER}\n`;
+      const openMarker = buildOpenMarker(formulaConfig.name);
+      const wrapped = `${openMarker}\n${extracted.sectionBody}\n${CLOSE_MARKER}\n`;
 
       return {
         path: file.registryPath,

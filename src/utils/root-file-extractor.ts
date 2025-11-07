@@ -1,11 +1,10 @@
-import { generateEntityId, isValidEntityId } from '../utils/entity-id.js';
 
 /**
  * Utility for extracting and handling formula-specific content markers
  * for root files (AGENTS.md, CLAUDE.md, etc.).
  *
  * Marker format:
- *   <!-- formula: <formula-name> [id: <id>] --> ... <!-- -->
+ *   <!-- formula: <formula-name> --> ... <!-- -->
  */
 
 /**
@@ -16,8 +15,8 @@ export function escapeRegExp(input: string): string {
 }
 
 /** Build the literal open marker string for a formula */
-export function buildOpenMarker(formulaName: string, id?: string): string {
-  return id ? `<!-- formula: ${formulaName} id: ${id} -->` : `<!-- formula: ${formulaName} -->`;
+export function buildOpenMarker(formulaName: string): string {
+  return `<!-- formula: ${formulaName} -->`;
 }
 
 /** Constant close marker string */
@@ -26,20 +25,20 @@ export const CLOSE_MARKER = '<!-- -->';
 /** Build a case-insensitive regex to match the open marker for a formula */
 export function buildOpenMarkerRegex(formulaName: string): RegExp {
   const namePattern = escapeRegExp(formulaName);
-  return new RegExp(`<!--\\s*formula:\\s*${namePattern}(?:\\s+id:\\s*([\\w\\-]{9}))?\\s*-->`, 'i');
+  return new RegExp(`<!--\\s*formula:\\s*${namePattern}\\s*-->`, 'i');
 }
 
 /** Case-insensitive regex to match any formula open marker */
-export const OPEN_MARKER_ANY_REGEX = /<!--\s*formula:\s*[^\s>]+(?:\s+id:\s*[\w\-]{9})?\s*-->/i;
+export const OPEN_MARKER_ANY_REGEX = /<!--\s*formula:\s*[^\s>]+?\s*-->/i;
 
 /** Case-insensitive regex to match the close marker */
 export const CLOSE_MARKER_REGEX = /<!--\s*-->/i;
 
 /**
  * Global, non-greedy match between open/close markers, capturing formula name and body
- * Example: <!-- formula: name id: xxxxxxxxx --> ... <!-- -->
+ * Example: <!-- formula: name --> ... <!-- -->
  */
-export const FORMULA_SECTION_GLOBAL_REGEX = /<!--\s*formula:\s*([^\s]+)(?:\s+id:\s*[\w\-]{9})?\s*-->([\s\S]*?)<!--\s*-->/gi;
+export const FORMULA_SECTION_GLOBAL_REGEX = /<!--\s*formula:\s*([^\s]+)\s*-->([\s\S]*?)<!--\s*-->/gi;
 
 /**
  * Detect whether content includes a marker-wrapped section.
@@ -58,7 +57,7 @@ export function isMarkerWrappedContent(content: string, formulaName?: string): b
 /**
  * Extract content for a specific formula from AGENTS.md content.
  *
- * - Opening marker: <!-- formula: <formulaName> [id: <id>] -->
+ * - Opening marker: <!-- formula: <formulaName> -->
  * - Closing marker: <!-- --> (optionally allowing internal whitespace)
  *
  * Returns null if no matching section is found.
@@ -83,16 +82,15 @@ export function extractFormulaContentFromRootFile(content: string, formulaName: 
 }
 
 /**
- * Ensure the root marker for a specific formula has a valid id and extract its section body.
+ * Extract the section body for a specific formula from marker-wrapped content.
  * Supports markers in the format:
- *   <!-- formula: <name> -->
- *   <!-- formula: <name> id: <id> -->
+ *   <!-- formula: <name> --> ... <!-- -->
  * Returns null if no section is found.
  */
-export function ensureRootMarkerIdAndExtract(
+export function extractFormulaSection(
   content: string,
   formulaName: string
-): { id: string; updatedContent: string; sectionBody: string } | null {
+): { sectionBody: string } | null {
   if (!content || !formulaName) return null;
 
   const openRe = buildOpenMarkerRegex(formulaName);
@@ -101,27 +99,14 @@ export function ensureRootMarkerIdAndExtract(
   const openMatch = openRe.exec(content);
   if (!openMatch) return null;
 
-  const existingId = openMatch[1];
-  const effectiveId = existingId && isValidEntityId(existingId) ? existingId : generateEntityId();
-
-  // If we need to update the open marker to include id, do an in-place replacement
-  let updatedContent = content;
-  const desiredOpenMarker = buildOpenMarker(formulaName, effectiveId);
-  const openMarkerText = openMatch[0];
-  if (openMarkerText !== desiredOpenMarker) {
-    const idx = openMatch.index;
-    updatedContent = content.slice(0, idx) + desiredOpenMarker + content.slice(idx + openMarkerText.length);
-  }
-
-  // Recompute close match positions after potential update
-  const startIndex = (openMatch.index + desiredOpenMarker.length);
-  const rest = updatedContent.slice(startIndex);
+  const startIndex = openMatch.index + openMatch[0].length;
+  const rest = content.slice(startIndex);
   const closeMatch = closeRe.exec(rest);
   if (!closeMatch) return null;
 
   const sectionBody = rest.slice(0, closeMatch.index).trim();
 
-  return { id: effectiveId, updatedContent, sectionBody };
+  return { sectionBody };
 }
 
 /**

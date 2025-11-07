@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js';
 import type { FormulaFile } from '../../types/index.js';
 import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
 import { mergeFormulaContentIntoRootFile } from '../../utils/root-file-merger.js';
-import { ensureRootMarkerIdAndExtract, buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
+import { extractFormulaSection, buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
 import { getPathLeaf } from '../../utils/path-normalization.js';
 
 /**
@@ -113,14 +113,14 @@ async function syncSingleRootFile(
   const sourcePlatform = getPlatformForRootFile(sourceFileName);
 
   // Extract the formula content from the source root file
-  const ensured = ensureRootMarkerIdAndExtract(rootFile.content, formulaName);
-  if (!ensured) {
+  const extracted = extractFormulaSection(rootFile.content, formulaName);
+  if (!extracted) {
     logger.warn(`Invalid marker-wrapped content in ${sourceFileName}, skipping sync`);
     result.skipped.push(rootFile.path);
     return result;
   }
 
-  const formulaContent = buildOpenMarker(formulaName, ensured.id) + '\n' + ensured.sectionBody + '\n' + CLOSE_MARKER;
+  const formulaContent = buildOpenMarker(formulaName) + '\n' + extracted.sectionBody + '\n' + CLOSE_MARKER;
 
   // Sync to each detected platform
   for (const platform of detectedPlatforms) {

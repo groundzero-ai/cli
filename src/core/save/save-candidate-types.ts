@@ -10,8 +10,6 @@ export interface SaveCandidate {
   displayPath: string;
   /** Root file section body when applicable */
   sectionBody?: string;
-  /** Marker id associated with root file content */
-  markerId?: string;
   /** Indicates the candidate represents a root file chunk */
   isRootFile?: boolean;
   /** Original file content when different from `content` */

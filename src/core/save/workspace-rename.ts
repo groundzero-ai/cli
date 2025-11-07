@@ -4,7 +4,7 @@ import { FILE_PATTERNS } from '../../constants/index.js';
 import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
 import { discoverAllRootFiles } from '../../utils/formula-discovery.js';
 import { FormulaYmlInfo } from './formula-yml-generator.js';
-import { ensureRootMarkerIdAndExtract, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';
+import { extractFormulaSection, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';
 import { readTextFile, writeTextFile, exists, renameDirectory, removeEmptyDirectories } from '../../utils/fs.js';
 import { writeFormulaYml, parseFormulaYml } from '../../utils/formula-yml.js';
 import { getLocalFormulaDir, getLocalFormulaYmlPath, getLocalFormulasDir } from '../../utils/paths.js';
@@ -36,15 +36,14 @@ export async function applyWorkspaceFormulaRename(
   const rootFiles = await discoverAllRootFiles(cwd, currentName);
   for (const rootFile of rootFiles) {
     const originalContent = await readTextFile(rootFile.fullPath);
-    const ensured = ensureRootMarkerIdAndExtract(originalContent, currentName);
-    if (!ensured) {
+    const extracted = extractFormulaSection(originalContent, currentName);
+    if (!extracted) {
       continue;
     }
 
     const openRegex = buildOpenMarkerRegex(currentName);
-    const desiredOpenMarker = buildOpenMarker(newName, ensured.id);
-    const withIdContent = ensured.updatedContent;
-    const replacedContent = withIdContent.replace(openRegex, desiredOpenMarker);
+    const desiredOpenMarker = buildOpenMarker(newName);
+    const replacedContent = originalContent.replace(openRegex, desiredOpenMarker);
 
     if (replacedContent !== originalContent) {
       await writeTextFile(rootFile.fullPath, replacedContent);
