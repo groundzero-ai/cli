@@ -11,7 +11,6 @@ import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/save/platform-sync.js';
 import { parseFormulaInput, validateFormulaName, normalizeFormulaName } from '../utils/formula-name.js';
 import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
-import { createFormulaFiles } from '../core/save/formula-file-generator.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
 import { extractBaseVersion } from '../utils/version-generator.js';
 import { getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
@@ -168,11 +167,8 @@ async function saveFormulaCommand(
     }
   }
 
-  // Discover and include MD files using appropriate logic
-  const discoveredFiles = await discoverFormulaFilesForSave(formulaConfig.name);
-
-  // Process discovered files and create formula files array
-  const formulaFiles = await createFormulaFiles(formulaInfo, discoveredFiles);
+  // Discover and process files directly into formula files array
+  const formulaFiles = await discoverFormulaFilesForSave(formulaInfo);
 
   // Save formula to local registry
   const saveResult = await saveFormulaToRegistry(formulaInfo, formulaFiles);
