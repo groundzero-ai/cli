@@ -7,7 +7,7 @@ import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '..
 import { resolveDependencies } from '../dependency-resolver.js';
 import { resolveDependenciesWithOverrides } from '../../utils/install-helpers.js';
 import { logger } from '../../utils/logger.js';
-import { VersionConflictError } from '../../utils/errors.js';
+import { VersionConflictError, UserCancellationError } from '../../utils/errors.js';
 import type { Platform } from '../../constants/index.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
 import { createBasicFormulaYml, addFormulaToYml } from '../../utils/formula-management.js';
@@ -368,6 +368,9 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
         logger.info(`Index-based install for ${resolved.name}: ${installResult.installed} installed, ${installResult.updated} updated, ${installResult.deleted} deleted`);
       }
     } catch (error) {
+      if (error instanceof UserCancellationError) {
+        throw error; // Re-throw to allow clean exit
+      }
       logger.error(`Failed index-based install for ${resolved.name}: ${error}`);
       totalSkipped++;
     }
@@ -394,6 +397,9 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       installResult.updated.forEach(file => rootFileResults.updated.add(file));
       installResult.skipped.forEach(file => rootFileResults.skipped.add(file));
     } catch (error) {
+      if (error instanceof UserCancellationError) {
+        throw error; // Re-throw to allow clean exit
+      }
       logger.error(`Failed root file install for ${resolved.name}: ${error}`);
     }
   }
