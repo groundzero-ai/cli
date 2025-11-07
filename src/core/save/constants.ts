@@ -2,6 +2,7 @@
 export const UTF8_ENCODING = 'utf8' as const;
 export const DEFAULT_VERSION = '0.1.0';
 export const VERSION_TYPE_STABLE = 'stable';
+export const WIP_SUFFIX = '-wip';
 
 export const ERROR_MESSAGES = {
   INVALID_FORMULA_SYNTAX: 'Invalid formula syntax: %s. Use format: formula@version',
@@ -31,7 +32,7 @@ export const LOG_PREFIXES = {
   BUMP_PRERELEASE: '✓ Bumping to prerelease version:',
   CONVERT_STABLE: '✓ Converting to stable version:',
   OVERWRITE_STABLE: '✓ Overwriting stable version:',
-  INCREMENT_PRERELEASE: '✓ Incrementing prerelease version:',
+  SET_PRERELEASE: '✓ Setting prerelease version:',
   AUTO_INCREMENT: '✓ Auto-incrementing to patch prerelease:',
   WARNING: '⚠️  Version',
   WARNING_SUFFIX: 'is already stable.',

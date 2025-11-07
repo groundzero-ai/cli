@@ -7,7 +7,7 @@ import { formulaManager } from '../core/formula.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { promptConfirmation } from '../utils/prompts.js';
-import { isLocalVersion, extractBaseVersion, decodeBase62 } from '../utils/version-generator.js';
+import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
 import { exists, getDirectorySize } from '../utils/fs.js';
 
 /**
@@ -17,18 +17,9 @@ function extractTimestamp(version: string): number {
   if (!isLocalVersion(version)) {
     return 0;
   }
-  
-  const parts = version.split('-dev.');
-  if (parts.length !== 2) {
-    return 0;
-  }
-  
-  try {
-    return decodeBase62(parts[1]);
-  } catch (error) {
-    logger.warn(`Failed to decode timestamp from version: ${version}`, { error });
-    return 0;
-  }
+
+  // WIP versions are treated as the latest
+  return Number.MAX_SAFE_INTEGER;
 }
 
 /**

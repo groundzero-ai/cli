@@ -9,7 +9,7 @@ import { getLocalFormulaDir } from "../../utils/paths.js";
 import { ValidationError } from "../../utils/errors.js";
 import { ensureLocalGroundZeroStructure } from "../../utils/formula-management.js";
 import { hasFormulaVersion } from "../directory.js";
-import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from "./constants.js";
+import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES, WIP_SUFFIX } from "./constants.js";
 import { determineTargetVersion } from "./formula-yml-versioning.js";
 
 export type FormulaYmlInfo = {
@@ -99,7 +99,9 @@ export async function getOrCreateFormulaYml(
     isNewFormula ? undefined : formulaConfig.version
   );
 
-  if (!force) {
+  const allowOverwrite = force || targetVersion.endsWith(WIP_SUFFIX);
+
+  if (!allowOverwrite) {
     const versionExists = await hasFormulaVersion(normalizedName, targetVersion);
     if (versionExists) {
       throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace("%s", targetVersion));

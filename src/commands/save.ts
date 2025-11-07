@@ -1,4 +1,4 @@
-import { VERSION_TYPE_STABLE } from './../core/save/constants.js';
+import { VERSION_TYPE_STABLE, WIP_SUFFIX } from './../core/save/constants.js';
 import { Command } from 'commander';
 import { SaveOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
@@ -90,10 +90,11 @@ async function saveFormulaCommand(
   let formulaInfo = await getOrCreateFormulaYml(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
   let formulaConfig = formulaInfo.config;
   let isRootFormula = formulaInfo.isRootFormula;
-  const targetVersion = formulaConfig.version;
+  let targetVersion = formulaConfig.version;
+  let isWipVersion = targetVersion.endsWith(WIP_SUFFIX);
 
   if (renameTarget) {
-    if (!options?.force) {
+    if (!(options?.force || isWipVersion)) {
       const targetExists = await formulaVersionExists(renameTarget, targetVersion);
       if (targetExists) {
         throw new Error(`Version ${renameTarget}@${targetVersion} already exists. Use --force to overwrite.`);
@@ -113,6 +114,8 @@ async function saveFormulaCommand(
     );
     formulaConfig = formulaInfo.config;
     isRootFormula = formulaInfo.isRootFormula;
+    targetVersion = formulaConfig.version;
+    isWipVersion = targetVersion.endsWith(WIP_SUFFIX);
   }
 
   // Inject includes into this formula's own formula.yml (dependencies)
@@ -168,7 +171,7 @@ async function saveFormulaCommand(
 
   // Discover and process files directly into formula files array
   const formulaFiles = await discoverFormulaFilesForSave(formulaInfo, {
-    force: options?.force
+    force: options?.force || isWipVersion
   });
 
   // Save formula to local registry

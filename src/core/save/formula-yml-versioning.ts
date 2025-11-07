@@ -111,7 +111,7 @@ export async function determineTargetVersion(
   // Default smart increment behavior
   if (isLocalVersion(currentVersion)) {
     const localVersion = generateLocalVersion(extractBaseVersion(currentVersion));
-    console.log(`${LOG_PREFIXES.INCREMENT_PRERELEASE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${localVersion}`);
+    console.log(`${LOG_PREFIXES.SET_PRERELEASE} ${currentVersion} ${LOG_PREFIXES.ARROW_SEPARATOR} ${localVersion}`);
     return localVersion;
   } else {
     // For other stable versions, bump patch and then generate prerelease
