@@ -64,7 +64,9 @@ export async function getOrCreateFormulaYml(
 
   const formulaDir = getLocalFormulaDir(cwd, name);
   if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
-    throw new ValidationError(ERROR_MESSAGES.FORMULA_DIR_NOT_FOUND.replace("%s", formulaDir));
+    // Create the formula directory if it doesn't exist
+    await ensureDir(formulaDir);
+    logger.debug("Created formula directory for save", { path: formulaDir });
   }
 
   const normalizedName = normalizeFormulaName(name);

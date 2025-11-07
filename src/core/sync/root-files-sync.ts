@@ -6,7 +6,7 @@
 import { relative } from 'path';
 import { ensureDir, writeTextFile, exists, readTextFile } from '../../utils/fs.js';
 import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
-import { type Platform } from '../../constants/index.js';
+import { type Platform, FILE_PATTERNS } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
 import type { FormulaFile } from '../../types/index.js';
 import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
@@ -87,6 +87,8 @@ export function isRootFile(filePath: string): boolean {
       rootFileNames.add(def.rootFile);
     }
   }
+  // Also treat universal root file as a root file
+  rootFileNames.add(FILE_PATTERNS.AGENTS_MD);
 
   const fileName = getPathLeaf(filePath);
   return fileName ? rootFileNames.has(fileName) : false;

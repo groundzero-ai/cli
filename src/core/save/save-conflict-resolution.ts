@@ -1,5 +1,6 @@
 import type { FormulaFile } from '../../types/index.js';
 import type { FormulaYmlInfo } from './formula-yml-generator.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { FORMULA_INDEX_FILENAME } from '../../utils/formula-index-yml.js';
 import { getLocalFormulaDir } from '../../utils/paths.js';
 import { exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
@@ -7,25 +8,22 @@ import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import {
   isAllowedRegistryPath,
-  normalizeRegistryPath
+  normalizeRegistryPath,
+  isRootRegistryPath,
+  isSkippableRegistryPath
 } from '../../utils/registry-entry-filter.js';
 import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
 import { getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { UTF8_ENCODING } from './constants.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
-
-type SaveCandidateSource = 'local' | 'workspace';
-
-interface SaveCandidate {
-  source: SaveCandidateSource;
-  registryPath: string;
-  fullPath: string;
-  content: string;
-  contentHash: string;
-  mtime: number;
-  displayPath: string;
-}
+import { buildOpenMarker, CLOSE_MARKER } from '../../utils/root-file-extractor.js';
+import { generateEntityId } from '../../utils/entity-id.js';
+import { SaveCandidate } from './save-candidate-types.js';
+import {
+  discoverWorkspaceRootSaveCandidates,
+  loadLocalRootSaveCandidates
+} from './root-save-candidates.js';
 
 interface SaveCandidateGroup {
   registryPath: string;
@@ -48,10 +46,20 @@ export async function resolveFormulaFilesWithConflicts(
     return [];
   }
 
-  const [localCandidates, workspaceCandidates] = await Promise.all([
+  const [
+    localPlatformCandidates,
+    workspacePlatformCandidates,
+    localRootCandidates,
+    workspaceRootCandidates
+  ] = await Promise.all([
     loadLocalCandidates(formulaDir),
-    discoverWorkspaceCandidates(cwd, formulaInfo.config.name)
+    discoverWorkspaceCandidates(cwd, formulaInfo.config.name),
+    loadLocalRootSaveCandidates(formulaDir, formulaInfo.config.name),
+    discoverWorkspaceRootSaveCandidates(cwd, formulaInfo.config.name)
   ]);
+
+  const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
+  const workspaceCandidates = [...workspacePlatformCandidates, ...workspaceRootCandidates];
 
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
 
@@ -67,6 +75,11 @@ export async function resolveFormulaFilesWithConflicts(
 
     const selection = await resolveGroup(group, options.force ?? false);
     if (!selection) continue;
+
+    if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
+      await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
+      continue;
+    }
 
     if (selection.contentHash !== group.local!.contentHash) {
       // Overwrite local file content with selected content
@@ -93,6 +106,10 @@ async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]>
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
 
     if (normalizedPath === FORMULA_INDEX_FILENAME) {
+      continue;
+    }
+
+    if (normalizedPath === FILE_PATTERNS.AGENTS_MD) {
       continue;
     }
 
@@ -297,6 +314,42 @@ function formatTimestamp(mtime: number): string {
   return new Date(mtime).toISOString();
 }
 
+async function writeRootSelection(
+  formulaDir: string,
+  formulaName: string,
+  localCandidate: SaveCandidate | undefined,
+  selection: SaveCandidate
+): Promise<void> {
+  const targetPath = `${formulaDir}/${FILE_PATTERNS.AGENTS_MD}`;
+  const sectionBody = (selection.sectionBody ?? selection.content).trim();
+  const markerId = localCandidate?.markerId ?? selection.markerId ?? generateEntityId();
+  const finalContent = `${buildOpenMarker(formulaName, markerId)}\n${sectionBody}\n${CLOSE_MARKER}\n`;
+
+  try {
+    if (await exists(targetPath)) {
+      const existingContent = await readTextFile(targetPath, UTF8_ENCODING);
+      if (existingContent === finalContent) {
+        logger.debug(`Root file unchanged: ${FILE_PATTERNS.AGENTS_MD}`);
+        return;
+      }
+    }
+
+    await writeTextFile(targetPath, finalContent, UTF8_ENCODING);
+    logger.debug(`Updated root file content for ${formulaName}`);
+  } catch (error) {
+    logger.warn(`Failed to write root file ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
+  }
+}
+
+/**
+ * Check if a path is a YAML override file that should be included despite isAllowedRegistryPath filtering.
+ * YAML override files are files like "rules/agent.claude.yml" that contain platform-specific frontmatter.
+ */
+function isYamlOverrideFileForSave(normalizedPath: string): boolean {
+  // Must be skippable (which includes YAML override check) but not formula.yml
+  return normalizedPath !== FILE_PATTERNS.FORMULA_YML && isSkippableRegistryPath(normalizedPath);
+}
+
 async function readFilteredLocalFormulaFiles(formulaDir: string): Promise<FormulaFile[]> {
   const entries = await findFilesByExtension(formulaDir, [], formulaDir);
   const files: FormulaFile[] = [];
@@ -304,7 +357,13 @@ async function readFilteredLocalFormulaFiles(formulaDir: string): Promise<Formul
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
     if (normalizedPath === FORMULA_INDEX_FILENAME) continue;
-    if (!isAllowedRegistryPath(normalizedPath)) continue;
+
+    // Allow files that are either allowed by normal rules, root files, or YAML override files
+    const isAllowed = isAllowedRegistryPath(normalizedPath);
+    const isRoot = isRootRegistryPath(normalizedPath);
+    const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);
+
+    if (!isAllowed && !isRoot && !isYamlOverride) continue;
 
     const content = await readTextFile(entry.fullPath);
     files.push({
