@@ -18,10 +18,15 @@ import {
   PLATFORM_DIRS,
   FILE_PATTERNS,
   UNIVERSAL_SUBDIRS,
-  PLATFORMS,
   type Platform
 } from '../constants/index.js';
 import { getFirstPathComponent, getPathAfterFirstComponent, normalizePathForProcessing } from './path-normalization.js';
+import {
+  isAllowedRegistryPath,
+  isRootRegistryPath,
+  isSkippableRegistryPath,
+  normalizeRegistryPath
+} from './registry-entry-filter.js';
 import { mapUniversalToPlatform } from './platform-mapper.js';
 import { safePrompts } from './prompts.js';
 import type { InstallOptions } from '../types/index.js';
@@ -41,14 +46,6 @@ import {
   isDirKey,
   type FormulaIndexRecord,
 } from './formula-index-yml.js';
-
-const ROOT_FILE_PATTERNS = [
-  FILE_PATTERNS.AGENTS_MD,
-  FILE_PATTERNS.CLAUDE_MD,
-  FILE_PATTERNS.GEMINI_MD,
-  FILE_PATTERNS.QWEN_MD,
-  FILE_PATTERNS.WARP_MD
-];
 
 // ============================================================================
 // Types and Interfaces
@@ -554,40 +551,6 @@ async function buildExpandedIndexesContext(
 // Registry File Loading Functions
 // ============================================================================
 
-function normalizeRegistryPath(registryPath: string): string {
-  return normalizePathForProcessing(registryPath);
-}
-
-function isSkippableRegistryPath(registryPath: string): boolean {
-  const normalized = normalizeRegistryPath(registryPath);
-  if (normalized === FILE_PATTERNS.FORMULA_YML) return true;
-
-  // Filter out platform YAML override files (e.g., rules/file.cursor.yml)
-  // These are used only for merging frontmatter, not for installation
-  const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
-  const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
-
-  // Must be in a universal subdir
-  if (!subdirs.some(sd => normalized.startsWith(sd + '/'))) return false;
-  // Must end with .yml and have a platform suffix before it
-  if (!normalized.endsWith(FILE_PATTERNS.YML_FILE)) return false;
-
-  const lastDot = normalized.lastIndexOf('.');
-  const secondLastDot = normalized.lastIndexOf('.', lastDot - 1);
-  if (secondLastDot === -1) return false;
-  const possiblePlatform = normalized.slice(secondLastDot + 1, lastDot);
-  if (platformValues.includes(possiblePlatform)) return true;
-
-  return false;
-}
-
-function isRootFile(registryPath: string): boolean {
-  const normalized = normalizeRegistryPath(registryPath);
-  return ROOT_FILE_PATTERNS.some(pattern =>
-    normalized.endsWith(`/${pattern}`) || normalized === pattern
-  );
-}
-
 async function loadRegistryFileEntries(
   formulaName: string,
   version: string
@@ -599,21 +562,11 @@ async function loadRegistryFileEntries(
     const normalized = normalizeRegistryPath(file.path);
 
     // Skip root files - these are handled by installRootFilesFromMap
-    if (isRootFile(normalized)) {
+    if (isRootRegistryPath(normalized)) {
       continue;
     }
 
-    if (isSkippableRegistryPath(normalized)) {
-      continue;
-    }
-
-    // Only allow ai/ and universal subdirs
-    const first = getFirstPathComponent(normalized);
-    const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
-    const isAi = first === PLATFORM_DIRS.AI;
-    const isUniversal = universalValues.includes(first);
-
-    if (!isAi && !isUniversal) {
+    if (!isAllowedRegistryPath(normalized)) {
       // Ignore any other top-level paths (e.g., README.md, some/...)
       continue;
     }
@@ -1280,9 +1233,9 @@ export async function buildIndexMappingForFormulaFiles(
     .filter(file => {
       const normalized = normalizeRegistryPath(file.path);
       // Skip root files and skippable paths (same logic as loadRegistryFileEntries)
-      if (isRootFile(normalized)) return false;
+      if (isRootRegistryPath(normalized)) return false;
       if (isSkippableRegistryPath(normalized)) return false;
-      return true;
+      return isAllowedRegistryPath(normalized);
     })
     .map(file => ({
       registryPath: normalizeRegistryPath(file.path),

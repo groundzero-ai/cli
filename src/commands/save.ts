@@ -167,7 +167,9 @@ async function saveFormulaCommand(
   }
 
   // Discover and process files directly into formula files array
-  const formulaFiles = await discoverFormulaFilesForSave(formulaInfo);
+  const formulaFiles = await discoverFormulaFilesForSave(formulaInfo, {
+    force: options?.force
+  });
 
   // Save formula to local registry
   const saveResult = await saveFormulaToRegistry(formulaInfo, formulaFiles);
