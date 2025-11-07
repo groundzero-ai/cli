@@ -607,6 +607,17 @@ async function loadRegistryFileEntries(
       continue;
     }
 
+    // Only allow ai/ and universal subdirs
+    const first = getFirstPathComponent(normalized);
+    const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
+    const isAi = first === PLATFORM_DIRS.AI;
+    const isUniversal = universalValues.includes(first);
+
+    if (!isAi && !isUniversal) {
+      // Ignore any other top-level paths (e.g., README.md, some/...)
+      continue;
+    }
+
     entries.push({
       registryPath: normalized,
       content: file.content,
