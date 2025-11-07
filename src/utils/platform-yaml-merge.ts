@@ -7,6 +7,7 @@
 import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
 import type { FormulaFile } from '../types/index.js';
 import { formulaManager } from '../core/formula.js';
+import * as yaml from 'js-yaml';
 
 /**
  * Merge platform-specific YAML override with universal content.
@@ -30,9 +31,41 @@ export function mergePlatformYamlOverride(
     const overridePath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
     const matchingYml = formulaFiles.find(f => f.path === overridePath);
 
-    // Frontmatter merging removed - just return universal content
     if (matchingYml?.content?.trim()) {
-      return universalContent;
+      try {
+        // Parse the YAML override content
+        const overrideData = yaml.load(matchingYml.content);
+
+        // Convert back to YAML frontmatter format
+        const frontmatterYaml = yaml.dump(overrideData, {
+          indent: 2,
+          noArrayIndent: true,
+          sortKeys: false,
+          quotingType: '"'
+        }).trim();
+
+        // Check if universal content already has frontmatter
+        const trimmedContent = universalContent.trim();
+        if (trimmedContent.startsWith('---')) {
+          // Content already has frontmatter, merge with existing
+          const endMarkerIndex = trimmedContent.indexOf('\n---', 3);
+          if (endMarkerIndex !== -1) {
+            // Extract existing frontmatter and content
+            const existingFrontmatter = trimmedContent.substring(3, endMarkerIndex);
+            const contentAfter = trimmedContent.substring(endMarkerIndex + 4);
+
+            // Merge frontmatter: override YAML first, then existing
+            const mergedFrontmatter = frontmatterYaml + '\n' + existingFrontmatter;
+            return `---\n${mergedFrontmatter}\n---${contentAfter}`;
+          }
+        }
+
+        // No existing frontmatter, prepend as new frontmatter
+        return `---\n${frontmatterYaml}\n---\n\n${universalContent}`;
+      } catch (error) {
+        console.warn(`Failed to parse YAML override for ${overridePath}: ${error}`);
+        // Fall back to universal content on error
+      }
     }
   } catch {
     // Fall back to universal content on error
