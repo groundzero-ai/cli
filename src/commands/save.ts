@@ -8,7 +8,7 @@ import { addFormulaToYml } from '../utils/formula-management.js';
 import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
-import { performPlatformSync } from '../core/save/platform-sync.js';
+import { performPlatformSync } from '../core/sync/platform-sync.js';
 import { parseFormulaInput, normalizeFormulaName } from '../utils/formula-name.js';
 import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';

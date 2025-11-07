@@ -8,7 +8,7 @@ import { readTextFile, writeTextFile, exists, isDirectory, listFiles } from '../
 import { withErrorHandling, ValidationError, UserCancellationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS } from '../constants/index.js';
-import { isRootFile } from '../core/save/root-files-sync.js';
+import { isRootFile } from '../core/sync/root-files-sync.js';
 import { addFormulaToRootFile } from '../utils/root-file-operations.js';
 import { generateYamlKeyValue } from '../utils/yaml-frontmatter.js';
 import { buildIndexYmlContent } from '../utils/index-yml.js';

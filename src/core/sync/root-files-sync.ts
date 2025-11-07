@@ -5,7 +5,7 @@
 
 import { relative } from 'path';
 import { ensureDir, writeTextFile, exists, readTextFile } from '../../utils/fs.js';
-import { getDetectedPlatforms, getPlatformDefinition, getAllPlatforms } from '../platforms.js';
+import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
 import { type Platform } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
 import type { FormulaFile } from '../../types/index.js';
@@ -29,12 +29,14 @@ export interface RootFileSyncResult {
  * @param cwd - Current working directory
  * @param formulaFiles - Array of formula files that were saved to registry
  * @param formulaName - Name of the formula being synced
+ * @param platforms - Array of platforms to sync files to
  * @returns Promise resolving to sync result with created, updated, and skipped files
  */
 export async function syncRootFiles(
   cwd: string,
   formulaFiles: FormulaFile[],
-  formulaName: string
+  formulaName: string,
+  platforms: Platform[]
 ): Promise<RootFileSyncResult> {
   const result: RootFileSyncResult = {
     created: [],
@@ -42,11 +44,8 @@ export async function syncRootFiles(
     skipped: []
   };
 
-  // Get detected platforms
-  const detectedPlatforms = await getDetectedPlatforms(cwd);
-
-  if (detectedPlatforms.length === 0) {
-    logger.debug('No platforms detected, skipping root file sync');
+  if (platforms.length === 0) {
+    logger.debug('No platforms provided, skipping root file sync');
     return result;
   }
 
@@ -58,12 +57,12 @@ export async function syncRootFiles(
     return result;
   }
 
-  logger.debug(`Starting root file sync for ${rootFiles.length} files across ${detectedPlatforms.length} platforms`);
+  logger.debug(`Starting root file sync for ${rootFiles.length} files across ${platforms.length} platforms`);
 
   // Process each root file
   for (const rootFile of rootFiles) {
     try {
-      const syncResults = await syncSingleRootFile(cwd, rootFile, formulaName, detectedPlatforms);
+      const syncResults = await syncSingleRootFile(cwd, rootFile, formulaName, platforms);
       result.created.push(...syncResults.created);
       result.updated.push(...syncResults.updated);
       result.skipped.push(...syncResults.skipped);

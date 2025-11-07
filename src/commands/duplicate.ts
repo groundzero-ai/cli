@@ -8,7 +8,7 @@ import { Formula, CommandResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { transformFormulaFilesMetadata } from '../utils/formula-versioning.js';
-import { isRootFile } from '../core/save/root-files-sync.js';
+import { isRootFile } from '../core/sync/root-files-sync.js';
 
 async function duplicateFormulaCommand(
   sourceInput: string,

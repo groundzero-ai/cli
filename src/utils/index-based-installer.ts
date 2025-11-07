@@ -464,7 +464,7 @@ async function collectFormulaDirectories(
   return results;
 }
 
-async function loadOtherFormulaIndexes(
+export async function loadOtherFormulaIndexes(
   cwd: string,
   excludeFormula: string
 ): Promise<FormulaIndexRecord[]> {
@@ -1241,6 +1241,59 @@ async function decideGroupPlans(
   return plans;
 }
 
+// ============================================================================
+// Shared Helper for Building Index Mappings
+// ============================================================================
+
+/**
+ * Build index mapping for formula files using the same logic flow as installFormulaByIndex
+ * This function reuses the planning, grouping, and decision logic to ensure consistency
+ * between installation and sync operations.
+ * 
+ * @param cwd - Current working directory
+ * @param formulaFiles - Array of formula files to build mapping for
+ * @param platforms - Platforms to map files to
+ * @param previousIndex - Previous index record (if any)
+ * @param otherIndexes - Other formula indexes for conflict detection
+ * @returns Record mapping registry paths to installed paths
+ */
+export async function buildIndexMappingForFormulaFiles(
+  cwd: string,
+  formulaFiles: FormulaFile[],
+  platforms: Platform[],
+  previousIndex: FormulaIndexRecord | null,
+  otherIndexes: FormulaIndexRecord[]
+): Promise<Record<string, string[]>> {
+  // Convert FormulaFile[] to RegistryFileEntry[] format
+  const registryEntries: RegistryFileEntry[] = formulaFiles
+    .filter(file => {
+      const normalized = normalizeRegistryPath(file.path);
+      // Skip root files and skippable paths (same logic as loadRegistryFileEntries)
+      if (isRootFile(normalized)) return false;
+      if (isSkippableRegistryPath(normalized)) return false;
+      return true;
+    })
+    .map(file => ({
+      registryPath: normalizeRegistryPath(file.path),
+      content: file.content,
+      encoding: file.encoding as string | undefined
+    }));
+
+  if (registryEntries.length === 0) {
+    return {};
+  }
+
+  // Reuse existing planning logic - this ensures consistency with installFormulaByIndex
+  const plannedFiles = createPlannedFiles(registryEntries);
+  attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
+  
+  const groups = groupPlannedFiles(plannedFiles);
+  const context = await buildExpandedIndexesContext(cwd, otherIndexes);
+  const groupPlans = await decideGroupPlans(cwd, groups, previousIndex, context);
+  
+  // Build the mapping using the same logic as installFormulaByIndex
+  return buildIndexMappingFromPlans(groupPlans);
+}
 
 
 

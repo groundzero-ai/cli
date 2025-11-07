@@ -6,7 +6,7 @@ import { getFormulaVersionPath } from '../core/directory.js';
 import { exists } from './fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { updateIndexYml } from './index-yml.js';
-import { isRootFile } from '../core/save/root-files-sync.js';
+import { isRootFile } from '../core/sync/root-files-sync.js';
 import { transformRootFileContent } from './root-file-transformer.js';
 import { parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from './md-frontmatter.js';
 
