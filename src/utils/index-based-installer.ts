@@ -95,7 +95,7 @@ interface ExpandedIndexesContext {
   installedPathOwners: Map<string, ConflictOwner>;
 }
 
-type ConflictResolution = 'rename' | 'skip';
+type ConflictResolution = 'keep-both' | 'skip' | 'overwrite';
 
 interface PlannedTargetDetail {
   absPath: string;
@@ -108,12 +108,32 @@ interface PlannedTargetDetail {
 // Conflict Resolution Functions
 // ============================================================================
 
-function generateConflictRenamePath(relPath: string): string {
+async function generateLocalPath(cwd: string, relPath: string): Promise<string> {
   const parsed = parsePath(relPath);
-  const suffix = `.conflicted-${Date.now()}`;
-  const newBase = `${parsed.name}${suffix}${parsed.ext}`;
   const directory = parsed.dir ? parsed.dir.replace(/\\/g, '/') : '';
-  return directory ? `${directory}/${newBase}` : newBase;
+  
+  // Try .local first
+  let baseName = `${parsed.name}.local${parsed.ext}`;
+  let candidate = directory ? `${directory}/${baseName}` : baseName;
+  let absCandidate = join(cwd, candidate);
+  
+  if (!(await exists(absCandidate))) {
+    return normalizePathForProcessing(candidate);
+  }
+  
+  // Try .local-1, .local-2, etc.
+  let increment = 1;
+  while (true) {
+    baseName = `${parsed.name}.local-${increment}${parsed.ext}`;
+    candidate = directory ? `${directory}/${baseName}` : baseName;
+    absCandidate = join(cwd, candidate);
+    
+    if (!(await exists(absCandidate))) {
+      return normalizePathForProcessing(candidate);
+    }
+    
+    increment++;
+  }
 }
 
 async function promptConflictResolution(
@@ -125,12 +145,16 @@ async function promptConflictResolution(
     message,
     choices: [
       {
-        title: 'Rename existing file and continue',
-        value: 'rename'
+        title: 'Keep both (renames existing)',
+        value: 'keep-both'
       },
       {
-        title: 'Keep existing file (skip installing new one)',
+        title: 'Skip (keeps existing)',
         value: 'skip'
+      },
+      {
+        title: 'Overwrite (replaces existing)',
+        value: 'overwrite'
       }
     ]
   });
@@ -187,83 +211,107 @@ async function resolveConflictsForPlannedFiles(
       const owner = context.installedPathOwners.get(normalizedRel);
 
       if (owner) {
-        let proceed = false;
+        let decision: ConflictResolution | undefined;
+
         if (options.force) {
-          proceed = true;
+          decision = 'keep-both';
         } else if (!interactive) {
           warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to non-interactive conflict.`);
+          decision = 'skip';
         } else {
-          const choice = await promptConflictResolution(
+          decision = await promptConflictResolution(
             `File ${normalizedRel} is managed by formula ${owner.formulaName}. How would you like to proceed?`
           );
-          proceed = choice === 'rename';
-          if (!proceed) {
-            warnings.push(`Skipped ${normalizedRel} (kept existing from ${owner.formulaName}).`);
+        }
+
+        if (decision === 'skip') {
+          continue;
+        }
+
+        if (decision === 'keep-both') {
+          if (isDryRun) {
+            const localPath = await generateLocalPath(cwd, normalizedRel);
+            warnings.push(`Would rename existing ${normalizedRel} from ${owner.formulaName} to ${localPath} and install new file at ${normalizedRel}.`);
+            filteredTargets.push(target);
+            continue;
           }
-        }
 
-        if (!proceed) {
+          const localRelPath = await generateLocalPath(cwd, normalizedRel);
+          const absLocalPath = join(cwd, localRelPath);
+          await ensureDir(dirname(absLocalPath));
+          try {
+            await fs.rename(absTarget, absLocalPath);
+            await updateOwnerIndexAfterRename(owner, normalizedRel, localRelPath, indexByFormula);
+            context.installedPathOwners.delete(normalizedRel);
+            context.installedPathOwners.set(normalizePathForProcessing(localRelPath), owner);
+            warnings.push(`Renamed existing ${normalizedRel} from ${owner.formulaName} to ${localRelPath}.`);
+            filteredTargets.push(target);
+          } catch (error) {
+            warnings.push(`Failed to rename ${normalizedRel}: ${error}`);
+          }
           continue;
         }
 
+        // overwrite
         if (isDryRun) {
-          warnings.push(`Would rename existing ${normalizedRel} from ${owner.formulaName} during install.`);
+          warnings.push(`Would overwrite ${normalizedRel} (currently from ${owner.formulaName}).`);
           filteredTargets.push(target);
           continue;
         }
 
-        const newRelPath = generateConflictRenamePath(normalizedRel);
-        const absNewPath = join(cwd, newRelPath);
-        await ensureDir(dirname(absNewPath));
-        try {
-          await fs.rename(absTarget, absNewPath);
-          await updateOwnerIndexAfterRename(owner, normalizedRel, newRelPath, indexByFormula);
-          context.installedPathOwners.delete(normalizedRel);
-          context.installedPathOwners.set(normalizePathForProcessing(newRelPath), owner);
-          warnings.push(`Renamed existing ${normalizedRel} to ${newRelPath} to avoid conflict.`);
-          filteredTargets.push(target);
-        } catch (error) {
-          warnings.push(`Failed to rename ${normalizedRel}: ${error}`);
-        }
+        // Clear in-memory owner mapping to avoid repeated prompts this run
+        context.installedPathOwners.delete(normalizedRel);
+        filteredTargets.push(target);
         continue;
       }
 
       if (!previousOwnedPaths.has(normalizedRel) && (await exists(absTarget))) {
-        let proceed = false;
+        let decision: ConflictResolution | undefined;
+
         if (options.force) {
-          proceed = true;
+          decision = 'keep-both';
         } else if (!interactive) {
           warnings.push(`Skipping ${normalizedRel} because it already exists and cannot prompt in non-interactive mode.`);
+          decision = 'skip';
         } else {
-          const choice = await promptConflictResolution(
+          decision = await promptConflictResolution(
             `File ${normalizedRel} already exists in your project. How would you like to proceed?`
           );
-          proceed = choice === 'rename';
-          if (!proceed) {
-            warnings.push(`Skipped ${normalizedRel} (kept existing local file).`);
+        }
+
+        if (decision === 'skip') {
+          continue;
+        }
+
+        if (decision === 'keep-both') {
+          if (isDryRun) {
+            const localPath = await generateLocalPath(cwd, normalizedRel);
+            warnings.push(`Would rename existing local file ${normalizedRel} to ${localPath} and install new file at ${normalizedRel}.`);
+            filteredTargets.push(target);
+            continue;
           }
-        }
 
-        if (!proceed) {
+          const localRelPath = await generateLocalPath(cwd, normalizedRel);
+          const absLocalPath = join(cwd, localRelPath);
+          await ensureDir(dirname(absLocalPath));
+          try {
+            await fs.rename(absTarget, absLocalPath);
+            warnings.push(`Renamed existing local file ${normalizedRel} to ${localRelPath}.`);
+            filteredTargets.push(target);
+          } catch (error) {
+            warnings.push(`Failed to rename existing local file ${normalizedRel}: ${error}`);
+          }
           continue;
         }
 
+        // overwrite
         if (isDryRun) {
-          warnings.push(`Would rename existing local file ${normalizedRel} during install.`);
+          warnings.push(`Would overwrite existing local file ${normalizedRel}.`);
           filteredTargets.push(target);
           continue;
         }
 
-        const newRelPath = generateConflictRenamePath(normalizedRel);
-        const absNewPath = join(cwd, newRelPath);
-        await ensureDir(dirname(absNewPath));
-        try {
-          await fs.rename(absTarget, absNewPath);
-          warnings.push(`Renamed existing local file ${normalizedRel} to ${newRelPath}.`);
-          filteredTargets.push(target);
-        } catch (error) {
-          warnings.push(`Failed to rename existing local file ${normalizedRel}: ${error}`);
-        }
+        filteredTargets.push(target);
         continue;
       }
 
