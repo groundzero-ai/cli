@@ -13,7 +13,6 @@ import {
 } from './fs.js';
 import { logger } from './logger.js';
 import { getPathLeaf } from './path-normalization.js';
-import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import {
   getAllPlatforms,
   PLATFORM_DEFINITIONS,
@@ -83,20 +82,7 @@ export async function findPlatformFiles(
         const stats = await getStats(fullPath);
         const mtime = stats.mtime.getTime();
         
-        // Check frontmatter if formula name is specified
-        if (formulaName) {
-          try {
-            const content = await readTextFile(fullPath);
-            const frontmatter = parseMarkdownFrontmatter(content);
-            
-            if (frontmatter?.formula?.name !== formulaName) {
-              return null;
-            }
-          } catch (error) {
-            logger.debug(`Failed to parse frontmatter for ${fullPath}: ${error}`);
-            return null;
-          }
-        }
+        // Frontmatter support removed - no formula name filtering
         
         return { fullPath, relativePath: file, mtime };
       } catch (error) {

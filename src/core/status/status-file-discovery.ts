@@ -3,8 +3,6 @@ import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
-import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
-import { findMatchingIndexYmlDirsRecursive } from '../discovery/index-files-discovery.js';
 import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
@@ -90,30 +88,10 @@ async function discoverAIForFormulas(
       continue;
     }
 
-    try {
-      const content = await readTextFile(filePath);
-      const fm = parseMarkdownFrontmatter(content);
-      const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
-
-      if (formulaName && formulaNames.includes(formulaName)) {
-        const entry = result.get(formulaName)!;
-        entry.aiFiles.push(filePath);
-        if (!entry.anyPath) entry.anyPath = dirname(filePath);
-      }
-    } catch {
-      // Skip unreadable files
-    }
+    // Frontmatter support removed - cannot determine formula ownership
   }
 
-  // Check index.yml marked directories for AI
-  for (const formulaName of formulaNames) {
-    const matchingDirs = await findMatchingIndexYmlDirsRecursive(fullAIDir, formulaName);
-    if (matchingDirs.length > 0) {
-      const entry = result.get(formulaName)!;
-      // Add directory markers (simplified - just track presence)
-      if (!entry.anyPath) entry.anyPath = matchingDirs[0];
-    }
-  }
+  // Index.yml support removed
 }
 
 /**
@@ -137,37 +115,11 @@ async function discoverPlatformForFormulas(
       // If readExts is empty, include all files (don't filter by extension)
       if (allowedExts.length > 0 && !allowedExts.some((ext) => fp.endsWith(ext))) continue;
 
-      try {
-        const content = await readTextFile(fp);
-        const fm = parseMarkdownFrontmatter(content);
-        const formulaName: string | undefined = (fm as any)?.formula?.name || (fm as any)?.formula;
-
-        if (formulaName && formulaNames.includes(formulaName)) {
-          const entry = result.get(formulaName)!;
-          entry.platforms[platform] = entry.platforms[platform] || {};
-
-          if (isValidUniversalSubdir(subKey)) {
-            const propertyName = subKey as keyof typeof entry.platforms[string];
-            entry.platforms[platform][propertyName] = entry.platforms[platform][propertyName] || { found: 0 };
-            entry.platforms[platform][propertyName]!.found++;
-          }
-
-          if (!entry.anyPath) entry.anyPath = dirname(fp);
-        }
-      } catch {
-        // Skip unreadable files
-      }
+      // Frontmatter support removed - cannot determine formula ownership
     }
   }
 
-  // Check index.yml marked directories for platform
-  for (const formulaName of formulaNames) {
-    const matchingDirs = await findMatchingIndexYmlDirsRecursive(platformRoot, formulaName);
-    if (matchingDirs.length > 0) {
-      const entry = result.get(formulaName)!;
-      if (!entry.anyPath) entry.anyPath = matchingDirs[0];
-    }
-  }
+  // Index.yml support removed
 }
 
 /**

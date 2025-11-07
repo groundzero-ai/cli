@@ -3,7 +3,6 @@ import { PLATFORM_DIRS } from '../../constants/index.js';
 import { type UninstallDiscoveredFile } from '../../types/index.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { exists, isDirectory, walkFiles, readTextFile } from '../../utils/fs.js';
-import { parseMarkdownFrontmatter } from '../../utils/md-frontmatter.js';
 import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
 import { readFormulaIndex, type FormulaIndexRecord, isDirKey } from '../../utils/formula-index-yml.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';

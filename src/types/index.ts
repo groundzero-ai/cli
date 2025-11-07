@@ -235,7 +235,6 @@ export interface SaveDiscoveredFile {
   contentHash: string;
   forcePlatformSpecific?: boolean;  // Force platform-specific saving
   isRootFile?: boolean;  // Indicates this is a platform root file (AGENTS.md, CLAUDE.md, etc.)
-  discoveredViaIndexYml?: boolean;  // Discovered via index.yml marker
 }
 
 // Backward-compatibility alias until all imports are migrated

@@ -18,7 +18,6 @@ import { setupStatusCommand } from './commands/status.js';
 import { setupPushCommand } from './commands/push.js';
 import { setupPullCommand } from './commands/pull.js';
 import { setupConfigureCommand } from './commands/configure.js';
-import { setupTagCommand } from './commands/tag.js';
 import { setupDuplicateCommand } from './commands/duplicate.js';
 
 /**
@@ -42,7 +41,6 @@ program
 
 // === FORMULA APPLICATION COMMANDS ===
 setupInitCommand(program);
-setupTagCommand(program);
 setupSaveCommand(program);
 setupInstallCommand(program);
 setupUninstallCommand(program);

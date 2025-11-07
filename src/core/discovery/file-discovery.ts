@@ -2,7 +2,6 @@ import { DiscoveredFile } from "../../types"
 import { Platformish } from "../../utils/file-processing.js"
 import { exists, isDirectory } from "../../utils/fs.js"
 import { discoverMdFiles } from "./md-files-discovery.js"
-import { discoverIndexYmlMarkedFiles } from "./index-files-discovery.js"
 import { PLATFORM_AI, PLATFORM_DIRS } from "../../constants/index.js"
 import { getPlatformDefinition } from "../platforms.js"
 import { mapPlatformFileToUniversal } from "../../utils/platform-mapper.js"
@@ -55,14 +54,8 @@ export async function discoverFiles(
     platform,
     registryPathPrefix
   )
-  const indexYmlFiles = await discoverIndexYmlMarkedFiles(
-    rootDir,
-    formulaName,
-    platform,
-    registryPathPrefix
-  )
 
-  return [...mdFiles, ...indexYmlFiles];
+  return mdFiles;
 }
 
 /**

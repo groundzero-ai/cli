@@ -3,7 +3,6 @@ import { DiscoveredFile } from "../../types";
 import { getFileMtime, Platformish } from "../../utils/file-processing.js";
 import { exists, isDirectory, readTextFile } from "../../utils/fs.js";
 import { findFilesByExtension } from "../../utils/file-processing.js";
-import { parseMarkdownFrontmatter } from "../../utils/md-frontmatter.js";
 import { logger } from "../../utils/logger.js";
 import { calculateFileHash } from "../../utils/hash-utils.js";
 import { obtainSourceDirAndRegistryPath } from "./file-discovery.js";
@@ -49,16 +48,8 @@ async function processMdFileForDiscovery(
 ): Promise<DiscoveredFile | null> {
   try {
     const content = await readTextFile(file.fullPath);
-    let frontmatter;
-
-    try {
-      frontmatter = parseMarkdownFrontmatter(content);
-    } catch (parseError) {
-      logger.debug(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
-      frontmatter = null;
-    }
-
-    const shouldInclude = shouldIncludeMarkdownFile(file, frontmatter, platform, formulaName);
+    // Frontmatter support removed - always include markdown files
+    const shouldInclude = true;
     if (!shouldInclude) {
       return null;
     }
@@ -77,9 +68,7 @@ async function processMdFileForDiscovery(
         contentHash
       };
 
-      if (frontmatter?.formula?.platformSpecific === true) {
-        result.forcePlatformSpecific = true;
-      }
+      // Frontmatter support removed - platformSpecific detection disabled
 
       return result;
     } catch (error) {

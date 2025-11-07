@@ -5,10 +5,8 @@ import { extractBaseVersion } from './version-generator.js';
 import { getFormulaVersionPath } from '../core/directory.js';
 import { exists } from './fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
-import { updateIndexYml } from './index-yml.js';
 import { isRootFile } from '../core/sync/root-files-sync.js';
 import { transformRootFileContent } from './root-file-transformer.js';
-import { parseMarkdownFrontmatter, updateMarkdownWithFormulaFrontmatter } from './md-frontmatter.js';
 
 /**
  * Compute stable version from a prerelease version
@@ -84,7 +82,7 @@ export function transformFormulaFilesForVersionChange(
 
 /**
  * Transform formula files metadata for name and version changes
- * Updates formula.yml, index.yml, root files, and markdown frontmatter
+ * Updates formula.yml and root files
  */
 export function transformFormulaFilesMetadata(
   files: FormulaFile[],
@@ -115,30 +113,10 @@ export function transformFormulaFilesMetadata(
       }
     }
 
-    // Handle index.yml files - update formula name
-    if (file.path.endsWith(FILE_PATTERNS.INDEX_YML)) {
-      const result = updateIndexYml(file.content, { name: newName });
-      if (result.updated) {
-        return { ...file, content: result.content };
-      }
-      return file;
-    }
-
     // Handle root files (AGENTS.md, CLAUDE.md, etc.) - update markers with new name and ID
     if (isRootFile(file.path)) {
       const updatedContent = transformRootFileContent(file.content, sourceName, newName);
       return { ...file, content: updatedContent };
-    }
-
-    // Handle regular markdown files - update frontmatter only for files that already have formula frontmatter
-    if (FILE_PATTERNS.MARKDOWN_FILES.some(ext => file.path.endsWith(ext))) {
-      const frontmatter = parseMarkdownFrontmatter(file.content);
-      const existingFormulaName = frontmatter?.formula?.name;
-
-      if (existingFormulaName) {
-        const updatedContent = updateMarkdownWithFormulaFrontmatter(file.content, { name: newName, resetId: true });
-        return { ...file, content: updatedContent };
-      }
     }
 
     return file;

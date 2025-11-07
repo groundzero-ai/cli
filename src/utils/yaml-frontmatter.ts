@@ -27,28 +27,3 @@ export function generateYamlKeyValue(key: string, value: any, indent: string = '
   return `${indent}${key}: ${String(value)}`;
 }
 
-/**
- * Generate a complete YAML frontmatter block with proper quoting
- */
-export function generateFormulaFrontmatterBlock(
-  formulaData: {
-    name?: string;
-    id?: string;
-    platformSpecific?: boolean;
-  },
-  indent: string = '  '
-): string {
-  const lines: string[] = [];
-
-  if (formulaData.name) {
-    lines.push(generateYamlKeyValue('name', formulaData.name, indent));
-  }
-  if (formulaData.id) {
-    lines.push(generateYamlKeyValue('id', formulaData.id, indent));
-  }
-  if (formulaData.platformSpecific === true) {
-    lines.push(`${indent}platformSpecific: true`);
-  }
-
-  return lines.join('\n');
-}

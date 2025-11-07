@@ -13,8 +13,6 @@ import { normalizePlatforms } from '../../utils/platform-mapper.js';
 import { createBasicFormulaYml, addFormulaToYml } from '../../utils/formula-management.js';
 import { checkAndHandleAllFormulaConflicts } from '../../utils/install-conflict-handler.js';
 import { discoverAndCategorizeFiles } from '../../utils/install-file-discovery.js';
-import { installFilesByIdWithMap } from '../../utils/id-based-installer.js';
-import { installIndexYmlDirectories } from '../../utils/index-yml-based-installer.js';
 import { installAiFilesFromList } from '../../utils/install-orchestrator.js';
 import { installRootFilesFromMap } from '../../utils/root-file-installer.js';
 import { installFormulaByIndex, type IndexInstallResult } from '../../utils/index-based-installer.js';
@@ -194,58 +192,9 @@ export async function performInstallationPhases(params: InstallationPhasesParams
   let indexInstalledTotal = 0;
   let indexUpdatedTotal = 0;
 
-  for (const resolved of formulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    if (categorized.idBasedFiles.size === 0) {
-      continue;
-    }
+  // ID-based installation removed (was dependent on frontmatter)
 
-    try {
-      const platformResult = await installFilesByIdWithMap(
-        cwd,
-        resolved.name,
-        resolved.version,
-        platforms,
-        categorized.idBasedFiles,
-        options,
-        conflictResult.forceOverwriteFormulas.has(resolved.name)
-      );
-
-      if (platformResult.installed > 0 || platformResult.updated > 0) {
-        installedCount++;
-        groundzeroResults.push({
-          name: resolved.name,
-          filesInstalled: platformResult.installed,
-          filesUpdated: platformResult.updated,
-          installedFiles: platformResult.installedFiles,
-          updatedFiles: platformResult.updatedFiles,
-          overwritten: platformResult.updated > 0
-        });
-      }
-    } catch (error) {
-      logger.error(`Failed ID-based install for ${resolved.name}: ${error}`);
-      skippedCount++;
-    }
-  }
-
-  for (const resolved of formulas) {
-    const categorized = categorizedByFormula.get(resolved.name)!;
-    if (categorized.indexYmlDirs.length === 0) {
-      continue;
-    }
-
-    const indexResult = await installIndexYmlDirectories(
-      cwd,
-      categorized.indexYmlDirs,
-      platforms,
-      options
-    );
-
-    indexInstalledTotal += indexResult.installed;
-    indexUpdatedTotal += indexResult.updated;
-    allAddedFiles.push(...indexResult.installedFiles);
-    allUpdatedFiles.push(...indexResult.updatedFiles);
-  }
+  // Index.yml directory installation removed
 
   for (const resolved of formulas) {
     const categorized = categorizedByFormula.get(resolved.name)!;

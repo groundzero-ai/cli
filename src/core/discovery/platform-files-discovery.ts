@@ -58,7 +58,6 @@ async function discoverPlatformFiles(
  */
 function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): DiscoveredFile[] {
   const preference = (file: DiscoveredFile): number => {
-    if (file.discoveredViaIndexYml) return 100; // Highest priority
     // Normalize registry path to use forward slashes for consistent comparison
     const normalizedPath = normalizePathForProcessing(file.registryPath);
 

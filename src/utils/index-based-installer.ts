@@ -31,9 +31,8 @@ import { mapUniversalToPlatform } from './platform-mapper.js';
 import { safePrompts } from './prompts.js';
 import type { InstallOptions } from '../types/index.js';
 import type { FormulaFile } from '../types/index.js';
-import { mergePlatformYamlOverride } from './platform-yaml-merge.js';
+import { mergePlatformYamlOverride, loadRegistryYamlOverrides } from './platform-yaml-merge.js';
 import { parseUniversalPath } from './platform-file.js';
-import { loadRegistryYamlOverrides } from './id-based-discovery.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 
 import {

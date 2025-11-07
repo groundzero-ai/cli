@@ -1,5 +1,4 @@
 import { join } from 'path';
-import { parseMarkdownFrontmatter } from './md-frontmatter.js';
 import { PLATFORM_AI, PLATFORM_DIRS } from '../constants/index.js';
 import { logger } from './logger.js';
 import {
@@ -135,15 +134,8 @@ export async function processMdFileForDiscovery(
 ): Promise<DiscoveredFile | null> {
   try {
     const content = await readTextFile(file.fullPath);
-    let frontmatter;
-    try {
-      frontmatter = parseMarkdownFrontmatter(content);
-    } catch (parseError) {
-      logger.warn(`Failed to parse frontmatter in ${file.relativePath}: ${parseError}`);
-      frontmatter = null;
-    }
-
-    const shouldInclude = shouldIncludeMarkdownFile(file, frontmatter, platform, formulaName);
+    // Frontmatter support removed - always include markdown files
+    const shouldInclude = true;
 
     if (shouldInclude) {
       try {
@@ -176,9 +168,7 @@ export async function processMdFileForDiscovery(
           contentHash
         };
 
-        if (frontmatter?.formula?.platformSpecific === true) {
-          result.forcePlatformSpecific = true;
-        }
+        // Frontmatter support removed - platformSpecific detection disabled
 
         return result;
       } catch (error) {

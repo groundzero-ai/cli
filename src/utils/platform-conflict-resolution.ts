@@ -7,7 +7,6 @@ import { join, basename, dirname } from 'path';
 import { getPlatformNameFromSource } from './platform-utils.js';
 import { isLocalVersion } from '../utils/version-generator.js';
 import { promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
-import { updateMarkdownWithFormulaFrontmatter } from './md-frontmatter.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
@@ -294,11 +293,7 @@ async function handlePlatformSpecificMarking(
   // Mark selected files as platform-specific
   for (const index of platformSpecificIndices) {
     const file = filteredFiles[index];
-    const content = await readTextFile(file.fullPath);
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { platformSpecific: true });
-    await writeTextFile(file.fullPath, updatedContent);
-
-    // Update the file object to reflect the change
+    // Frontmatter support removed - just mark file object as platform-specific
     file.forcePlatformSpecific = true;
     console.log(`✓ Marked ${file.registryPath} as platform-specific`);
 
@@ -341,12 +336,7 @@ async function markAllFilesAsPlatformSpecific(files: DiscoveredFile[]): Promise<
   }> = [];
 
   for (const file of files) {
-    // Mark file as platform-specific in frontmatter
-    const content = await readTextFile(file.fullPath);
-    const updatedContent = updateMarkdownWithFormulaFrontmatter(content, { platformSpecific: true });
-    await writeTextFile(file.fullPath, updatedContent);
-
-    // Update the file object to reflect the change
+    // Frontmatter support removed - just mark file object as platform-specific
     file.forcePlatformSpecific = true;
     console.log(`✓ Marked ${file.registryPath} as platform-specific`);
 

@@ -5,7 +5,6 @@ import { exists, isDirectory, listDirectories, readTextFile } from '../utils/fs.
 import { logger } from '../utils/logger.js';
 import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
 import { getLocalFormulaYmlPath, getLocalFormulasDir } from '../utils/paths.js';
-import { parseMarkdownFrontmatter } from '../utils/md-frontmatter.js';
 import { findFilesByExtension, findDirectoriesContainingFile } from '../utils/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
 import { areFormulaNamesEquivalent } from '../utils/formula-name.js';
@@ -317,18 +316,7 @@ export async function checkExistingFormulaInMarkdownFiles(
     try {
       const files = await findFilesByExtension(target.dir, target.exts);
       for (const file of files) {
-        try {
-          const content = await readTextFile(file.fullPath);
-          const frontmatter: any = parseMarkdownFrontmatter(content);
-          if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
-            const version: string | undefined = (typeof frontmatter.version === 'string' ? frontmatter.version : undefined)
-              || (typeof frontmatter.formula?.version === 'string' ? frontmatter.formula.version : undefined);
-            logger.debug(`Found existing formula '${formulaName}' in ${file.fullPath}`, { version });
-            return { found: true, version, location: file.fullPath };
-          }
-        } catch (readErr) {
-          logger.debug(`Failed to read or parse ${file.fullPath}: ${readErr}`);
-        }
+        // Frontmatter support removed - cannot determine formula ownership
       }
     } catch (dirErr) {
       logger.debug(`Failed to search directory ${target.dir}: ${dirErr}`);
