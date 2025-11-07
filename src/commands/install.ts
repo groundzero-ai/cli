@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, FormulaYml } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { ensureRegistryDirectories, hasFormulaVersion } from '../core/directory.js';
+import { ensureRegistryDirectories, hasFormulaVersion, listFormulaVersions } from '../core/directory.js';
 import { displayDependencyTree } from '../core/dependency-resolver.js';
 import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -41,6 +41,7 @@ import { parseFormulaYml } from '../utils/formula-yml.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { formulaManager } from '../core/formula.js';
 import { safePrompts } from '../utils/prompts.js';
+import { isExactVersion, resolveVersionRange } from '../utils/version-ranges.js';
 import {
   fetchRemoteFormulaMetadata,
   pullDownloadsBatchFromRemote,
@@ -148,12 +149,22 @@ async function installAllFormulasCommand(
         conflictDecisions: baseConflictDecisions
       };
 
-      if (formula.version) {
+      let conflictPlanningVersion = formula.version;
+      if (formula.version && !isExactVersion(formula.version)) {
+        try {
+          const localVersions = await listFormulaVersions(formula.name);
+          conflictPlanningVersion = resolveVersionRange(formula.version, localVersions) ?? undefined;
+        } catch {
+          conflictPlanningVersion = undefined;
+        }
+      }
+
+      if (conflictPlanningVersion) {
         try {
           const conflicts = await planConflictsForFormula(
             cwd,
             formula.name,
-            formula.version,
+            conflictPlanningVersion,
             resolvedPlatforms
           );
 
@@ -307,8 +318,20 @@ async function installFormulaCommand(
   const forceRemote = !!options.remote;
   const warnings: string[] = [];
 
-  const mainFormulaAvailableLocally = version
-    ? await hasFormulaVersion(formulaName, version)
+  const versionConstraint = version;
+
+  let downloadVersion = versionConstraint;
+  if (versionConstraint && !isExactVersion(versionConstraint)) {
+    try {
+      const localVersions = await listFormulaVersions(formulaName);
+      downloadVersion = resolveVersionRange(versionConstraint, localVersions) ?? undefined;
+    } catch {
+      downloadVersion = undefined;
+    }
+  }
+
+  const mainFormulaAvailableLocally = downloadVersion
+    ? await hasFormulaVersion(formulaName, downloadVersion)
     : await formulaManager.formulaExists(formulaName);
 
   // 2) Determine install scenario
@@ -329,7 +352,7 @@ async function installFormulaCommand(
     | { success: false; commandResult: CommandResult }
   > => {
     try {
-      const data = await resolveDependenciesForInstall(formulaName, cwd, version, options);
+      const data = await resolveDependenciesForInstall(formulaName, cwd, versionConstraint, options);
       return { success: true, data };
     } catch (error) {
       if (error instanceof VersionResolutionAbortError) {
@@ -401,13 +424,17 @@ async function installFormulaCommand(
 
     let metadataResult;
     try {
-      metadataResult = await fetchRemoteFormulaMetadata(formulaName, version, { recursive: true, profile: options.profile, apiKey: options.apiKey });
+      metadataResult = await fetchRemoteFormulaMetadata(formulaName, downloadVersion, { recursive: true, profile: options.profile, apiKey: options.apiKey });
     } finally {
       if (metadataSpinner) metadataSpinner.stop();
     }
 
     if (!metadataResult.success) {
-      const message = describeRemoteFailure(version ? `${formulaName}@${version}` : formulaName, metadataResult);
+      const requestedVersionLabel = downloadVersion ?? versionConstraint;
+      const message = describeRemoteFailure(
+        requestedVersionLabel ? `${formulaName}@${requestedVersionLabel}` : formulaName,
+        metadataResult
+      );
       console.log(`❌ ${message}`);
       return { success: false, error: metadataResult.reason === 'not-found' ? 'Formula not found' : message };
     }
