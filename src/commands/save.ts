@@ -9,15 +9,14 @@ import { getInstalledFormulaVersion } from '../core/groundzero.js';
 import { createCaretRange } from '../utils/version-ranges.js';
 import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/save/platform-sync.js';
-import { parseFormulaInput, validateFormulaName, normalizeFormulaName } from '../utils/formula-name.js';
+import { parseFormulaInput, normalizeFormulaName } from '../utils/formula-name.js';
 import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
 import { extractBaseVersion } from '../utils/version-generator.js';
-import { getOrCreateFormulaYmlInfo } from '../core/save/formula-yml-generator.js';
+import { getOrCreateFormulaYml } from '../core/save/formula-yml-generator.js';
 import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
 import { formulaVersionExists } from '../utils/formula-versioning.js';
 import { applyWorkspaceFormulaRename } from '../core/save/workspace-rename.js';
-
 
 /**
  * Main implementation of the save formula command
@@ -88,7 +87,7 @@ async function saveFormulaCommand(
   // Get formula configuration based on input pattern
   // Use rename version if provided, otherwise use original version
   const formulaVersion = renameVersion || explicitVersion;
-  let formulaInfo = await getOrCreateFormulaYmlInfo(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
+  let formulaInfo = await getOrCreateFormulaYml(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
   let formulaConfig = formulaInfo.config;
   let isRootFormula = formulaInfo.isRootFormula;
   const targetVersion = formulaConfig.version;
@@ -104,7 +103,7 @@ async function saveFormulaCommand(
     await applyWorkspaceFormulaRename(cwd, formulaInfo, renameTarget);
 
     // Re-fetch formula info at the new location with the same target version
-    formulaInfo = await getOrCreateFormulaYmlInfo(
+    formulaInfo = await getOrCreateFormulaYml(
       cwd,
       renameTarget,
       targetVersion,

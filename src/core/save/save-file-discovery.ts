@@ -34,21 +34,6 @@ export async function discoverFormulaFilesForSave(formulaInfo: FormulaYmlInfo): 
 
   const formulaFiles: FormulaFile[] = [];
 
-  // Add formula.yml as the first file
-  const formulaYmlFile = await createFormulaYmlFile(formulaInfo);
-  formulaFiles.push(formulaYmlFile);
-
-  // Add README.md if it exists in the formula directory
-  const readmePath = join(dirname(formulaInfo.fullPath), FILE_PATTERNS.README_MD);
-  if (await exists(readmePath)) {
-    const readmeContent = await readTextFile(readmePath);
-    formulaFiles.push({
-      path: FILE_PATTERNS.README_MD,
-      content: readmeContent,
-      encoding: UTF8_ENCODING
-    });
-  }
-
   // Discover all files under the formula directory, excluding formula.index.yml
   const entries = await findFilesByExtension(formulaDir, [], formulaDir);
   const filteredEntries = entries.filter(entry => basename(entry.relativePath) !== FORMULA_INDEX_FILENAME);

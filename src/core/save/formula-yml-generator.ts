@@ -1,13 +1,13 @@
 import { join } from "path";
 import { FILE_PATTERNS } from "../../constants/index.js";
 import { FormulaYml } from "../../types";
-import { areFormulaNamesEquivalent, normalizeFormulaName } from "../../utils/formula-name.js";
+import { normalizeFormulaName } from "../../utils/formula-name.js";
 import { parseFormulaYml, writeFormulaYml } from "../../utils/formula-yml.js";
-import { ensureDir, exists } from "../../utils/fs.js";
+import { ensureDir, exists, isDirectory } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
-import { getLocalFormulaDir, getLocalFormulaYmlPath } from "../../utils/paths.js";
+import { getLocalFormulaDir } from "../../utils/paths.js";
 import { ValidationError } from "../../utils/errors.js";
-import { createBasicFormulaYml, ensureLocalGroundZeroStructure } from "../../utils/formula-management.js";
+import { ensureLocalGroundZeroStructure } from "../../utils/formula-management.js";
 import { hasFormulaVersion } from "../directory.js";
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from "./constants.js";
 import { determineTargetVersion } from "./formula-yml-versioning.js";
@@ -52,93 +52,70 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   };
 }
 
-/**
- * Get or create formula configuration in the specified directory
- * @param cwd - Current working directory
- * @param formulaDir - Directory where formula.yml should be located
- * @param formulaName - Name of the formula
- * @returns Formula configuration info
- */
-async function getOrCreateFormulaConfig(cwd: string, formulaDir: string, formulaName: string): Promise<FormulaYmlInfo> {
-  // Check if this is a root formula
-  const rootFormulaPath = getLocalFormulaYmlPath(cwd);
-  if (await exists(rootFormulaPath)) {
-    try {
-      const rootConfig = await parseFormulaYml(rootFormulaPath);
-      if (areFormulaNamesEquivalent(rootConfig.name, formulaName)) {
-        logger.debug('Detected root formula match');
-        console.log(`✓ Found root formula ${rootConfig.name}@${rootConfig.version}`);
-        return {
-          fullPath: rootFormulaPath,
-          config: rootConfig,
-          isNewFormula: false,
-          isRootFormula: true
-        };
-      }
-    } catch (error) {
-      // If root formula.yml is invalid, continue to sub-formula logic
-      logger.warn(`Failed to parse root formula.yml: ${error}`);
-    }
-  }
-
-  // Not a root formula - use sub-formula logic
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
-
-  // Check if formula.yml already exists
-  if (await exists(formulaYmlPath)) {
-    logger.debug('Found existing formula.yml, parsing...');
-    try {
-      const formulaConfig = await parseFormulaYml(formulaYmlPath);
-      console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
-
-      return {
-        fullPath: formulaYmlPath,
-        config: formulaConfig,
-        isNewFormula: false,
-        isRootFormula: false
-      };
-    } catch (error) {
-      throw new ValidationError(ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace('%s', formulaYmlPath).replace('%s', String(error)));
-    }
-  } else {
-    logger.debug('No formula.yml found, creating automatically...');
-    const result = await createFormulaYmlInDirectory(formulaDir, formulaName);
-    return {
-      ...result,
-      isRootFormula: false
-    };
-  }
-}
-
-export async function getOrCreateFormulaYmlInfo(
+export async function getOrCreateFormulaYml(
   cwd: string,
   name: string,
   explicitVersion?: string,
   versionType?: string,
-  bump?: 'patch' | 'minor' | 'major',
+  bump?: "patch" | "minor" | "major",
   force?: boolean
 ): Promise<FormulaYmlInfo> {
-  await createBasicFormulaYml(cwd);
+  await ensureLocalGroundZeroStructure(cwd);
 
-  // Get formula configuration based on input pattern
   const formulaDir = getLocalFormulaDir(cwd, name);
-  const formulaInfo = await getOrCreateFormulaConfig(cwd, formulaDir, name);
+  if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
+    throw new ValidationError(ERROR_MESSAGES.FORMULA_DIR_NOT_FOUND.replace("%s", formulaDir));
+  }
 
-  logger.debug(`Found formula.yml at: ${formulaInfo.fullPath}`);
+  const normalizedName = normalizeFormulaName(name);
+  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
-  // Determine target version
-  const targetVersion = await determineTargetVersion(explicitVersion, versionType, bump, formulaInfo.isNewFormula ? undefined : formulaInfo.config.version);
+  let formulaConfig: FormulaYml;
+  let isNewFormula = false;
 
-  // Check if version already exists (unless force is used)
+  if (await exists(formulaYmlPath)) {
+    logger.debug("Found existing formula.yml for save", { path: formulaYmlPath });
+    try {
+      formulaConfig = await parseFormulaYml(formulaYmlPath);
+      console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
+    } catch (error) {
+      throw new ValidationError(
+        ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace("%s", formulaYmlPath).replace("%s", String(error))
+      );
+    }
+  } else {
+    logger.debug("No formula.yml found for save, creating", { dir: formulaDir });
+    const created = await createFormulaYmlInDirectory(formulaDir, normalizedName);
+    formulaConfig = created.config;
+    isNewFormula = true;
+  }
+
+  const targetVersion = await determineTargetVersion(
+    explicitVersion,
+    versionType,
+    bump,
+    isNewFormula ? undefined : formulaConfig.version
+  );
+
   if (!force) {
-    const versionExists = await hasFormulaVersion(name, targetVersion);
+    const versionExists = await hasFormulaVersion(normalizedName, targetVersion);
     if (versionExists) {
-      throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace('%s', targetVersion));
+      throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace("%s", targetVersion));
     }
   }
 
-  // Update formula config with new version
-  formulaInfo.config = { ...formulaInfo.config, version: targetVersion };
+  const updatedConfig: FormulaYml = {
+    ...formulaConfig,
+    name: normalizedName,
+    version: targetVersion
+  };
 
-  return formulaInfo;
+  await writeFormulaYml(formulaYmlPath, updatedConfig);
+
+  return {
+    fullPath: formulaYmlPath,
+    config: updatedConfig,
+    isNewFormula,
+    isRootFormula: false
+  };
 }
