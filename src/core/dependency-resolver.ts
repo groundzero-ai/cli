@@ -158,13 +158,15 @@ export async function resolveDependencies(
         logger.debug(`Registry check for '${formulaName}': hasFormula=${hasFormula}, requiredVersion=${version}`);
         
         if (hasFormula) {
-          // Check if the specific version exists
-          if (version) {
-            const hasSpecificVersion = await registryManager.hasFormulaVersion(formulaName, version);
+          // Check if the resolved version exists (use resolvedVersion if available, otherwise fall back to version)
+          const versionToCheck = resolvedVersion || version;
+          if (versionToCheck) {
+            const hasSpecificVersion = await registryManager.hasFormulaVersion(formulaName, versionToCheck);
             if (!hasSpecificVersion) {
-              // Formula exists but not in the required version - this is not a repairable error
+              // Formula exists but not in the required/resolved version - this is not a repairable error
               const dependencyChain = Array.from(visitedStack);
-              let errorMessage = `Formula '${formulaName}' exists in registry but version '${version}' is not available\n\n`;
+              const versionDisplay = versionRange || version || resolvedVersion;
+              let errorMessage = `Formula '${formulaName}' exists in registry but version '${versionDisplay}' is not available\n\n`;
               
               if (dependencyChain.length > 0) {
                 errorMessage += `📋 Dependency chain:\n`;
@@ -172,7 +174,7 @@ export async function resolveDependencies(
                   const indent = '  '.repeat(i);
                   errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
                 }
-                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName}@${version} ❌ (version not available)\n\n`;
+                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName}@${versionDisplay} ❌ (version not available)\n\n`;
               }
               
               errorMessage += `💡 To resolve this issue:\n`;
@@ -185,10 +187,10 @@ export async function resolveDependencies(
           }
           
           logger.info(`Found formula '${formulaName}' in registry metadata, attempting repair`);
-          // Try to reload the formula metadata
-          const metadata = await registryManager.getFormulaMetadata(formulaName, version);
-          // Attempt to load again with the same version - this might succeed if it was a temporary issue
-          formula = await formulaManager.loadFormula(formulaName, version);
+          // Try to reload the formula metadata using resolved version (or original version if not resolved)
+          const metadata = await registryManager.getFormulaMetadata(formulaName, resolvedVersion || version);
+          // Attempt to load again with the resolved version - this might succeed if it was a temporary issue
+          formula = await formulaManager.loadFormula(formulaName, resolvedVersion || version);
           logger.info(`Successfully repaired and loaded formula '${formulaName}'`);
         } else {
           // Formula truly doesn't exist - treat as missing dependency
