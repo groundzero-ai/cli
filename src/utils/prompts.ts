@@ -3,7 +3,7 @@ import { basename } from 'path';
 import { FormulaYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
-import { normalizeFormulaName } from './formula-name.js';
+import { normalizeFormulaName, validateFormulaName } from './formula-name.js';
 import { readTextFile } from './fs.js';
 
 /**
@@ -92,10 +92,12 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
       initial: suggestedName,
       validate: (value: string) => {
         if (!value) return 'Name is required';
-        if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
-          return 'Name can only contain letters, numbers, hyphens, and underscores';
+        try {
+          validateFormulaName(value);
+          return true;
+        } catch (error) {
+          return (error as Error).message.replace('%s', value);
         }
-        return true;
       }
     },
     {

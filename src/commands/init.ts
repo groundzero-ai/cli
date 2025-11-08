@@ -9,7 +9,7 @@ import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulaDir } from '../utils/paths.js';
-import { normalizeFormulaName } from '../utils/formula-name.js';
+import { normalizeFormulaName, validateFormulaName } from '../utils/formula-name.js';
 
 /**
  * Initialize formula.yml command implementation
@@ -80,7 +80,8 @@ async function initFormulaCommand(): Promise<CommandResult> {
 async function initFormulaInFormulasDir(formulaName: string): Promise<CommandResult> {
   const cwd = process.cwd();
 
-  // Normalize formula name for consistent behavior
+  // Validate and normalize formula name for consistent behavior
+  validateFormulaName(formulaName);
   const normalizedFormulaName = normalizeFormulaName(formulaName);
 
   // Get the formula directory path (.groundzero/formulas/{formulaName})
