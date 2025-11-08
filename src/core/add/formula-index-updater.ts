@@ -273,11 +273,9 @@ export async function buildMappingAndWriteIndex(
 
     // Optionally transform mapping:
     // - If preserveExactPaths is true: force exact file keys and strip dir keys
-    // - Otherwise: allow directory collapsing
+    // - Otherwise: preserve the planner's dir/file decisions (already respects workspace occupancy)
     if (options.preserveExactPaths) {
       newMapping = buildExactFileMapping(formulaFiles, platforms);
-    } else {
-      newMapping = collapseFileEntriesToDirKeys(newMapping);
     }
 
     // Prune stale keys from previous index based on current files in .groundzero
