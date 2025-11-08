@@ -9,6 +9,84 @@ import type { FormulaFile } from '../types/index.js';
 import { formulaManager } from '../core/formula.js';
 import * as yaml from 'js-yaml';
 
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMerge(base: any, override: any): any {
+  if (Array.isArray(base) && Array.isArray(override)) {
+    return override.slice();
+  }
+
+  if (isPlainObject(base) && isPlainObject(override)) {
+    const result: Record<string, any> = { ...base };
+    for (const [key, value] of Object.entries(override)) {
+      if (key in result) {
+        result[key] = deepMerge(result[key], value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
+  if (override !== undefined) {
+    return override;
+  }
+
+  return base;
+}
+
+interface ParsedFrontmatter {
+  data: Record<string, any>;
+  body: string;
+  hadFrontmatter: boolean;
+}
+
+function parseFrontmatter(content: string): ParsedFrontmatter {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+  const match = frontmatterRegex.exec(content);
+
+  if (!match) {
+    return { data: {}, body: content, hadFrontmatter: false };
+  }
+
+  const yamlSource = match[1];
+  const body = content.slice(match[0].length);
+
+  try {
+    const parsed = yaml.load(yamlSource);
+    if (isPlainObject(parsed)) {
+      return { data: parsed, body, hadFrontmatter: true };
+    }
+  } catch {
+    // Fall through to return empty data
+  }
+
+  return { data: {}, body, hadFrontmatter: true };
+}
+
+function formatWithFrontmatter(data: Record<string, any>, body: string): string {
+  const frontmatterYaml = yaml.dump(data, {
+    indent: 2,
+    noArrayIndent: true,
+    sortKeys: false,
+    quotingType: '"'
+  }).trim();
+
+  const header = `---\n${frontmatterYaml}\n---`;
+
+  if (!body) {
+    return `${header}\n`;
+  }
+
+  if (body.startsWith('\n') || body.startsWith('\r')) {
+    return `${header}${body}`;
+  }
+
+  return `${header}\n${body}`;
+}
+
 /**
  * Merge platform-specific YAML override with universal content.
  *
@@ -31,47 +109,39 @@ export function mergePlatformYamlOverride(
     const overridePath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
     const matchingYml = formulaFiles.find(f => f.path === overridePath);
 
-    if (matchingYml?.content?.trim()) {
-      try {
-        // Parse the YAML override content
-        const overrideData = yaml.load(matchingYml.content);
-
-        // Convert back to YAML frontmatter format
-        const frontmatterYaml = yaml.dump(overrideData, {
-          indent: 2,
-          noArrayIndent: true,
-          sortKeys: false,
-          quotingType: '"'
-        }).trim();
-
-        // Check if universal content already has frontmatter
-        const trimmedContent = universalContent.trim();
-        if (trimmedContent.startsWith('---')) {
-          // Content already has frontmatter, merge with existing
-          const endMarkerIndex = trimmedContent.indexOf('\n---', 3);
-          if (endMarkerIndex !== -1) {
-            // Extract existing frontmatter and content
-            const existingFrontmatter = trimmedContent.substring(3, endMarkerIndex);
-            const contentAfter = trimmedContent.substring(endMarkerIndex + 4);
-
-            // Merge frontmatter: override YAML first, then existing
-            const mergedFrontmatter = frontmatterYaml + '\n' + existingFrontmatter;
-            return `---\n${mergedFrontmatter}\n---${contentAfter}`;
-          }
-        }
-
-        // No existing frontmatter, prepend as new frontmatter
-        return `---\n${frontmatterYaml}\n---\n\n${universalContent}`;
-      } catch (error) {
-        console.warn(`Failed to parse YAML override for ${overridePath}: ${error}`);
-        // Fall back to universal content on error
-      }
+    if (!matchingYml?.content?.trim()) {
+      return universalContent;
     }
-  } catch {
-    // Fall back to universal content on error
-  }
 
-  return universalContent;
+    let overrideData: Record<string, any>;
+    try {
+      const parsedOverride = yaml.load(matchingYml.content);
+      if (!isPlainObject(parsedOverride)) {
+        console.warn(`YAML override for ${overridePath} must be an object; received ${typeof parsedOverride}`);
+        return universalContent;
+      }
+      overrideData = parsedOverride;
+    } catch (error) {
+      console.warn(`Failed to parse YAML override for ${overridePath}: ${error}`);
+      return universalContent;
+    }
+
+    if (Object.keys(overrideData).length === 0) {
+      return universalContent;
+    }
+
+    const { data: baseData, body, hadFrontmatter } = parseFrontmatter(universalContent);
+    const mergedData = deepMerge(baseData, overrideData);
+
+    // Avoid reformatting if there's no change compared to base.
+    if (hadFrontmatter && JSON.stringify(baseData) === JSON.stringify(mergedData)) {
+      return universalContent;
+    }
+
+    return formatWithFrontmatter(mergedData, body);
+  } catch {
+    return universalContent;
+  }
 }
 
 /**
