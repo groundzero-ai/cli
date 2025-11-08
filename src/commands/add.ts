@@ -110,7 +110,7 @@ async function runAddCommand(formulaName: string, inputPath: string): Promise<Co
 
   // Always update index using all candidate entries (even if nothing changed on disk)
   // Directory collapsing is now universally applied
-  await updateFormulaIndex(cwd, ensuredFormula, entries);
+  await updateFormulaIndex(cwd, ensuredFormula, entries, resolvedInputPath);
 
   if (changedFiles.length > 0) {
     logger.info(`Added ${changedFiles.length} file(s) to formula '${ensuredFormula.normalizedName}'.`);
@@ -330,7 +330,8 @@ async function promptConflictDecision(formulaName: string, registryPath: string)
 async function updateFormulaIndex(
   cwd: string,
   ensuredFormula: EnsureFormulaResult,
-  entries: SourceEntry[]
+  entries: SourceEntry[],
+  resolvedInputPath: string
 ): Promise<void> {
   // Delegate to shared logic
   const { normalizedName } = ensuredFormula;
@@ -340,7 +341,15 @@ async function updateFormulaIndex(
     encoding: 'utf8'
   }));
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
-  await buildMappingAndWriteIndex(cwd, normalizedName, formulaFiles, detectedPlatforms);
+  // If the user specified a single file explicitly, preserve exact file paths in index
+  const inputIsFile = await isFile(resolvedInputPath);
+  await buildMappingAndWriteIndex(
+    cwd,
+    normalizedName,
+    formulaFiles,
+    detectedPlatforms,
+    { preserveExactPaths: inputIsFile }
+  );
 }
 
 

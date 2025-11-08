@@ -15,7 +15,9 @@ import {
 } from '../../utils/index-based-installer.js';
 import { getLocalFormulaDir } from '../../utils/paths.js';
 import type { FormulaFile } from '../../types/index.js';
-import type { Platform } from '../../constants/index.js';
+import { PLATFORM_DIRS, type Platform } from '../../constants/index.js';
+import { parseUniversalPath } from '../../utils/platform-file.js';
+import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
 
 /**
  * Compute the directory key (registry side) to collapse file mappings under.
@@ -181,11 +183,62 @@ function collapseFileEntriesToDirKeys(
  * Build mapping from FormulaFile[] and write/merge to formula.index.yml.
  * Automatically collapses file entries into directory keys when appropriate.
  */
+export interface BuildIndexOptions {
+  /**
+   * When true, do not collapse file entries into directory keys.
+   * Keeps exact file paths as keys in formula.index.yml.
+   */
+  preserveExactPaths?: boolean;
+}
+
+/**
+ * Build a mapping that preserves exact file keys for the provided formulaFiles.
+ * For universal subdirs, maps to platform-specific installed paths using detected platforms.
+ * For ai/ paths and other non-universal paths, keeps the value as the same path.
+ */
+function buildExactFileMapping(
+  formulaFiles: FormulaFile[],
+  platforms: Platform[]
+): Record<string, string[]> {
+  const mapping: Record<string, string[]> = {};
+
+  for (const file of formulaFiles) {
+    const key = file.path.replace(/\\/g, '/');
+    const values = new Set<string>();
+
+    // ai/ paths: keep as-is
+    if (key.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+      values.add(key);
+    } else {
+      const parsed = parseUniversalPath(key);
+      if (parsed) {
+        // Map universal files across provided platforms
+        for (const platform of platforms) {
+          try {
+            const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
+            values.add(absFile.replace(/\\/g, '/'));
+          } catch {
+            // Skip platforms that don't support this subdir
+          }
+        }
+      } else {
+        // Fallback: keep value as the same path
+        values.add(key);
+      }
+    }
+
+    mapping[key] = Array.from(values).sort();
+  }
+
+  return mapping;
+}
+
 export async function buildMappingAndWriteIndex(
   cwd: string,
   formulaName: string,
   formulaFiles: FormulaFile[],
-  platforms: Platform[]
+  platforms: Platform[],
+  options: BuildIndexOptions = {}
 ): Promise<void> {
   try {
     // Read existing index and other indexes for conflict context
@@ -222,8 +275,14 @@ export async function buildMappingAndWriteIndex(
       otherIndexes
     );
 
-    // Universally apply directory collapsing: detect file entries that can be grouped under dir keys
-    newMapping = collapseFileEntriesToDirKeys(newMapping);
+    // Optionally transform mapping:
+    // - If preserveExactPaths is true: force exact file keys and strip dir keys
+    // - Otherwise: allow directory collapsing
+    if (options.preserveExactPaths) {
+      newMapping = buildExactFileMapping(formulaFiles, platforms);
+    } else {
+      newMapping = collapseFileEntriesToDirKeys(newMapping);
+    }
 
     // Prune stale keys from previous index based on current files in .groundzero
     // This ensures keys are updated when files/directories are moved or renamed

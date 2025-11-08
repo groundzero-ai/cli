@@ -54,7 +54,7 @@ async function updateFormulaIndexAfterSync(
   formulaFiles: FormulaFile[],
   platforms: Platform[]
 ): Promise<void> {
-  // Reuse shared helper (no directory collapsing for sync)
+  // Reuse shared helper; allow normal collapsing/merging to respect existing dir keys
   await buildMappingAndWriteIndex(cwd, formulaName, formulaFiles, platforms);
 }
 
