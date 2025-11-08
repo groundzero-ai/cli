@@ -7,6 +7,7 @@ import { getVersion } from './utils/package.js';
 
 // Import command setup functions
 import { setupInitCommand } from './commands/init.js';
+import { setupAddCommand } from './commands/add.js';
 import { setupSaveCommand } from './commands/save.js';
 import { setupListCommand } from './commands/list.js';
 import { setupDeleteCommand } from './commands/delete.js';
@@ -41,6 +42,7 @@ program
 
 // === FORMULA APPLICATION COMMANDS ===
 setupInitCommand(program);
+setupAddCommand(program);
 setupSaveCommand(program);
 setupInstallCommand(program);
 setupUninstallCommand(program);

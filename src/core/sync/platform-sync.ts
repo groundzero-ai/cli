@@ -3,7 +3,6 @@
  * Utility functions for syncing saved formula files across detected platforms
  */
 
-import { join } from 'path';
 import { getDetectedPlatforms } from '../platforms.js';
 import { FILE_PATTERNS, PLATFORMS, type Platform } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
@@ -12,16 +11,8 @@ import { parseUniversalPath } from '../../utils/platform-file.js';
 import { syncRootFiles } from './root-files-sync.js';
 import { syncUniversalMarkdown } from './md-files-sync.js';
 import { syncGenericFile } from './generic-file-sync.js';
-import { 
-  readFormulaIndex, 
-  writeFormulaIndex, 
-  getFormulaIndexPath,
-  type FormulaIndexRecord 
-} from '../../utils/formula-index-yml.js';
-import { buildIndexMappingForFormulaFiles, loadOtherFormulaIndexes } from '../../utils/index-based-installer.js';
-import { getLocalFormulaDir } from '../../utils/paths.js';
-import { parseFormulaYml } from '../../utils/formula-yml.js';
-import { exists } from '../../utils/fs.js';
+import { type FormulaIndexRecord } from '../../utils/formula-index-yml.js';
+import { buildMappingAndWriteIndex } from '../add/formula-index-updater.js';
 
 /**
  * Result of platform sync operation
@@ -63,66 +54,8 @@ async function updateFormulaIndexAfterSync(
   formulaFiles: FormulaFile[],
   platforms: Platform[]
 ): Promise<void> {
-  try {
-    // Read existing index
-    const previousIndex = await readFormulaIndex(cwd, formulaName);
-    
-    // Load other formula indexes for conflict detection (same as installFormulaByIndex)
-    const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
-    
-    // Get formula version from formula.yml
-    const formulaDir = getLocalFormulaDir(cwd, formulaName);
-    const formulaYmlPath = join(formulaDir, 'formula.yml');
-    let version = previousIndex?.version || '';
-    
-    if (!version && await exists(formulaYmlPath)) {
-      try {
-        const formulaYml = await parseFormulaYml(formulaYmlPath);
-        version = formulaYml.version;
-      } catch (error) {
-        logger.warn(`Failed to read formula.yml for version: ${error}`);
-        // If we can't get version, skip index update
-        return;
-      }
-    }
-    
-    if (!version) {
-      logger.debug(`No version found for ${formulaName}, skipping index update`);
-      return;
-    }
-    
-    // Build index mapping using the same logic as installFormulaByIndex
-    // This will create PlannedFiles, group them, decide on dir/file mappings,
-    // and build the final index structure
-    const newMapping = await buildIndexMappingForFormulaFiles(
-      cwd,
-      formulaFiles,
-      platforms,
-      previousIndex,
-      otherIndexes
-    );
-    
-    // Merge with existing index (new mapping takes precedence for updated entries)
-    const mergedFiles = {
-      ...(previousIndex?.files || {}),
-      ...newMapping
-    };
-    
-    // Write updated index
-    const indexRecord: FormulaIndexRecord = {
-      path: getFormulaIndexPath(cwd, formulaName),
-      formulaName,
-      version,
-      files: mergedFiles
-    };
-    
-    await writeFormulaIndex(indexRecord);
-    logger.debug(`Updated formula.index.yml for ${formulaName}@${version}`);
-    
-  } catch (error) {
-    logger.warn(`Failed to update formula.index.yml for ${formulaName}: ${error}`);
-    // Don't throw - index update failure shouldn't break sync
-  }
+  // Reuse shared helper (no directory collapsing for sync)
+  await buildMappingAndWriteIndex(cwd, formulaName, formulaFiles, platforms);
 }
 
 /**
