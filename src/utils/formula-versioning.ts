@@ -5,7 +5,6 @@ import { extractBaseVersion } from './version-generator.js';
 import { getFormulaVersionPath } from '../core/directory.js';
 import { exists } from './fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
-import { isRootFile } from '../core/sync/root-files-sync.js';
 
 /**
  * Compute stable version from a prerelease version
@@ -81,7 +80,7 @@ export function transformFormulaFilesForVersionChange(
 
 /**
  * Transform formula files metadata for name and version changes
- * Updates formula.yml and root files
+ * Updates formula.yml only
  */
 export function transformFormulaFilesMetadata(
   files: FormulaFile[],
@@ -110,12 +109,6 @@ export function transformFormulaFilesMetadata(
         const dumped = dumpYamlWithScopedQuoting(fallback, { lineWidth: 120 });
         return { ...file, content: dumped };
       }
-    }
-
-    // Root files (AGENTS.md, CLAUDE.md, etc.) store only section bodies in the registry
-    // Marker updates happen when merging into workspace files
-    if (isRootFile(file.path)) {
-      return file;
     }
 
     return file;

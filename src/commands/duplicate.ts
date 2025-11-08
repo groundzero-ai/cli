@@ -5,10 +5,8 @@ import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
 import { Formula, CommandResult } from '../types/index.js';
-import { FILE_PATTERNS } from '../constants/index.js';
 import { parseFormulaInput } from '../utils/formula-name.js';
 import { transformFormulaFilesMetadata } from '../utils/formula-versioning.js';
-import { isRootFile } from '../core/sync/root-files-sync.js';
 
 async function duplicateFormulaCommand(
   sourceInput: string,
@@ -47,7 +45,7 @@ async function duplicateFormulaCommand(
   // Determine new version
   const newVersion = newVersionInput || sourceFormula.metadata.version;
 
-  // Transform files: update frontmatter, formula.yml, and root file markers
+  // Transform files: update formula.yml
   const transformedFiles = transformFormulaFilesMetadata(
     sourceFormula.files,
     sourceName,
@@ -68,20 +66,6 @@ async function duplicateFormulaCommand(
   await formulaManager.saveFormula(newFormula);
 
   console.log(`✓ Duplicated '${sourceName}@${sourceFormula.metadata.version}' -> '${newName}@${newVersion}'`);
-
-  // Count processed file types for better user feedback
-  const rootFileCount = transformedFiles.filter(f => isRootFile(f.path)).length;
-  const markdownFileCount = transformedFiles.filter(f =>
-    FILE_PATTERNS.MARKDOWN_FILES.some(ext => f.path.endsWith(ext)) &&
-    !isRootFile(f.path)
-  ).length;
-
-  if (rootFileCount > 0) {
-    logger.debug(`  └─ Updated ${rootFileCount} root file marker(s) with new IDs`);
-  }
-  if (markdownFileCount > 0) {
-    logger.debug(`  └─ Updated ${markdownFileCount} markdown file(s) with new frontmatter and IDs`);
-  }
 
   return { success: true, data: { from: `${sourceName}@${sourceFormula.metadata.version}`, to: `${newName}@${newVersion}` } };
 }
