@@ -44,6 +44,7 @@ import {
   ensureTrailingSlash,
   isDirKey,
   type FormulaIndexRecord,
+  pruneNestedDirectories
 } from './formula-index-yml.js';
 
 // ============================================================================
@@ -819,7 +820,8 @@ function buildDirKeyMapping(
 
   if (dirsForDirKey.size > 0) {
     const key = ensureTrailingSlash(plan.key);
-    const values = Array.from(dirsForDirKey).map(dir => ensureTrailingSlash(dir)).sort();
+    const pruned = pruneNestedDirectories(Array.from(dirsForDirKey));
+    const values = pruned.map(dir => ensureTrailingSlash(dir)).sort();
     mapping[key] = values;
   }
 

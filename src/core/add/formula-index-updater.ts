@@ -7,7 +7,8 @@ import {
   readFormulaIndex,
   writeFormulaIndex,
   type FormulaIndexRecord,
-  sortMapping
+  sortMapping,
+  pruneNestedDirectories
 } from '../../utils/formula-index-yml.js';
 import {
   buildIndexMappingForFormulaFiles,
@@ -35,28 +36,6 @@ export function computeDirKeyFromRegistryPath(registryPath: string): string {
   const idx = normalized.lastIndexOf('/');
   if (idx === -1) return '';
   return normalized.substring(0, idx + 1);
-}
-
-/**
- * Prune nested child directories if their parent directory is already present.
- * Example: keep "skills/nestjs/" and drop "skills/nestjs/examples/".
- */
-export function pruneNestedDirectories(dirs: string[]): string[] {
-  const sorted = [...dirs].sort((a, b) => {
-    if (a.length === b.length) {
-      return a.localeCompare(b);
-    }
-    return a.length - b.length;
-  });
-
-  const pruned: string[] = [];
-  for (const dir of sorted) {
-    const hasParent = pruned.some(parent => dir !== parent && dir.startsWith(parent));
-    if (!hasParent) {
-      pruned.push(dir);
-    }
-  }
-  return pruned;
 }
 
 /**
