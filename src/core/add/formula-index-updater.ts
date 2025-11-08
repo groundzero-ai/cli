@@ -19,6 +19,7 @@ import type { FormulaFile } from '../../types/index.js';
 import { PLATFORM_DIRS, type Platform } from '../../constants/index.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
+import { isPlatformId } from '../platforms.js';
 
 /**
  * Compute the directory key (registry side) to collapse file mappings under.
@@ -173,6 +174,7 @@ export interface BuildIndexOptions {
 /**
  * Build a mapping that preserves exact file keys for the provided formulaFiles.
  * For universal subdirs, maps to platform-specific installed paths using detected platforms.
+ * For platform-specific paths (with .platform suffix), only maps to that specific platform.
  * For ai/ paths and other non-universal paths, keeps the value as the same path.
  */
 function buildExactFileMapping(
@@ -189,15 +191,30 @@ function buildExactFileMapping(
     if (key.startsWith(`${PLATFORM_DIRS.AI}/`)) {
       values.add(key);
     } else {
+      // Always parse with platform suffix detection enabled (it's now always enabled by default)
       const parsed = parseUniversalPath(key);
       if (parsed) {
-        // Map universal files across provided platforms
-        for (const platform of platforms) {
+        // If platform suffix is detected, only map to that specific platform
+        if (parsed.platformSuffix && isPlatformId(parsed.platformSuffix)) {
           try {
-            const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
+            const { absFile } = mapUniversalToPlatform(
+              parsed.platformSuffix,
+              parsed.universalSubdir as any,
+              parsed.relPath
+            );
             values.add(absFile.replace(/\\/g, '/'));
           } catch {
-            // Skip platforms that don't support this subdir
+            // Skip if platform doesn't support this subdir
+          }
+        } else {
+          // Regular universal file: map to all detected platforms
+          for (const platform of platforms) {
+            try {
+              const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
+              values.add(absFile.replace(/\\/g, '/'));
+            } catch {
+              // Skip platforms that don't support this subdir
+            }
           }
         }
       } else {

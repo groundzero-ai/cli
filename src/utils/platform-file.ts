@@ -4,14 +4,15 @@
  */
 
 import { basename } from 'path';
-import { getPlatformDefinition } from '../core/platforms.js';
+import { getPlatformDefinition, isPlatformId } from '../core/platforms.js';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORMS, PLATFORM_DIRS, type UniversalSubdir, type Platform } from '../constants/index.js';
 import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
 
 /**
  * Parse a registry or universal path to extract subdir and relative path info
+ * Platform suffix detection is always enabled and supports both file-level and directory-level suffixes.
  * @param path - The registry path from formula files or universal path
- * @param options - Parsing options
+ * @param options - Parsing options (allowPlatformSuffix is always true, kept for backward compatibility)
  * @returns Parsed information or null if not a universal subdir path
  */
 export function parseUniversalPath(
@@ -20,36 +21,53 @@ export function parseUniversalPath(
 ): { universalSubdir: UniversalSubdir; relPath: string; platformSuffix?: string } | null {
   // Check if path starts with universal subdirs
   const universalSubdirs = Object.values(UNIVERSAL_SUBDIRS) as UniversalSubdir[];
+  const knownPlatforms = Object.values(PLATFORMS) as readonly Platform[];
 
   for (const subdir of universalSubdirs) {
     const parsed = parsePathWithPrefix(path, subdir);
     if (parsed) {
       const remainingPath = parsed.remaining;
+      let platformSuffix: string | undefined;
+      let normalizedRelPath = remainingPath;
 
-      // Check if there's a platform suffix (e.g., auth.cursor.md)
+      // Platform suffix detection is always enabled (options.allowPlatformSuffix defaults to true)
       if (options.allowPlatformSuffix !== false) {
-        const parts = remainingPath.split('.');
-        if (parts.length >= 3 && parts[parts.length - 1] === 'md') {
-          // Check if the second-to-last part is a known platform
-          const possiblePlatformSuffix = parts[parts.length - 2];
-          const knownPlatforms = Object.values(PLATFORMS) as string[];
+        // Check for directory-level platform suffix (e.g., commands/foo.cursor/bar.md)
+        const segments = remainingPath.split('/');
+        for (let i = 0; i < segments.length - 1; i++) {
+          const segment = segments[i];
+          for (const platform of knownPlatforms) {
+            if (segment.endsWith(`.${platform}`) && isPlatformId(platform)) {
+              platformSuffix = platform;
+              // Remove platform suffix from directory name for normalized path
+              segments[i] = segment.slice(0, -platform.length - 1);
+              normalizedRelPath = segments.join('/');
+              break;
+            }
+          }
+          if (platformSuffix) break;
+        }
 
-          if (knownPlatforms.includes(possiblePlatformSuffix)) {
-            // This is a platform-suffixed file
-            const baseName = parts.slice(0, -2).join('.'); // Remove .platform.md
-            return {
-              universalSubdir: subdir,
-              relPath: baseName + FILE_PATTERNS.MD_FILES, // Convert back to .md extension
-              platformSuffix: possiblePlatformSuffix
-            };
+        // Check for file-level platform suffix (e.g., auth.cursor.md) if not already found
+        if (!platformSuffix) {
+          const parts = remainingPath.split('.');
+          if (parts.length >= 3 && parts[parts.length - 1] === 'md') {
+            // Check if the second-to-last part is a known platform
+            const possiblePlatformSuffix = parts[parts.length - 2];
+            if (isPlatformId(possiblePlatformSuffix)) {
+              platformSuffix = possiblePlatformSuffix;
+              // Remove platform suffix from filename
+              const baseName = parts.slice(0, -2).join('.');
+              normalizedRelPath = baseName + FILE_PATTERNS.MD_FILES;
+            }
           }
         }
       }
 
-      // Regular universal file
       return {
         universalSubdir: subdir,
-        relPath: remainingPath
+        relPath: normalizedRelPath,
+        platformSuffix
       };
     }
   }
@@ -63,31 +81,44 @@ export function parseUniversalPath(
       const subdirParsed = parsePathWithPrefix(aiPath, subdir);
       if (subdirParsed) {
         const remainingPath = subdirParsed.remaining;
+        let platformSuffix: string | undefined;
+        let normalizedRelPath = remainingPath;
 
-        // Check if there's a platform suffix (e.g., auth.cursor.md)
+        // Platform suffix detection is always enabled
         if (options.allowPlatformSuffix !== false) {
-          const parts = remainingPath.split('.');
-          if (parts.length >= 3 && parts[parts.length - 1] === 'md') {
-            // Check if the second-to-last part is a known platform
-            const possiblePlatformSuffix = parts[parts.length - 2];
-            const knownPlatforms = Object.values(PLATFORMS) as string[];
+          // Check for directory-level platform suffix
+          const segments = remainingPath.split('/');
+          for (let i = 0; i < segments.length - 1; i++) {
+            const segment = segments[i];
+            for (const platform of knownPlatforms) {
+              if (segment.endsWith(`.${platform}`) && isPlatformId(platform)) {
+                platformSuffix = platform;
+                segments[i] = segment.slice(0, -platform.length - 1);
+                normalizedRelPath = segments.join('/');
+                break;
+              }
+            }
+            if (platformSuffix) break;
+          }
 
-            if (knownPlatforms.includes(possiblePlatformSuffix)) {
-              // This is a platform-suffixed file
-              const baseName = parts.slice(0, -2).join('.'); // Remove .platform.md
-              return {
-                universalSubdir: subdir,
-                relPath: baseName + FILE_PATTERNS.MD_FILES, // Convert back to .md extension
-                platformSuffix: possiblePlatformSuffix
-              };
+          // Check for file-level platform suffix if not already found
+          if (!platformSuffix) {
+            const parts = remainingPath.split('.');
+            if (parts.length >= 3 && parts[parts.length - 1] === 'md') {
+              const possiblePlatformSuffix = parts[parts.length - 2];
+              if (isPlatformId(possiblePlatformSuffix)) {
+                platformSuffix = possiblePlatformSuffix;
+                const baseName = parts.slice(0, -2).join('.');
+                normalizedRelPath = baseName + FILE_PATTERNS.MD_FILES;
+              }
             }
           }
         }
 
-        // Regular universal file from AI directory
         return {
           universalSubdir: subdir,
-          relPath: remainingPath
+          relPath: normalizedRelPath,
+          platformSuffix
         };
       }
     }

@@ -74,6 +74,10 @@ interface EnsureFormulaResult {
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
 
+interface AddCommandOptions {
+  platformSpecific?: boolean;
+}
+
 export function setupAddCommand(program: Command): void {
   program
     .command('add')
@@ -85,12 +89,13 @@ export function setupAddCommand(program: Command): void {
       '  g0 add my-formula .cursor/rules/example.md\n' +
       '  g0 add my-formula ai/helpers/\n'
     )
-    .action(withErrorHandling(async (formulaName: string, inputPath: string) => {
-      await runAddCommand(formulaName, inputPath);
+    .option('--platform-specific', 'Save platform-specific variants for platform subdir inputs')
+    .action(withErrorHandling(async (formulaName: string, inputPath: string, options: AddCommandOptions) => {
+      await runAddCommand(formulaName, inputPath, options);
     }));
 }
 
-async function runAddCommand(formulaName: string, inputPath: string): Promise<CommandResult<void>> {
+async function runAddCommand(formulaName: string, inputPath: string, options: AddCommandOptions = {}): Promise<CommandResult<void>> {
   const cwd = process.cwd();
 
   const ensuredFormula = await ensureFormulaExists(cwd, formulaName);
@@ -98,9 +103,24 @@ async function runAddCommand(formulaName: string, inputPath: string): Promise<Co
   const resolvedInputPath = resolve(cwd, inputPath);
   await validateSourcePath(resolvedInputPath, cwd);
 
-  const entries = await collectSourceEntries(resolvedInputPath, cwd);
+  const inputIsDirectory = await isDirectory(resolvedInputPath);
+  const inputIsFile = !inputIsDirectory && await isFile(resolvedInputPath);
+
+  let entries = await collectSourceEntries(resolvedInputPath, cwd);
   if (entries.length === 0) {
     throw new Error(`No supported files found in ${inputPath}`);
+  }
+
+  if (options.platformSpecific) {
+    entries = applyPlatformSpecificPaths(
+      cwd,
+      entries,
+      resolvedInputPath,
+      {
+        inputIsDirectory,
+        inputIsFile
+      }
+    );
   }
 
   const changedFiles = await copyWithConflictResolution(
@@ -220,6 +240,118 @@ function joinPathSegments(...parts: string[]): string {
     .filter(Boolean)
     .join('/')
     .replace(/\/{2,}/g, '/');
+}
+
+function applyPlatformSpecificPaths(
+  cwd: string,
+  entries: SourceEntry[],
+  resolvedInputPath: string,
+  options: { inputIsDirectory: boolean; inputIsFile: boolean }
+): SourceEntry[] {
+  const normalizedInput = resolve(resolvedInputPath);
+
+  for (const entry of entries) {
+    const { registryPath, sourcePath } = entry;
+
+    if (isAiRegistryPath(registryPath)) {
+      continue;
+    }
+
+    const fileName = registryPath.split('/').pop();
+    if (fileName && isPlatformRootFile(fileName)) {
+      continue;
+    }
+
+    const mapping = mapPlatformFileToUniversal(sourcePath);
+    if (!mapping) {
+      continue;
+    }
+
+    const definition = getPlatformDefinition(mapping.platform);
+    const subdirDef = definition.subdirs[mapping.subdir];
+    if (!subdirDef?.path) {
+      continue;
+    }
+
+    const subdirAbs = resolve(join(cwd, definition.rootDir, subdirDef.path));
+    const sourceAbs = resolve(sourcePath);
+    const withinSubdir = sourceAbs === subdirAbs || isWithinDirectory(subdirAbs, sourceAbs);
+    if (!withinSubdir) {
+      continue;
+    }
+
+    if (options.inputIsFile && sourceAbs === normalizedInput) {
+      entry.registryPath = suffixFileBasename(registryPath, mapping.platform);
+      continue;
+    }
+
+    if (!options.inputIsDirectory) {
+      continue;
+    }
+
+    if (normalizedInput === subdirAbs) {
+      entry.registryPath = suffixFileBasename(registryPath, mapping.platform);
+      continue;
+    }
+
+    if (isWithinDirectory(normalizedInput, sourceAbs)) {
+      entry.registryPath = suffixFirstContentDir(registryPath, mapping.platform);
+    }
+  }
+
+  return entries;
+}
+
+function isAiRegistryPath(registryPath: string): boolean {
+  return registryPath === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`);
+}
+
+function suffixFileBasename(registryPath: string, platform: Platform): string {
+  const segments = registryPath.split('/');
+  const fileName = segments.pop();
+  if (!fileName) {
+    return registryPath;
+  }
+
+  const lastDotIndex = fileName.lastIndexOf('.');
+  if (lastDotIndex <= 0) {
+    if (!fileName.endsWith(`.${platform}`)) {
+      segments.push(`${fileName}.${platform}`);
+    } else {
+      segments.push(fileName);
+    }
+    return segments.join('/');
+  }
+
+  const name = fileName.slice(0, lastDotIndex);
+  const ext = fileName.slice(lastDotIndex);
+
+  if (name.endsWith(`.${platform}`)) {
+    segments.push(fileName);
+    return segments.join('/');
+  }
+
+  segments.push(`${name}.${platform}${ext}`);
+  return segments.join('/');
+}
+
+function suffixFirstContentDir(registryPath: string, platform: Platform): string {
+  const segments = registryPath.split('/');
+  if (segments.length < 2) {
+    return registryPath;
+  }
+
+  const subdir = segments[0];
+  const rest = segments.slice(1);
+  if (rest.length === 0) {
+    return registryPath;
+  }
+
+  if (!rest[0].endsWith(`.${platform}`)) {
+    rest[0] = `${rest[0]}.${platform}`;
+  }
+
+  return [subdir, ...rest].join('/');
 }
 
 // computeDirKeyFromRegistryPath and directory collapsing moved to core/add/formula-index-updater.ts
