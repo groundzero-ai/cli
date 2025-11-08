@@ -1,6 +1,6 @@
 import type { FormulaFile } from '../../types/index.js';
 import type { FormulaYmlInfo } from './formula-yml-generator.js';
-import { FILE_PATTERNS } from '../../constants/index.js';
+import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, type Platform } from '../../constants/index.js';
 import { FORMULA_INDEX_FILENAME } from '../../utils/formula-index-yml.js';
 import { getLocalFormulaDir } from '../../utils/paths.js';
 import { exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
@@ -22,12 +22,13 @@ import {
   discoverWorkspaceRootSaveCandidates,
   loadLocalRootSaveCandidates
 } from './root-save-candidates.js';
-
-interface SaveCandidateGroup {
-  registryPath: string;
-  local?: SaveCandidate;
-  workspace: SaveCandidate[];
-}
+import { splitFrontmatter, stripFrontmatter } from '../../utils/markdown-frontmatter.js';
+import {
+  buildFrontmatterMergePlans,
+  applyFrontmatterMergePlans,
+  type SaveCandidateGroup
+} from './save-yml-resolution.js';
+import { inferPlatformFromWorkspaceFile } from '../platforms.js';
 
 export interface SaveConflictResolutionOptions {
   force?: boolean;
@@ -60,6 +61,7 @@ export async function resolveFormulaFilesWithConflicts(
   const workspaceCandidates = [...workspacePlatformCandidates, ...workspaceRootCandidates];
 
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
+  const frontmatterPlans = buildFrontmatterMergePlans(groups);
 
   // Resolve conflicts and write chosen content back to local files
   for (const group of groups) {
@@ -92,6 +94,7 @@ export async function resolveFormulaFilesWithConflicts(
   }
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
+  await applyFrontmatterMergePlans(formulaDir, frontmatterPlans);
   return await readFilteredLocalFormulaFiles(formulaDir);
 }
 
@@ -117,7 +120,12 @@ async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]>
 
     const fullPath = entry.fullPath;
     const content = await readTextFile(fullPath);
-    const contentHash = await calculateFileHash(content);
+    const isMarkdown = normalizedPath.endsWith(FILE_PATTERNS.MD_FILES);
+    const split = isMarkdown ? splitFrontmatter(content) : undefined;
+    const markdownBody = split ? split.body : content;
+    const frontmatter = split?.frontmatter ?? undefined;
+    const rawFrontmatter = split?.rawFrontmatter;
+    const contentHash = await calculateContentHash(normalizedPath, content);
     const mtime = await getFileMtime(fullPath);
 
     candidates.push({
@@ -127,7 +135,11 @@ async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]>
       content,
       contentHash,
       mtime,
-      displayPath: normalizedPath
+      displayPath: normalizedPath,
+      isMarkdown,
+      frontmatter,
+      rawFrontmatter,
+      markdownBody
     });
   }
 
@@ -147,8 +159,14 @@ async function discoverWorkspaceCandidates(cwd: string, formulaName: string): Pr
     }
 
     const content = await readTextFile(file.fullPath);
-    const contentHash = await calculateFileHash(content);
+    const isMarkdown = normalizedPath.endsWith(FILE_PATTERNS.MD_FILES);
+    const split = isMarkdown ? splitFrontmatter(content) : undefined;
+    const markdownBody = split ? split.body : content;
+    const frontmatter = split?.frontmatter ?? undefined;
+    const rawFrontmatter = split?.rawFrontmatter;
+    const contentHash = await calculateContentHash(normalizedPath, content);
     const displayPath = getRelativePathFromBase(file.fullPath, cwd) || normalizedPath;
+    const platform = inferPlatformFromWorkspaceFile(file.fullPath, file.sourceDir, normalizedPath);
 
     candidates.push({
       source: 'workspace',
@@ -157,11 +175,24 @@ async function discoverWorkspaceCandidates(cwd: string, formulaName: string): Pr
       content,
       contentHash,
       mtime: file.mtime,
-      displayPath
+      displayPath,
+      platform,
+      isMarkdown,
+      frontmatter,
+      rawFrontmatter,
+      markdownBody
     });
   }
 
   return candidates;
+}
+
+
+
+async function calculateContentHash(registryPath: string, content: string): Promise<string> {
+  const isMarkdown = registryPath.endsWith(FILE_PATTERNS.MD_FILES);
+  const normalizedContent = isMarkdown ? stripFrontmatter(content) : content;
+  return await calculateFileHash(normalizedContent);
 }
 
 function buildCandidateGroups(

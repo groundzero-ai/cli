@@ -9,9 +9,26 @@ import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { getPathLeaf } from '../utils/path-normalization.js';
 import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir } from '../constants/index.js';
+import { mapPlatformFileToUniversal } from '../utils/platform-mapper.js';
+import { parseUniversalPath } from '../utils/platform-file.js';
 
 // All platforms
 export const ALL_PLATFORMS = Object.values(PLATFORMS) as readonly Platform[];
+
+/**
+ * Lookup map from platform directory name to platform ID.
+ * Used for quickly inferring platform from source directory.
+ */
+export const PLATFORM_DIR_LOOKUP: Record<string, Platform> = (() => {
+  const map: Record<string, Platform> = {};
+  for (const [dirKey, dirValue] of Object.entries(PLATFORM_DIRS)) {
+    const platformId = (PLATFORMS as Record<string, Platform | undefined>)[dirKey as keyof typeof PLATFORMS];
+    if (platformId) {
+      map[dirValue] = platformId;
+    }
+  }
+  return map;
+})();
 
 // New unified platform definition structure
 export interface SubdirDef {
@@ -487,5 +504,56 @@ export function isUniversalSubdirPath(normalizedPath: string): boolean {
  */
 export function isValidUniversalSubdir(subKey: string): boolean {
   return Object.values(UNIVERSAL_SUBDIRS).includes(subKey as typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS]);
+}
+
+/**
+ * Check if a value is a valid platform ID.
+ */
+export function isPlatformId(value: string | undefined): value is Platform {
+  return !!value && Object.values(PLATFORMS).includes(value as Platform);
+}
+
+/**
+ * Infer platform from workspace file information.
+ * Attempts multiple strategies to determine the platform:
+ * 1. Maps full path to universal path (if platform can be inferred from path structure)
+ * 2. Checks if source directory or registry path indicates AI directory
+ * 3. Looks up platform from source directory using PLATFORM_DIR_LOOKUP
+ * 4. Parses registry path for platform suffix (e.g., file.cursor.md)
+ * 
+ * @param fullPath - Full absolute path to the file
+ * @param sourceDir - Source directory name (e.g., '.cursor', 'ai')
+ * @param registryPath - Registry path (e.g., 'rules/file.md')
+ * @returns Platform ID, 'ai', or undefined if cannot be determined
+ */
+export function inferPlatformFromWorkspaceFile(
+  fullPath: string,
+  sourceDir: string,
+  registryPath: string
+): Platform | 'ai' | undefined {
+  // First try to get platform from full path using existing mapper
+  const mapping = mapPlatformFileToUniversal(fullPath);
+  if (mapping?.platform) {
+    return mapping.platform;
+  }
+
+  // Check for AI directory
+  if (sourceDir === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+    return 'ai';
+  }
+
+  // Look up platform from source directory
+  const fromSource = PLATFORM_DIR_LOOKUP[sourceDir];
+  if (fromSource) {
+    return fromSource;
+  }
+
+  // Fallback: check registry path for platform suffix
+  const parsed = parseUniversalPath(registryPath, { allowPlatformSuffix: true });
+  if (parsed?.platformSuffix && isPlatformId(parsed.platformSuffix)) {
+    return parsed.platformSuffix;
+  }
+
+  return undefined;
 }
 

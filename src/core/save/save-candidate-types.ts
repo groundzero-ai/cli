@@ -1,3 +1,5 @@
+import type { Platform } from '../../constants/index.js';
+
 export type SaveCandidateSource = 'local' | 'workspace';
 
 export interface SaveCandidate {
@@ -14,5 +16,15 @@ export interface SaveCandidate {
   isRootFile?: boolean;
   /** Original file content when different from `content` */
   originalContent?: string;
+  /** Indicates the candidate maps back to a specific platform */
+  platform?: Platform | 'ai';
+  /** The parsed YAML frontmatter when file is markdown */
+  frontmatter?: any;
+  /** Raw frontmatter block text (without delimiters) */
+  rawFrontmatter?: string;
+  /** Markdown body without frontmatter */
+  markdownBody?: string;
+  /** Tracks whether the candidate originates from a markdown file */
+  isMarkdown?: boolean;
 }
 
