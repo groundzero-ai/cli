@@ -984,7 +984,6 @@ function mapRegistryPathToTargets(
 ): PlannedTarget[] {
   const normalized = normalizeRegistryPath(registryPath);
   const first = getFirstPathComponent(normalized);
-  const rest = getPathAfterFirstComponent(normalized);
   const targets: PlannedTarget[] = [];
 
   const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
@@ -1000,9 +999,37 @@ function mapRegistryPathToTargets(
   }
 
   if (universalValues.includes(first)) {
+    // Parse the universal path to detect platform suffix and normalized relative path
+    const parsed = parseUniversalPath(normalized);
+
+    // If a platform suffix is present, only target that specific platform and drop the suffix for install path
+    if (parsed?.platformSuffix) {
+      const targetPlatform = parsed.platformSuffix as Platform;
+      if (platforms.includes(targetPlatform)) {
+        try {
+          const mapped = mapUniversalToPlatform(
+            targetPlatform,
+            parsed.universalSubdir as UniversalSubdir,
+            parsed.relPath
+          );
+          const targetAbs = join(cwd, mapped.absFile);
+          targets.push({
+            absPath: targetAbs,
+            relPath: normalizeRelativePath(cwd, targetAbs),
+            platform: targetPlatform
+          });
+        } catch (error) {
+          logger.debug(`Platform ${targetPlatform} does not support ${normalized}: ${error}`);
+        }
+      }
+      return targets;
+    }
+
+    // No platform suffix: map to all detected/selected platforms
+    const rel = parsed ? parsed.relPath : getPathAfterFirstComponent(normalized);
     for (const platform of platforms) {
       try {
-        const mapped = mapUniversalToPlatform(platform, first as UniversalSubdir, rest);
+        const mapped = mapUniversalToPlatform(platform, first as UniversalSubdir, rel);
         const targetAbs = join(cwd, mapped.absFile);
         targets.push({
           absPath: targetAbs,
