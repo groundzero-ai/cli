@@ -24,6 +24,7 @@ import {
 } from '../../utils/markdown-frontmatter.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { UTF8_ENCODING } from './constants.js';
+import { deepMerge } from '../../utils/platform-yaml-merge.js';
 
 export interface SaveCandidateGroup {
   registryPath: string;
@@ -258,7 +259,12 @@ export async function resolveOverrideDecisions(
         ? workspaceFrontmatter
         : undefined;
 
-    const differs = !deepEqualYaml(normalizedWorkspace, normalizedLocal);
+    // Deep-merge-based equality: compare merged results (base + override)
+    // This matches the runtime behavior of mergePlatformYamlOverride
+    const baseForMerge = plan.universalFrontmatter ? cloneYaml(plan.universalFrontmatter) : {};
+    const mergedWorkspace = deepMerge(cloneYaml(baseForMerge), normalizedWorkspace ?? {});
+    const mergedLocal = deepMerge(cloneYaml(baseForMerge), normalizedLocal ?? {});
+    const differs = !deepEqualYaml(mergedWorkspace, mergedLocal);
     let finalFrontmatter = normalizedWorkspace;
     let source: 'workspace' | 'local' = 'workspace';
 

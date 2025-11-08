@@ -13,7 +13,11 @@ function isPlainObject(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function deepMerge(base: any, override: any): any {
+/**
+ * Deep merge two YAML-compatible data structures.
+ * Arrays are replaced entirely, objects are merged recursively.
+ */
+export function deepMerge(base: any, override: any): any {
   if (Array.isArray(base) && Array.isArray(override)) {
     return override.slice();
   }
