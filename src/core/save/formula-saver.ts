@@ -1,11 +1,12 @@
 import { FormulaFile, FormulaYml } from "../../types";
 import { normalizeFormulaName } from "../../utils/formula-name.js";
-import { ensureDir, writeTextFile } from "../../utils/fs.js";
+import { ensureDir, writeTextFile, remove } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
 import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platform-mapper.js";
 import { getFormulaVersionPath } from "../directory.js";
 import { UTF8_ENCODING } from "./constants.js";
 import { FormulaYmlInfo } from "./formula-yml-generator.js";
+import { formulaVersionExists } from "../../utils/formula-versioning.js";
 
 /**
  * Save formula to local registry
@@ -22,6 +23,13 @@ export async function saveFormulaToRegistry(
     // Ensure formula name is normalized for consistent registry paths
     const normalizedConfig = { ...config, name: normalizeFormulaName(config.name) };
     const targetPath = getFormulaVersionPath(normalizedConfig.name, normalizedConfig.version);
+
+    // If version already exists, clear the directory first to remove old files
+    if (await formulaVersionExists(normalizedConfig.name, normalizedConfig.version)) {
+      await remove(targetPath);
+      logger.debug(`Cleared existing version directory: ${targetPath}`);
+    }
+
     await ensureDir(targetPath);
     
     // Group files by target directory
