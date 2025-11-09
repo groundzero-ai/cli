@@ -65,7 +65,59 @@ export async function resolveFormulaFilesWithConflicts(
   const indexRecord = await readFormulaIndex(cwd, formulaInfo.config.name);
 
   if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
-    // No index yet (first save) – skip workspace conflict resolution and return local files only
+    // No index yet (first save) – run root-only conflict resolution so prompts are shown for CLAUDE.md, WARP.md, etc.
+    const rootGroups = buildCandidateGroups(localRootCandidates, workspaceRootCandidates);
+
+    // Prune platform-specific root candidates that already exist locally (e.g., CLAUDE.md present)
+    await pruneWorkspaceCandidatesWithLocalPlatformVariants(formulaDir, rootGroups);
+
+    for (const group of rootGroups) {
+      const hasLocal = !!group.local;
+      const hasDifferingWorkspace = group.workspace.some(w => w.contentHash !== group.local?.contentHash);
+      if (!hasLocal || !hasDifferingWorkspace) {
+        continue;
+      }
+
+      const resolution = await resolveRootGroup(group, options.force ?? false);
+      if (!resolution) continue;
+
+      const { selection, platformSpecific } = resolution;
+
+      // Always write universal AGENTS.md from the selected root section
+      await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
+
+      // Persist platform-specific root selections (e.g., CLAUDE.md, WARP.md)
+      for (const candidate of platformSpecific) {
+        const platform = candidate.platform;
+        if (!platform || platform === 'ai') continue;
+
+        const platformRegistryPath = createPlatformSpecificRegistryPath(group.registryPath, platform);
+        if (!platformRegistryPath) continue;
+
+        const targetPath = join(formulaDir, platformRegistryPath);
+        try {
+          await ensureDir(dirname(targetPath));
+
+          const contentToWrite = candidate.isRootFile
+            ? (candidate.sectionBody ?? candidate.content).trim()
+            : candidate.content;
+
+          if (await exists(targetPath)) {
+            const existingContent = await readTextFile(targetPath, UTF8_ENCODING);
+            if (existingContent === contentToWrite) {
+              continue;
+            }
+          }
+
+          await writeTextFile(targetPath, contentToWrite, UTF8_ENCODING);
+          logger.debug(`Wrote platform-specific file: ${platformRegistryPath}`);
+        } catch (error) {
+          logger.warn(`Failed to write platform-specific file ${platformRegistryPath}: ${error}`);
+        }
+      }
+    }
+
+    // After resolving root conflicts, return filtered files from local dir
     return await readFilteredLocalFormulaFiles(formulaDir);
   }
 
@@ -98,7 +150,7 @@ export async function resolveFormulaFilesWithConflicts(
   );
 
   const filteredWorkspaceRootCandidates = workspaceRootCandidates.filter(candidate =>
-    isAllowedRegistryPathForFormula(candidate.registryPath)
+    candidate.isRootFile || isAllowedRegistryPathForFormula(candidate.registryPath)
   );
 
   const workspaceCandidates = [...filteredWorkspacePlatformCandidates, ...filteredWorkspaceRootCandidates];
@@ -119,38 +171,45 @@ export async function resolveFormulaFilesWithConflicts(
       continue;
     }
 
-    const resolution = await resolveGroup(group, options.force ?? false);
+    const isRootConflict =
+      group.registryPath === FILE_PATTERNS.AGENTS_MD &&
+      ((group.local && group.local.isRootFile) || group.workspace.some(w => w.isRootFile));
+
+    const resolution = isRootConflict
+      ? await resolveRootGroup(group, options.force ?? false)
+      : await resolveGroup(group, options.force ?? false);
     if (!resolution) continue;
 
     const { selection, platformSpecific } = resolution;
 
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
       await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
-      continue;
-    }
-
-    if (group.local && selection.contentHash !== group.local.contentHash) {
-      // Overwrite local file content with selected content
-      const targetPath = join(formulaDir, group.registryPath);
-      try {
-        await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
-        logger.debug(`Updated local file with selected content: ${group.registryPath}`);
-      } catch (error) {
-        logger.warn(`Failed to write selected content to ${group.registryPath}: ${error}`);
-      }
-    } else if (!group.local) {
-      // No local file existed; write the selected content to create it
-      const targetPath = join(formulaDir, group.registryPath);
-      try {
-        await ensureDir(dirname(targetPath));
-        await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
-        logger.debug(`Created local file with selected content: ${group.registryPath}`);
-      } catch (error) {
-        logger.warn(`Failed to create selected content for ${group.registryPath}: ${error}`);
+      // Continue to platform-specific persistence below (don't skip it)
+    } else {
+      if (group.local && selection.contentHash !== group.local.contentHash) {
+        // Overwrite local file content with selected content
+        const targetPath = join(formulaDir, group.registryPath);
+        try {
+          await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
+          logger.debug(`Updated local file with selected content: ${group.registryPath}`);
+        } catch (error) {
+          logger.warn(`Failed to write selected content to ${group.registryPath}: ${error}`);
+        }
+      } else if (!group.local) {
+        // No local file existed; write the selected content to create it
+        const targetPath = join(formulaDir, group.registryPath);
+        try {
+          await ensureDir(dirname(targetPath));
+          await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
+          logger.debug(`Created local file with selected content: ${group.registryPath}`);
+        } catch (error) {
+          logger.warn(`Failed to create selected content for ${group.registryPath}: ${error}`);
+        }
       }
     }
 
     // Persist platform-specific selections chosen during conflict resolution
+    // For root files, this writes platform-specific root files (e.g., CLAUDE.md, WARP.md)
     for (const candidate of platformSpecific) {
       const platform = candidate.platform;
       if (!platform || platform === 'ai') {
@@ -167,14 +226,19 @@ export async function resolveFormulaFilesWithConflicts(
       try {
         await ensureDir(dirname(targetPath));
 
+        // For root files, use sectionBody (extracted formula content) instead of full content
+        const contentToWrite = candidate.isRootFile
+          ? (candidate.sectionBody ?? candidate.content).trim()
+          : candidate.content;
+
         if (await exists(targetPath)) {
           const existingContent = await readTextFile(targetPath, UTF8_ENCODING);
-          if (existingContent === candidate.content) {
+          if (existingContent === contentToWrite) {
             continue;
           }
         }
 
-        await writeTextFile(targetPath, candidate.content, UTF8_ENCODING);
+        await writeTextFile(targetPath, contentToWrite, UTF8_ENCODING);
         logger.debug(`Wrote platform-specific file: ${platformRegistryPath}`);
       } catch (error) {
         logger.warn(`Failed to write platform-specific file ${platformRegistryPath}: ${error}`);
@@ -362,6 +426,78 @@ async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
 
     group.workspace = filtered;
   }
+}
+
+async function resolveRootGroup(
+  group: SaveCandidateGroup,
+  force: boolean
+): Promise<SaveConflictResolution | undefined> {
+  const orderedCandidates: SaveCandidate[] = [];
+
+  if (group.local) {
+    orderedCandidates.push(group.local);
+  }
+
+  if (group.workspace.length > 0) {
+    const sortedWorkspace = [...group.workspace].sort((a, b) => {
+      if (b.mtime !== a.mtime) {
+        return b.mtime - a.mtime;
+      }
+      return a.displayPath.localeCompare(b.displayPath);
+    });
+    orderedCandidates.push(...sortedWorkspace);
+  }
+
+  if (orderedCandidates.length === 0) {
+    return undefined;
+  }
+
+  const uniqueCandidates = dedupeByHash(orderedCandidates);
+
+  if (uniqueCandidates.length === 1) {
+    return {
+      selection: uniqueCandidates[0],
+      platformSpecific: []
+    };
+  }
+
+  if (group.local) {
+    const localCandidate = group.local;
+    const differsFromAnyWorkspace = group.workspace.some(w => w.contentHash !== localCandidate.contentHash);
+
+    if (differsFromAnyWorkspace) {
+      const latestWorkspaceMtime =
+        group.workspace.length > 0 ? Math.max(...group.workspace.map(w => w.mtime)) : 0;
+
+      if (localCandidate.mtime >= latestWorkspaceMtime) {
+        return {
+          selection: localCandidate,
+          platformSpecific: []
+        };
+      }
+
+      if (force) {
+        logger.info(`Force-selected local version for ${group.registryPath}`);
+        return {
+          selection: localCandidate,
+          platformSpecific: []
+        };
+      }
+
+      return await promptForCandidate(group.registryPath, uniqueCandidates);
+    }
+  }
+
+  if (force) {
+    const selected = pickLatestByMtime(uniqueCandidates);
+    logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
+    return {
+      selection: selected,
+      platformSpecific: []
+    };
+  }
+
+  return await promptForCandidate(group.registryPath, uniqueCandidates);
 }
 
 async function resolveGroup(

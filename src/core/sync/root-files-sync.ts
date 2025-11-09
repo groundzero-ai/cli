@@ -11,6 +11,8 @@ import { logger } from '../../utils/logger.js';
 import type { FormulaFile } from '../../types/index.js';
 import { mergeFormulaContentIntoRootFile } from '../../utils/root-file-merger.js';
 import { getPathLeaf } from '../../utils/path-normalization.js';
+import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
+import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
  * Result of root file sync operation
@@ -70,6 +72,11 @@ export async function syncRootFiles(
     }
   }
 
+  // Deduplicate results (multiple root files may sync to the same target file)
+  result.created = Array.from(new Set(result.created));
+  result.updated = Array.from(new Set(result.updated));
+  result.skipped = Array.from(new Set(result.skipped));
+
   return result;
 }
 
@@ -115,8 +122,14 @@ async function syncSingleRootFile(
     return result;
   }
 
-  // Sync to each detected platform
-  for (const platform of detectedPlatforms) {
+  const sourcePlatform = getPlatformForRootFile(sourceFileName);
+  const targetPlatforms =
+    sourcePlatform === 'universal'
+      ? detectedPlatforms
+      : detectedPlatforms.filter(platform => platform === sourcePlatform);
+
+  // Sync to each relevant platform
+  for (const platform of targetPlatforms) {
     const platformDef = getPlatformDefinition(platform);
     if (!platformDef.rootFile) {
       continue; // Platform doesn't use root files
@@ -139,6 +152,17 @@ async function syncSingleRootFile(
         }
       }
 
+      // Extract existing section content to compare (only the formula section, not entire file)
+      const existingSectionContent = fileExists
+        ? extractFormulaContentFromRootFile(existingContent, formulaName)?.trim() ?? null
+        : null;
+
+      // Compare section content - only update if it differs
+      if (existingSectionContent !== null && existingSectionContent === sectionBody) {
+        logger.debug(`Root file section unchanged: ${targetPath} (formula: ${formulaName})`);
+        continue; // Skip writing - section content is identical
+      }
+
       // Merge the formula content into the target file
       const mergedContent = mergeFormulaContentIntoRootFile(
         existingContent,
@@ -155,14 +179,10 @@ async function syncSingleRootFile(
       // Record result
       const relativePath = relative(cwd, targetPath);
       if (fileExists) {
-        if (existingContent !== mergedContent) {
-          result.updated.push(`${relativePath}`);
-          logger.debug(`Updated synced root file: ${targetPath}`);
-        } else {
-          logger.debug(`Root file unchanged: ${targetPath}`);
-        }
+        result.updated.push(relativePath);
+        logger.debug(`Updated synced root file: ${targetPath}`);
       } else {
-        result.created.push(`${relativePath}`);
+        result.created.push(relativePath);
         logger.debug(`Created synced root file: ${targetPath}`);
       }
 

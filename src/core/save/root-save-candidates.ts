@@ -1,6 +1,6 @@
 import { join } from 'path';
 
-import { FILE_PATTERNS } from '../../constants/index.js';
+import { FILE_PATTERNS, type Platform } from '../../constants/index.js';
 import { discoverAllRootFiles } from '../../utils/formula-discovery.js';
 import { exists, readTextFile } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
@@ -81,7 +81,10 @@ export async function discoverWorkspaceRootSaveCandidates(
         displayPath: file.relativePath,
         sectionBody,
         isRootFile: true,
-        originalContent: content
+        originalContent: content,
+        // Make root workspace candidates eligible for platform-specific selection
+        // file.sourceDir contains the platform identifier (e.g., 'claude' for CLAUDE.md)
+        platform: file.sourceDir !== 'root' ? (file.sourceDir as Platform) : undefined
       });
     } catch (error) {
       logger.warn(`Failed to process workspace root candidate ${file.relativePath}: ${error}`);
