@@ -104,7 +104,7 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
       type: 'text',
       name: 'version',
       message: 'Version:',
-      initial: '0.1.0',
+      initial: '0.1.0-wip',
       validate: (value: string) => {
         if (!value) return 'Version is required';
         if (!/^\d+\.\d+\.\d+/.test(value)) {
@@ -156,7 +156,7 @@ export async function promptFormulaDetailsForNamed(formulaName: string): Promise
       type: 'text',
       name: 'version',
       message: 'Version:',
-      initial: '0.1.0',
+      initial: '0.1.0-wip',
       validate: (value: string) => {
         if (!value) return 'Version is required';
         if (!/^\d+\.\d+\.\d+/.test(value)) {

@@ -27,17 +27,13 @@ export async function ensureLocalGroundZeroStructure(cwd: string): Promise<void>
 /**
  * Create a basic formula.yml file if it doesn't exist
  * Shared utility for both install and save commands
- * @returns the formula.yml if it was created, null if it already existed
+ * @param force - If true, overwrite existing formula.yml
+ * @returns the formula.yml if it was created, null if it already existed and force=false
  */
-export async function createBasicFormulaYml(cwd: string): Promise<FormulaYml | null> {
+export async function createBasicFormulaYml(cwd: string, force: boolean = false): Promise<FormulaYml | null> {
   await ensureLocalGroundZeroStructure(cwd);
-  
+
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
-  
-  if (await exists(formulaYmlPath)) {
-    return null; // formula.yml already exists, no need to create
-  }
-  
   const projectName = basename(cwd);
   const basicFormulaYml: FormulaYml = {
     name: projectName,
@@ -45,10 +41,20 @@ export async function createBasicFormulaYml(cwd: string): Promise<FormulaYml | n
     formulas: [],
     'dev-formulas': []
   };
-  
+
+  if (await exists(formulaYmlPath)) {
+    if (!force) {
+      return null; // formula.yml already exists, no need to create
+    }
+    await writeFormulaYml(formulaYmlPath, basicFormulaYml);
+    logger.info(`Overwrote basic formula.yml with name: ${projectName}`);
+    console.log(`📋 Overwrote basic formula.yml in .groundzero/ with name: ${projectName}`);
+    return basicFormulaYml;
+  }
+
   await writeFormulaYml(formulaYmlPath, basicFormulaYml);
-  logger.info(`Created basic formula.yml with name: ${projectName}`);
-  console.log(`📋 Created basic formula.yml in .groundzero/ with name: ${projectName}`);
+  logger.info(`Initialized workspace formula.yml`);
+  console.log(`📋 Initialized workspace formula.yml in .groundzero/`);
   return basicFormulaYml;
 }
 
