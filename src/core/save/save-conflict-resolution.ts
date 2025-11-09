@@ -419,12 +419,11 @@ async function resolveGroup(
       if (!force) {
         return await promptForCandidate(group.registryPath, uniqueCandidates);
       }
-      
-      // Explicit --force: skip prompts and choose latest by mtime
-      const selected = pickLatestByMtime(uniqueCandidates);
-      logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
+
+      // Explicit --force: always choose local version
+      logger.info(`Force-selected local version for ${group.registryPath}`);
       return {
-        selection: selected,
+        selection: localCandidate,
         platformSpecific: []
       };
     }
