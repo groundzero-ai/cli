@@ -70,6 +70,12 @@ export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): Frontm
       continue;
     }
 
+    // Only create merge plans for files that exist locally for this formula
+    // This prevents creating overrides for workspace-only files from other formulas
+    if (!group.local) {
+      continue;
+    }
+
     const platformMap = new Map<Platform, SaveCandidate>();
     for (const candidate of group.workspace) {
       if (!candidate.isMarkdown) continue;
@@ -414,6 +420,13 @@ async function applyOverrideFiles(
   plan: FrontmatterMergePlan
 ): Promise<void> {
   if (!plan.overrideDecisions) {
+    return;
+  }
+
+  // Safety check: don't write overrides unless the universal file exists locally
+  // This prevents creating override files for files that don't belong to this formula
+  const universalPath = join(formulaDir, plan.registryPath);
+  if (!(await exists(universalPath))) {
     return;
   }
 

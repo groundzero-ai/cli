@@ -1,7 +1,7 @@
 import type { FormulaFile } from '../../types/index.js';
 import type { FormulaYmlInfo } from './formula-yml-generator.js';
 import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, type Platform } from '../../constants/index.js';
-import { FORMULA_INDEX_FILENAME } from '../../utils/formula-index-yml.js';
+import { FORMULA_INDEX_FILENAME, readFormulaIndex, isDirKey } from '../../utils/formula-index-yml.js';
 import { getLocalFormulaDir } from '../../utils/paths.js';
 import { exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.js';
@@ -58,7 +58,47 @@ export async function resolveFormulaFilesWithConflicts(
   ]);
 
   const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
-  const workspaceCandidates = [...workspacePlatformCandidates, ...workspaceRootCandidates];
+
+  const indexRecord = await readFormulaIndex(cwd, formulaInfo.config.name);
+
+  if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
+    // No index yet (first save) – skip workspace conflict resolution and return local files only
+    return await readFilteredLocalFormulaFiles(formulaDir);
+  }
+
+  const fileKeys = new Set<string>();
+  const dirKeys: string[] = [];
+
+  for (const rawKey of Object.keys(indexRecord.files)) {
+    if (isDirKey(rawKey)) {
+      const trimmed = rawKey.endsWith('/') ? rawKey.slice(0, -1) : rawKey;
+      if (!trimmed) {
+        continue;
+      }
+      const normalized = normalizeRegistryPath(trimmed);
+      dirKeys.push(`${normalized}/`);
+    } else {
+      fileKeys.add(normalizeRegistryPath(rawKey));
+    }
+  }
+
+  const isAllowedRegistryPathForFormula = (registryPath: string): boolean => {
+    const normalizedPath = normalizeRegistryPath(registryPath);
+    if (fileKeys.has(normalizedPath)) {
+      return true;
+    }
+    return dirKeys.some(dirKey => normalizedPath.startsWith(dirKey));
+  };
+
+  const filteredWorkspacePlatformCandidates = workspacePlatformCandidates.filter(candidate =>
+    isAllowedRegistryPathForFormula(candidate.registryPath)
+  );
+
+  const filteredWorkspaceRootCandidates = workspaceRootCandidates.filter(candidate =>
+    isAllowedRegistryPathForFormula(candidate.registryPath)
+  );
+
+  const workspaceCandidates = [...filteredWorkspacePlatformCandidates, ...filteredWorkspaceRootCandidates];
 
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
   const frontmatterPlans = buildFrontmatterMergePlans(groups);
