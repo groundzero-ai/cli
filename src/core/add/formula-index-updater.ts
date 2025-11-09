@@ -20,6 +20,12 @@ import { PLATFORM_DIRS, type Platform } from '../../constants/index.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
 import { isPlatformId } from '../platforms.js';
+import {
+  normalizeRegistryPath,
+  isRootRegistryPath,
+  isSkippableRegistryPath,
+  isAllowedRegistryPath
+} from '../../utils/registry-entry-filter.js';
 
 /**
  * Compute the directory key (registry side) to collapse file mappings under.
@@ -176,6 +182,12 @@ export interface BuildIndexOptions {
  * For universal subdirs, maps to platform-specific installed paths using detected platforms.
  * For platform-specific paths (with .platform suffix), only maps to that specific platform.
  * For ai/ paths and other non-universal paths, keeps the value as the same path.
+ * 
+ * Filters files using the same logic as install/save: excludes root files, skippable paths,
+ * and non-allowed registry paths to match the index building behavior.
+ * 
+ * Prunes redundant mappings: if platform-specific keys exist (e.g., setup.claude.md),
+ * their target files are excluded from the universal key (e.g., setup.md) to avoid duplication.
  */
 function buildExactFileMapping(
   formulaFiles: FormulaFile[],
@@ -183,47 +195,97 @@ function buildExactFileMapping(
 ): Record<string, string[]> {
   const mapping: Record<string, string[]> = {};
 
-  for (const file of formulaFiles) {
-    const key = file.path.replace(/\\/g, '/');
-    const values = new Set<string>();
+  // Collect platform-specific targets per base universal key (e.g., commands/nestjs/setup.md)
+  // so we can prune duplicates from the universal key later.
+  const platformSpecificTargetsByBase = new Map<string, Set<string>>();
 
-    // ai/ paths: keep as-is
-    if (key.startsWith(`${PLATFORM_DIRS.AI}/`)) {
-      values.add(key);
-    } else {
-      // Always parse with platform suffix detection enabled (it's now always enabled by default)
-      const parsed = parseUniversalPath(key);
-      if (parsed) {
-        // If platform suffix is detected, only map to that specific platform
-        if (parsed.platformSuffix && isPlatformId(parsed.platformSuffix)) {
-          try {
-            const { absFile } = mapUniversalToPlatform(
-              parsed.platformSuffix,
-              parsed.universalSubdir as any,
-              parsed.relPath
-            );
-            values.add(absFile.replace(/\\/g, '/'));
-          } catch {
-            // Skip if platform doesn't support this subdir
-          }
-        } else {
-          // Regular universal file: map to all detected platforms
-          for (const platform of platforms) {
-            try {
-              const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
-              values.add(absFile.replace(/\\/g, '/'));
-            } catch {
-              // Skip platforms that don't support this subdir
-            }
-          }
-        }
-      } else {
-        // Fallback: keep value as the same path
-        values.add(key);
+  const addTargets = (key: string, values: Set<string>) => {
+    if (values.size > 0) {
+      mapping[key] = Array.from(values).sort();
+    }
+  };
+
+  // First pass: record platform-specific target files keyed by base universal key
+  for (const file of formulaFiles) {
+    const normalized = normalizeRegistryPath(file.path);
+    if (isRootRegistryPath(normalized)) continue;
+    if (isSkippableRegistryPath(normalized)) continue;
+    if (!isAllowedRegistryPath(normalized)) continue;
+
+    const parsed = parseUniversalPath(normalized);
+    if (parsed && parsed.platformSuffix && isPlatformId(parsed.platformSuffix)) {
+      try {
+        const { absFile } = mapUniversalToPlatform(
+          parsed.platformSuffix,
+          parsed.universalSubdir as any,
+          parsed.relPath
+        );
+        const baseKey = `${parsed.universalSubdir}/${parsed.relPath}`;
+        const set = platformSpecificTargetsByBase.get(baseKey) ?? new Set<string>();
+        set.add(absFile.replace(/\\/g, '/'));
+        platformSpecificTargetsByBase.set(baseKey, set);
+      } catch {
+        // Ignore unsupported subdir/platform combinations
       }
     }
+  }
 
-    mapping[key] = Array.from(values).sort();
+  // Second pass: build exact mappings and prune universal values that are covered by platform-specific keys
+  for (const file of formulaFiles) {
+    const normalized = normalizeRegistryPath(file.path);
+    if (isRootRegistryPath(normalized)) continue;
+    if (isSkippableRegistryPath(normalized)) continue;
+    if (!isAllowedRegistryPath(normalized)) continue;
+
+    const key = normalized.replace(/\\/g, '/');
+    const values = new Set<string>();
+
+    if (key.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+      // ai/ paths: keep as-is
+      values.add(key);
+      addTargets(key, values);
+      continue;
+    }
+
+    const parsed = parseUniversalPath(key);
+    if (parsed) {
+      if (parsed.platformSuffix && isPlatformId(parsed.platformSuffix)) {
+        // Platform-specific registry key → only that platform target
+        try {
+          const { absFile } = mapUniversalToPlatform(
+            parsed.platformSuffix,
+            parsed.universalSubdir as any,
+            parsed.relPath
+          );
+          values.add(absFile.replace(/\\/g, '/'));
+        } catch {
+          // Ignore unsupported subdir/platform combinations
+        }
+      } else {
+        // Universal registry key → map to all detected platforms, then prune duplicates
+        for (const platform of platforms) {
+          try {
+            const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
+            values.add(absFile.replace(/\\/g, '/'));
+          } catch {
+            // Ignore unsupported platforms
+          }
+        }
+        // Prune: if platform-specific keys exist for this base, remove their targets from universal
+        const baseKey = `${parsed.universalSubdir}/${parsed.relPath}`;
+        const covered = platformSpecificTargetsByBase.get(baseKey);
+        if (covered && covered.size > 0) {
+          for (const target of covered) {
+            values.delete(target);
+          }
+        }
+      }
+    } else {
+      // Fallback: keep value as the same path
+      values.add(key);
+    }
+
+    addTargets(key, values);
   }
 
   return mapping;

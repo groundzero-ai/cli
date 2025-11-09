@@ -62,6 +62,7 @@ import {
 } from '../utils/platform-specific-paths.js';
 import { logger } from '../utils/logger.js';
 import { buildMappingAndWriteIndex } from '../core/add/formula-index-updater.js';
+import { readLocalFormulaFilesForIndex } from '../utils/formula-local-files.js';
 
 const PLATFORM_ROOT_FILES = buildPlatformRootFiles();
 
@@ -134,7 +135,7 @@ async function runAddCommand(formulaName: string, inputPath: string, options: Ad
 
   // Always update index using all candidate entries (even if nothing changed on disk)
   // Directory collapsing is now universally applied
-  await updateFormulaIndex(cwd, ensuredFormula, entries, resolvedInputPath);
+  await updateFormulaIndex(cwd, ensuredFormula);
 
   if (changedFiles.length > 0) {
     logger.info(`Added ${changedFiles.length} file(s) to formula '${ensuredFormula.normalizedName}'.`);
@@ -417,26 +418,17 @@ async function promptConflictDecision(formulaName: string, registryPath: string)
 
 async function updateFormulaIndex(
   cwd: string,
-  ensuredFormula: EnsureFormulaResult,
-  entries: SourceEntry[],
-  resolvedInputPath: string
+  ensuredFormula: EnsureFormulaResult
 ): Promise<void> {
-  // Delegate to shared logic
-  const { normalizedName } = ensuredFormula;
-  const formulaFiles = entries.map(e => ({
-    path: e.registryPath,
-    content: '',
-    encoding: 'utf8'
-  }));
+  const { normalizedName, formulaDir } = ensuredFormula;
+  const formulaFiles = await readLocalFormulaFilesForIndex(formulaDir);
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
-  // If the user specified a single file explicitly, preserve exact file paths in index
-  const inputIsFile = await isFile(resolvedInputPath);
   await buildMappingAndWriteIndex(
     cwd,
     normalizedName,
     formulaFiles,
     detectedPlatforms,
-    { preserveExactPaths: inputIsFile }
+    { preserveExactPaths: true }
   );
 }
 
