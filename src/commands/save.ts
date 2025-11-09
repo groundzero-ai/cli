@@ -13,6 +13,7 @@ import { getOrCreateFormulaYml } from '../core/save/formula-yml-generator.js';
 import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
 import { formulaVersionExists } from '../utils/formula-versioning.js';
 import { applyWorkspaceFormulaRename } from '../core/save/workspace-rename.js';
+import { isFormulaTransitivelyCovered } from '../utils/dependency-coverage.js';
 
 /**
  * Main implementation of the save formula command
@@ -113,7 +114,19 @@ async function saveFormulaCommand(
   // Finalize the save operation
   // Don't add root formula to itself as a dependency
   if (!options?.skipProjectLink && !isRootFormula) {
-    await addFormulaToYml(cwd, formulaConfig.name, formulaConfig.version, /* isDev */ false, /* originalVersion */ undefined, /* silent */ true);
+    const transitivelyCovered = await isFormulaTransitivelyCovered(cwd, formulaConfig.name);
+    if (!transitivelyCovered) {
+      await addFormulaToYml(
+        cwd,
+        formulaConfig.name,
+        formulaConfig.version,
+        /* isDev */ false,
+        /* originalVersion */ undefined,
+        /* silent */ true
+      );
+    } else {
+      logger.debug(`Skipping addition of ${formulaConfig.name} to formula.yml; already covered transitively.`);
+    }
   }
   
   // Display appropriate message based on formula type

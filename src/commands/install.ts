@@ -54,6 +54,7 @@ import { fetchMissingDependencyMetadata, pullMissingDependencies, planRemoteDown
 import { recordBatchOutcome, describeRemoteFailure } from '../core/install/remote-reporting.js';
 import { handleDryRunMode } from '../core/install/dry-run.js';
 import { InstallScenario } from '../core/install/types.js';
+import { isFormulaTransitivelyCovered } from '../utils/dependency-coverage.js';
 
 /**
  * Install all formulas from CWD formula.yml file
@@ -544,7 +545,12 @@ async function installFormulaCommand(
   }
 
   if (formulaYmlExists && mainFormula) {
-    await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
+    const transitivelyCovered = await isFormulaTransitivelyCovered(cwd, mainFormula.name);
+    if (!transitivelyCovered) {
+      await addFormulaToYml(cwd, formulaName, mainFormula.version, options.dev || false, version, true);
+    } else {
+      logger.debug(`Skipping addition of ${mainFormula.name} to formula.yml; already covered transitively.`);
+    }
   }
 
   displayInstallationResults(
