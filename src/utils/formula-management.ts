@@ -1,7 +1,7 @@
-import { basename, join } from 'path';
+import { basename, join, relative } from 'path';
 import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from './formula-yml.js';
-import { exists, ensureDir, writeTextFile } from './fs.js';
+import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from './paths.js';
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
@@ -9,6 +9,7 @@ import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
 import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name.js';
 import { formulaManager } from '../core/formula.js';
+import { FORMULA_INDEX_FILENAME } from './formula-index-yml.js';
 
 /**
  * Ensure local GroundZero directory structure exists
@@ -144,26 +145,8 @@ export async function addFormulaToYml(
 }
 
 /**
- * Write formula metadata and optional README.md to local project structure
- * Shared utility for install command
- */
-export async function writeLocalFormulaMetadata(
-  cwd: string,
-  formulaName: string,
-  metadata: FormulaYml,
-  readmeContent?: string
-): Promise<void> {
-  const localFormulaDir = getLocalFormulaDir(cwd, formulaName);
-  const localFormulaYmlPath = join(localFormulaDir, FILE_PATTERNS.FORMULA_YML);
-  await ensureDir(localFormulaDir);
-  await writeFormulaYml(localFormulaYmlPath, metadata);
-  if (readmeContent) {
-    await writeTextFile(join(localFormulaDir, FILE_PATTERNS.README_MD), readmeContent);
-  }
-}
-
-/**
  * Copy the full formula directory from the local registry into the project structure
+ * Removes all existing files except formula.index.yml before writing new files
  */
 export async function writeLocalFormulaFromRegistry(
   cwd: string,
@@ -175,6 +158,37 @@ export async function writeLocalFormulaFromRegistry(
 
   await ensureDir(localFormulaDir);
 
+  // Build set of files that should exist after installation
+  const filesToKeep = new Set<string>(
+    formula.files.map(file => file.path)
+  );
+  // Always preserve formula.index.yml
+  filesToKeep.add(FORMULA_INDEX_FILENAME);
+
+  // List all existing files in the directory
+  const existingFiles: string[] = [];
+  if (await exists(localFormulaDir)) {
+    for await (const filePath of walkFiles(localFormulaDir)) {
+      const relPath = relative(localFormulaDir, filePath);
+      existingFiles.push(relPath);
+    }
+  }
+
+  // Remove files that are no longer in the formula (except formula.index.yml)
+  const filesToRemove = existingFiles.filter(file => !filesToKeep.has(file));
+  await Promise.all(
+    filesToRemove.map(async (file) => {
+      const filePath = join(localFormulaDir, file);
+      try {
+        await remove(filePath);
+        logger.debug(`Removed residual file: ${filePath}`);
+      } catch (error) {
+        logger.warn(`Failed to remove residual file ${filePath}: ${error}`);
+      }
+    })
+  );
+
+  // Write all files from the formula
   await Promise.all(
     formula.files.map(async (file) => {
       const targetPath = join(localFormulaDir, file.path);
