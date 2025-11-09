@@ -279,10 +279,8 @@ export async function resolveOverrideDecisions(
         const decision = await promptYamlOverrideDecision(
           platform,
           plan.registryPath,
-          workspaceMtime,
-          localMtime,
-          normalizedWorkspace,
-          normalizedLocal
+          entry.candidate.displayPath,
+          relativePath,
         );
         if (decision === 'local') {
           finalFrontmatter = normalizedLocal;
@@ -318,30 +316,21 @@ export async function resolveOverrideDecisions(
 async function promptYamlOverrideDecision(
   platform: Platform,
   registryPath: string,
-  workspaceMtime: number,
-  localMtime: number,
-  workspaceFrontmatter: any,
-  localFrontmatter: any
+  workspaceFilePath: string,
+  formulaFilePath: string,
 ): Promise<'workspace' | 'local'> {
-  const formattedWorkspace = formatTimestamp(workspaceMtime);
-  const formattedLocal = formatTimestamp(localMtime);
-  const workspacePreview = createYamlPreview(workspaceFrontmatter);
-  const localPreview = createYamlPreview(localFrontmatter);
-
   const response = await safePrompts({
     type: 'select',
     name: 'choice',
     message: `Keep YAML override for ${platform} on ${registryPath}`,
     choices: [
       {
-        title: `Workspace (mtime ${formattedWorkspace})`,
+        title: `Workspace (${workspaceFilePath})`,
         value: 'workspace',
-        description: workspacePreview
       },
       {
-        title: `Local (mtime ${formattedLocal})`,
+        title: `Formula (${formulaFilePath})`,
         value: 'local',
-        description: localPreview
       }
     ]
   });
@@ -363,13 +352,6 @@ function createYamlPreview(data: any): string {
     return yamlText;
   }
   return `${lines.slice(0, 5).join('\n')}…`;
-}
-
-/**
- * Format timestamp for display.
- */
-function formatTimestamp(mtime: number): string {
-  return new Date(mtime).toISOString();
 }
 
 /**

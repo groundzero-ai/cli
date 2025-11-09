@@ -86,8 +86,9 @@ async function saveFormulaCommand(
   }
 
   // Discover and process files directly into formula files array
+  // Only use explicit --force flag to skip prompts; WIP versions should still prompt for conflicts
   const formulaFiles = await discoverFormulaFilesForSave(formulaInfo, {
-    force: options?.force || isWipVersion
+    force: options?.force
   });
 
   // Save formula to local registry

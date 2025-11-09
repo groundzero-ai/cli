@@ -287,28 +287,40 @@ async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<
     return undefined;
   }
 
-  if (group.local) {
-    const workspaceHashes = new Set(group.workspace.map(candidate => candidate.contentHash));
-    const localCandidate = group.local;
-    const localIsOnlyChanged = workspaceHashes.size === 1 && !workspaceHashes.has(localCandidate.contentHash);
-
-    if (localIsOnlyChanged) {
-      const localHasGreatestMtime = orderedCandidates.every(candidate =>
-        candidate === localCandidate || localCandidate.mtime > candidate.mtime
-      );
-
-      if (localHasGreatestMtime) {
-        return localCandidate;
-      }
-    }
-  }
-
   const uniqueCandidates = dedupeByHash(orderedCandidates);
 
   if (uniqueCandidates.length === 1) {
     return uniqueCandidates[0];
   }
 
+  // Mirror YAML override behavior: local newer -> no prompt (local wins); workspace newer -> prompt
+  if (group.local) {
+    const localCandidate = group.local;
+    const differsFromAnyWorkspace = group.workspace.some(w => w.contentHash !== localCandidate.contentHash);
+    
+    if (differsFromAnyWorkspace) {
+      const latestWorkspaceMtime = group.workspace.length > 0 
+        ? Math.max(...group.workspace.map(w => w.mtime))
+        : 0;
+      
+      // If local is newer or equal, use it without prompting (matches YAML override behavior)
+      if (localCandidate.mtime >= latestWorkspaceMtime) {
+        return localCandidate;
+      }
+      
+      // Workspace is newer: prompt unless user explicitly requested --force
+      if (!force) {
+        return await promptForCandidate(group.registryPath, uniqueCandidates);
+      }
+      
+      // Explicit --force: skip prompts and choose latest by mtime
+      const selected = pickLatestByMtime(uniqueCandidates);
+      logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
+      return selected;
+    }
+  }
+
+  // Fallback: prompt when there are multiple unique candidates
   if (force) {
     const selected = pickLatestByMtime(uniqueCandidates);
     logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
@@ -350,7 +362,7 @@ async function promptForCandidate(
 ): Promise<SaveCandidate> {
   console.log(`\n⚠️  Conflict detected for ${registryPath}:`);
   candidates.forEach(candidate => {
-    console.log(`  • ${formatCandidateLabel(candidate)} (mtime ${formatTimestamp(candidate.mtime)})`);
+    console.log(`  • ${formatCandidateLabel(candidate)}`);
   });
 
   const response = await safePrompts({
@@ -360,7 +372,6 @@ async function promptForCandidate(
     choices: candidates.map((candidate, index) => ({
       title: formatCandidateLabel(candidate),
       value: index,
-      description: createCandidatePreview(candidate.content)
     })),
     hint: 'Use arrow keys to compare options and press Enter to select'
   });
@@ -370,17 +381,8 @@ async function promptForCandidate(
 }
 
 function formatCandidateLabel(candidate: SaveCandidate): string {
-  const prefix = candidate.source === 'local' ? 'Local cache' : 'Workspace';
+  const prefix = candidate.source === 'local' ? 'Formula' : 'Workspace';
   return `${prefix}: ${candidate.displayPath}`;
-}
-
-function createCandidatePreview(content: string): string {
-  const compact = content.replace(/\s+/g, ' ').trim();
-  return compact.length > 100 ? `${compact.slice(0, 100)}…` : compact;
-}
-
-function formatTimestamp(mtime: number): string {
-  return new Date(mtime).toISOString();
 }
 
 async function writeRootSelection(
