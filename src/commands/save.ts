@@ -5,14 +5,10 @@ import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import { addFormulaToYml } from '../utils/formula-management.js';
-import { getInstalledFormulaVersion } from '../core/groundzero.js';
-import { createCaretRange } from '../utils/version-ranges.js';
-import { getLatestFormulaVersion } from '../core/directory.js';
 import { performPlatformSync } from '../core/sync/platform-sync.js';
 import { parseFormulaInput, normalizeFormulaName } from '../utils/formula-name.js';
 import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
-import { extractBaseVersion } from '../utils/version-generator.js';
 import { getOrCreateFormulaYml } from '../core/save/formula-yml-generator.js';
 import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
 import { formulaVersionExists } from '../utils/formula-versioning.js';
@@ -32,35 +28,6 @@ async function saveFormulaCommand(
   options?: SaveOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-
-  // Early include/dev-include validation and pre-save (only for top-level invocations)
-  const includeList = options?.include ?? [];
-  const includeDevList = options?.includeDev ?? [];
-  const hasIncludes = includeList.length > 0 || includeDevList.length > 0;
-
-  if (hasIncludes) {
-    // Validate existence first
-    const uniqueNames = new Set<string>([...includeList, ...includeDevList]);
-    for (const dep of uniqueNames) {
-      // TODO: Bad logic, needs to be refactored
-      // const matches = await findFormulas(dep);
-      // if (!matches || matches.length === 0) {
-      //   throw new ValidationError(`${dep} not found, please create or install it first.`);
-      // }
-    }
-
-    // Pre-save all included formulas first (skip linking to avoid premature writes)
-    for (const dep of uniqueNames) {
-      const res = await saveFormulaCommand(dep, undefined, {
-        force: options?.force,
-        bump: options?.bump,
-        skipProjectLink: true
-      });
-      if (!res.success) {
-        return res;
-      }
-    }
-  }
 
   // Parse inputs to determine the pattern being used
   const { name, version: explicitVersion } = parseFormulaInput(formulaName);
@@ -116,57 +83,6 @@ async function saveFormulaCommand(
     isRootFormula = formulaInfo.isRootFormula;
     targetVersion = formulaConfig.version;
     isWipVersion = targetVersion.endsWith(WIP_SUFFIX);
-  }
-
-  // Inject includes into this formula's own formula.yml (dependencies)
-  if (hasIncludes) {
-    // Filter out self-references for root formulas
-    const filteredIncludes = includeList.filter(dep => dep !== formulaConfig.name);
-    const filteredDevIncludes = includeDevList.filter(dep => dep !== formulaConfig.name);
-
-    // Warn if self-references were filtered
-    const selfReferences = [...includeList, ...includeDevList].filter(dep => dep === formulaConfig.name);
-    if (selfReferences.length > 0) {
-      logger.warn(`Skipping self-reference: ${formulaConfig.name} cannot depend on itself`);
-    }
-
-    // Ensure arrays exist
-    if (!formulaConfig.formulas) formulaConfig.formulas = [];
-    if (!formulaConfig['dev-formulas']) formulaConfig['dev-formulas'] = [];
-
-    // Helper to upsert dependency into a target array
-    const upsertDependency = (arr: { name: string; version: string }[], name: string, versionRange: string) => {
-      const idx = arr.findIndex(d => d.name === name);
-      if (idx >= 0) {
-        arr[idx] = { name, version: versionRange };
-      } else {
-        arr.push({ name, version: versionRange });
-      }
-    };
-
-    // Build caret versions from installed or latest local registry
-    const computeCaretRange = async (dep: string): Promise<string> => {
-      const installed = await getInstalledFormulaVersion(dep, cwd);
-      let version = installed || await getLatestFormulaVersion(dep) || DEFAULT_VERSION;
-      const base = extractBaseVersion(version);
-      return createCaretRange(base);
-    };
-
-    // First: add normal includes to formulas
-    for (const dep of filteredIncludes) {
-      const range = await computeCaretRange(dep);
-      upsertDependency(formulaConfig.formulas!, dep, range);
-    }
-
-    // Then: add dev includes to dev-formulas and remove from formulas if present
-    for (const dep of filteredDevIncludes) {
-      const range = await computeCaretRange(dep);
-      upsertDependency((formulaConfig as any)['dev-formulas']!, dep, range);
-      const idx = formulaConfig.formulas!.findIndex(d => d.name === dep);
-      if (idx >= 0) {
-        formulaConfig.formulas!.splice(idx, 1);
-      }
-    }
   }
 
   // Discover and process files directly into formula files array
@@ -242,8 +158,6 @@ export function setupSaveCommand(program: Command): void {
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
     .option('--rename <newName>', 'Rename formula during save (optionally newName@version)')
-    .option('--include <names...>', 'Include formulas into main formula.yml')
-    .option('--include-dev <names...>', 'Include dev formulas into main formula.yml')
     .action(withErrorHandling(async (formulaName: string, versionType?: string, options?: SaveOptions) => {
       // Validate version type argument
       if (versionType && versionType !== VERSION_TYPE_STABLE) {

@@ -153,8 +153,6 @@ export interface SaveOptions {
   setLatest?: boolean;     // Mark this version as latest (for display purposes)
   bump?: 'patch' | 'minor' | 'major';  // Auto-bump version type
   rename?: string;         // Rename formula during save
-  include?: string[];
-  includeDev?: string[];
   skipProjectLink?: boolean;
 }
 
