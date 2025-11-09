@@ -97,8 +97,17 @@ async function saveFormulaCommand(
     return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
   }
 
-  // Sync universal files across detected platforms
-  const syncResult = await performPlatformSync(cwd, formulaConfig.name, formulaFiles);
+  // Sync universal files across detected platforms using planner-based workflow
+  const syncResult = await performPlatformSync(
+    cwd,
+    formulaConfig.name,
+    formulaConfig.version,
+    formulaFiles,
+    {
+      force: options?.force,
+      conflictStrategy: options?.force ? 'overwrite' : 'ask'
+    }
+  );
 
   // Finalize the save operation
   // Don't add root formula to itself as a dependency
@@ -120,6 +129,7 @@ async function saveFormulaCommand(
   // Display platform sync results
   const totalCreated = syncResult.created.length;
   const totalUpdated = syncResult.updated.length;
+  const totalDeleted = syncResult.deleted?.length ?? 0;
 
   if (totalCreated > 0) {
     const allCreated = [...syncResult.created].sort((a, b) => a.localeCompare(b));
@@ -134,6 +144,14 @@ async function saveFormulaCommand(
     console.log(`✓ Platform sync updated ${totalUpdated} files:`);
     for (const updatedFile of allUpdated) {
       console.log(`   ├── ${updatedFile}`);
+    }
+  }
+
+  if (totalDeleted > 0 && syncResult.deleted) {
+    const allDeleted = [...syncResult.deleted].sort((a, b) => a.localeCompare(b));
+    console.log(`✓ Platform sync removed ${totalDeleted} files:`);
+    for (const deletedFile of allDeleted) {
+      console.log(`   ├── ${deletedFile}`);
     }
   }
 

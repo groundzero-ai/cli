@@ -1287,6 +1287,82 @@ export async function buildIndexMappingForFormulaFiles(
   return buildIndexMappingFromPlans(groupPlans);
 }
 
+function filterRegistryEntriesForFormulaFiles(formulaFiles: FormulaFile[]): RegistryFileEntry[] {
+  return formulaFiles
+    .filter(file => {
+      const normalized = normalizeRegistryPath(file.path);
+      if (isRootRegistryPath(normalized)) return false;
+      if (isSkippableRegistryPath(normalized)) return false;
+      return isAllowedRegistryPath(normalized);
+    })
+    .map(file => ({
+      registryPath: normalizeRegistryPath(file.path),
+      content: file.content,
+      encoding: file.encoding as string | undefined
+    }));
+}
+
+export interface PlannedSyncOutcome {
+  operation: IndexInstallResult;
+  mapping: Record<string, string[]>;
+}
+
+export async function applyPlannedSyncForFormulaFiles(
+  cwd: string,
+  formulaName: string,
+  version: string,
+  formulaFiles: FormulaFile[],
+  platforms: Platform[],
+  options: InstallOptions
+): Promise<PlannedSyncOutcome> {
+  const registryEntries = filterRegistryEntriesForFormulaFiles(formulaFiles);
+
+  const plannedFiles = createPlannedFiles(registryEntries);
+  attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
+
+  const previousIndex = await readFormulaIndex(cwd, formulaName);
+  const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+  const context = await buildExpandedIndexesContext(cwd, otherIndexes);
+
+  const groups = groupPlannedFiles(plannedFiles);
+  const groupPlans = await decideGroupPlans(cwd, groups, previousIndex, context);
+  const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
+
+  const conflictWarnings = await resolveConflictsForPlannedFiles(
+    cwd,
+    plannedFiles,
+    context,
+    otherIndexes,
+    previousOwnedPaths,
+    options
+  );
+  for (const warning of conflictWarnings) {
+    logger.warn(warning);
+  }
+
+  const plannedTargetMap = buildPlannedTargetMap(plannedFiles, formulaFiles);
+  const { planned, deletions } = computeDiff(plannedTargetMap, previousOwnedPaths);
+
+  const operationResult = await applyFileOperations(cwd, planned, deletions, options);
+
+  let mapping: Record<string, string[]> = {};
+  if (!options.dryRun) {
+    mapping = buildIndexMappingFromPlans(groupPlans);
+    const indexRecord: FormulaIndexRecord = {
+      path: getFormulaIndexPath(cwd, formulaName),
+      formulaName,
+      version,
+      files: mapping
+    };
+    await writeFormulaIndex(indexRecord);
+  }
+
+  return {
+    operation: operationResult,
+    mapping
+  };
+}
+
 
 
 
