@@ -60,19 +60,19 @@ g0 save essentials .cursor/commands/essentials
 Create domain specific formulas for modular reuse.
 ```bash title="Terminal"
 # Create typescript formula
-g0 tag typescript .cursor/rules/typescript
+g0 add typescript .cursor/rules/typescript
 g0 save typescript
 
 # Create scalable-nextjs formula
-g0 tag scalable-nextjs .cursor/rules/nextjs
+g0 add scalable-nextjs .cursor/rules/nextjs
 g0 save scalable-nextjs
 
 # Create scalable-nestjs formula
-g0 tag scalable-nestjs .cursor/rules/nestjs
+g0 add scalable-nestjs .cursor/rules/nestjs
 g0 save scalable-nestjs
 
 # Create mongodb formula
-g0 tag mongodb .cursor/rules/mongodb
+g0 add mongodb .cursor/rules/mongodb
 g0 save mongodb
 
 # In your NextJS codebase
@@ -90,17 +90,17 @@ g0 install mongodb
 > [!TIP]  
 > Formulas are essential to how GroundZero works. We highly recommend reading [What are Formulas?](https://groundzero.enulus.com/docs/what-are-formulas) to understand how formulas work.
 
-### Associate files and dirs with a formula 
+### Add files/dirs to formula
 ```bash title="Terminal"
-g0 tag <formula-name> <path-to-dir-or-file>
+g0 add <formula-name> <path-to-dir-or-file>
 ```  
-Mark dirs or files as part of a formula for saving.  
+Adds dirs or files to the formula.  
 
 ### Save a formula
 ```bash title="Terminal"
 g0 save <formula-name>
 ```  
-Save a set of dirs and files in a codebase under the specified directory as a formula for reuse and cross-platform sync.
+Save the set of dirs and files as a formula for reuse and cross-platform sync.
 
 ### List formulas
 ```bash title="Terminal"
