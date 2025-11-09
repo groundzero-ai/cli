@@ -109,23 +109,6 @@ export function normalizeFormulaName(name: string): string {
   return name.toLowerCase();
 }
 
-/**
- * Normalize a formula dependency by normalizing its name.
- * Returns a new dependency object with the normalized name.
- */
-export function normalizeFormulaDependency(dep: FormulaDependency): FormulaDependency {
-  return {
-    ...dep,
-    name: normalizeFormulaName(dep.name)
-  };
-}
-
-/**
- * Normalize an array of formula dependencies in-place.
- */
-export function normalizeFormulaDependencies(deps: FormulaDependency[]): FormulaDependency[] {
-  return deps.map(normalizeFormulaDependency);
-}
 
 /**
  * Check if two formula names are equivalent (case-insensitive).
