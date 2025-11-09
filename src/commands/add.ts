@@ -56,6 +56,10 @@ import {
 import {
   normalizePathForProcessing
 } from '../utils/path-normalization.js';
+import {
+  suffixFileBasename,
+  suffixFirstContentDir
+} from '../utils/platform-specific-paths.js';
 import { logger } from '../utils/logger.js';
 import { buildMappingAndWriteIndex } from '../core/add/formula-index-updater.js';
 
@@ -304,54 +308,6 @@ function applyPlatformSpecificPaths(
 
 function isAiRegistryPath(registryPath: string): boolean {
   return registryPath === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`);
-}
-
-function suffixFileBasename(registryPath: string, platform: Platform): string {
-  const segments = registryPath.split('/');
-  const fileName = segments.pop();
-  if (!fileName) {
-    return registryPath;
-  }
-
-  const lastDotIndex = fileName.lastIndexOf('.');
-  if (lastDotIndex <= 0) {
-    if (!fileName.endsWith(`.${platform}`)) {
-      segments.push(`${fileName}.${platform}`);
-    } else {
-      segments.push(fileName);
-    }
-    return segments.join('/');
-  }
-
-  const name = fileName.slice(0, lastDotIndex);
-  const ext = fileName.slice(lastDotIndex);
-
-  if (name.endsWith(`.${platform}`)) {
-    segments.push(fileName);
-    return segments.join('/');
-  }
-
-  segments.push(`${name}.${platform}${ext}`);
-  return segments.join('/');
-}
-
-function suffixFirstContentDir(registryPath: string, platform: Platform): string {
-  const segments = registryPath.split('/');
-  if (segments.length < 2) {
-    return registryPath;
-  }
-
-  const subdir = segments[0];
-  const rest = segments.slice(1);
-  if (rest.length === 0) {
-    return registryPath;
-  }
-
-  if (!rest[0].endsWith(`.${platform}`)) {
-    rest[0] = `${rest[0]}.${platform}`;
-  }
-
-  return [subdir, ...rest].join('/');
 }
 
 // computeDirKeyFromRegistryPath and directory collapsing moved to core/add/formula-index-updater.ts

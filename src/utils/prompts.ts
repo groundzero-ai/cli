@@ -456,7 +456,6 @@ function bumpMinorVersion(version: string): string {
 interface FileSelectionOption {
   platform: string;
   sourcePath: string;
-  preview: string;
   registryPath: string;
 }
 
@@ -475,7 +474,6 @@ export async function promptPlatformSpecificSelection(
     choices: options.map((option, index) => ({
       title: `${option.platform}: ${option.registryPath}`,
       value: index,
-      description: option.preview.substring(0, 50) + (option.preview.length > 50 ? '...' : '')
     })),
     hint: hint || 'Use space to select, Enter to confirm'
   });

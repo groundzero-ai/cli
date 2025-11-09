@@ -1,9 +1,10 @@
+import { dirname, join } from 'path';
 import type { FormulaFile } from '../../types/index.js';
 import type { FormulaYmlInfo } from './formula-yml-generator.js';
 import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, type Platform } from '../../constants/index.js';
 import { FORMULA_INDEX_FILENAME, readFormulaIndex, isDirKey } from '../../utils/formula-index-yml.js';
 import { getLocalFormulaDir } from '../../utils/paths.js';
-import { exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
+import { ensureDir, exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import {
@@ -15,9 +16,11 @@ import {
 import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
 import { getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { UTF8_ENCODING } from './constants.js';
-import { safePrompts } from '../../utils/prompts.js';
+import { safePrompts, promptPlatformSpecificSelection, getContentPreview } from '../../utils/prompts.js';
+import { createPlatformSpecificRegistryPath } from '../../utils/platform-specific-paths.js';
 import { logger } from '../../utils/logger.js';
 import { SaveCandidate } from './save-candidate-types.js';
+import type { SaveConflictResolution } from './save-conflict-types.js';
 import {
   discoverWorkspaceRootSaveCandidates,
   loadLocalRootSaveCandidates
@@ -103,6 +106,9 @@ export async function resolveFormulaFilesWithConflicts(
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
   const frontmatterPlans = buildFrontmatterMergePlans(groups);
 
+  // Prune platform-specific workspace candidates that already have local platform-specific files
+  await pruneWorkspaceCandidatesWithLocalPlatformVariants(formulaDir, groups);
+
   // Resolve conflicts and write chosen content back to local files
   for (const group of groups) {
     // Only consider as conflict if local exists AND there is at least one differing workspace candidate
@@ -113,22 +119,65 @@ export async function resolveFormulaFilesWithConflicts(
       continue;
     }
 
-    const selection = await resolveGroup(group, options.force ?? false);
-    if (!selection) continue;
+    const resolution = await resolveGroup(group, options.force ?? false);
+    if (!resolution) continue;
+
+    const { selection, platformSpecific } = resolution;
 
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
       await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
       continue;
     }
 
-    if (selection.contentHash !== group.local!.contentHash) {
+    if (group.local && selection.contentHash !== group.local.contentHash) {
       // Overwrite local file content with selected content
-      const targetPath = `${formulaDir}/${group.registryPath}`;
+      const targetPath = join(formulaDir, group.registryPath);
       try {
         await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
         logger.debug(`Updated local file with selected content: ${group.registryPath}`);
       } catch (error) {
         logger.warn(`Failed to write selected content to ${group.registryPath}: ${error}`);
+      }
+    } else if (!group.local) {
+      // No local file existed; write the selected content to create it
+      const targetPath = join(formulaDir, group.registryPath);
+      try {
+        await ensureDir(dirname(targetPath));
+        await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
+        logger.debug(`Created local file with selected content: ${group.registryPath}`);
+      } catch (error) {
+        logger.warn(`Failed to create selected content for ${group.registryPath}: ${error}`);
+      }
+    }
+
+    // Persist platform-specific selections chosen during conflict resolution
+    for (const candidate of platformSpecific) {
+      const platform = candidate.platform;
+      if (!platform || platform === 'ai') {
+        continue;
+      }
+
+      const platformRegistryPath = createPlatformSpecificRegistryPath(group.registryPath, platform);
+      if (!platformRegistryPath) {
+        continue;
+      }
+
+      const targetPath = join(formulaDir, platformRegistryPath);
+
+      try {
+        await ensureDir(dirname(targetPath));
+
+        if (await exists(targetPath)) {
+          const existingContent = await readTextFile(targetPath, UTF8_ENCODING);
+          if (existingContent === candidate.content) {
+            continue;
+          }
+        }
+
+        await writeTextFile(targetPath, candidate.content, UTF8_ENCODING);
+        logger.debug(`Wrote platform-specific file: ${platformRegistryPath}`);
+      } catch (error) {
+        logger.warn(`Failed to write platform-specific file ${platformRegistryPath}: ${error}`);
       }
     }
   }
@@ -266,7 +315,59 @@ function ensureGroup(map: Map<string, SaveCandidateGroup>, registryPath: string)
   return group;
 }
 
-async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<SaveCandidate | undefined> {
+/**
+ * Prune platform-specific workspace candidates that already have local platform-specific files.
+ * This prevents false conflicts when platform-specific workspace files are mapped to universal
+ * registry paths but corresponding platform-specific files already exist in the formula.
+ */
+async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
+  formulaDir: string,
+  groups: SaveCandidateGroup[]
+): Promise<void> {
+  for (const group of groups) {
+    if (!group.local) {
+      continue;
+    }
+
+    const filtered: SaveCandidate[] = [];
+    for (const candidate of group.workspace) {
+      const platform = candidate.platform;
+      if (!platform || platform === 'ai') {
+        // Keep non-platform-specific candidates
+        filtered.push(candidate);
+        continue;
+      }
+
+      const platformRegistryPath = createPlatformSpecificRegistryPath(group.registryPath, platform);
+      if (!platformRegistryPath) {
+        // Cannot create platform-specific path; keep candidate
+        filtered.push(candidate);
+        continue;
+      }
+
+      const platformFullPath = join(formulaDir, platformRegistryPath);
+      if (await exists(platformFullPath)) {
+        // Local platform-specific file already exists; skip this workspace candidate
+        // to avoid false conflict detection
+        logger.debug(
+          `Skipping workspace candidate ${candidate.displayPath} for ${group.registryPath} ` +
+            `because local platform-specific file ${platformRegistryPath} already exists`
+        );
+        continue;
+      }
+
+      // No local platform-specific file exists; keep this candidate for conflict resolution
+      filtered.push(candidate);
+    }
+
+    group.workspace = filtered;
+  }
+}
+
+async function resolveGroup(
+  group: SaveCandidateGroup,
+  force: boolean
+): Promise<SaveConflictResolution | undefined> {
   const orderedCandidates: SaveCandidate[] = [];
 
   if (group.local) {
@@ -290,7 +391,10 @@ async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<
   const uniqueCandidates = dedupeByHash(orderedCandidates);
 
   if (uniqueCandidates.length === 1) {
-    return uniqueCandidates[0];
+    return {
+      selection: uniqueCandidates[0],
+      platformSpecific: []
+    };
   }
 
   // Mirror YAML override behavior: local newer -> no prompt (local wins); workspace newer -> prompt
@@ -305,7 +409,10 @@ async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<
       
       // If local is newer or equal, use it without prompting (matches YAML override behavior)
       if (localCandidate.mtime >= latestWorkspaceMtime) {
-        return localCandidate;
+        return {
+          selection: localCandidate,
+          platformSpecific: []
+        };
       }
       
       // Workspace is newer: prompt unless user explicitly requested --force
@@ -316,7 +423,10 @@ async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<
       // Explicit --force: skip prompts and choose latest by mtime
       const selected = pickLatestByMtime(uniqueCandidates);
       logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
-      return selected;
+      return {
+        selection: selected,
+        platformSpecific: []
+      };
     }
   }
 
@@ -324,7 +434,10 @@ async function resolveGroup(group: SaveCandidateGroup, force: boolean): Promise<
   if (force) {
     const selected = pickLatestByMtime(uniqueCandidates);
     logger.info(`Force-selected ${selected.displayPath} for ${group.registryPath}`);
-    return selected;
+    return {
+      selection: selected,
+      platformSpecific: []
+    };
   }
 
   return await promptForCandidate(group.registryPath, uniqueCandidates);
@@ -359,17 +472,75 @@ function pickLatestByMtime(candidates: SaveCandidate[]): SaveCandidate {
 async function promptForCandidate(
   registryPath: string,
   candidates: SaveCandidate[]
-): Promise<SaveCandidate> {
+): Promise<SaveConflictResolution> {
   console.log(`\n⚠️  Conflict detected for ${registryPath}:`);
   candidates.forEach(candidate => {
     console.log(`  • ${formatCandidateLabel(candidate)}`);
   });
 
+  // Stage 1: Allow marking workspace candidates as platform-specific when they advertise a platform
+  const platformEligibleWorkspace = candidates.filter(
+    candidate => candidate.source === 'workspace' && candidate.platform && candidate.platform !== 'ai'
+  );
+  let markedPlatformSpecific: SaveCandidate[] = [];
+
+  if (platformEligibleWorkspace.length > 0) {
+    const options = await Promise.all(
+      platformEligibleWorkspace.map(async candidate => ({
+        platform: candidate.platform ?? 'workspace',
+        sourcePath: candidate.fullPath,
+        preview: await getContentPreview(candidate.fullPath),
+        registryPath: candidate.displayPath
+      }))
+    );
+
+    const indices = await promptPlatformSpecificSelection(
+      options,
+      'Select workspace files to mark as platform-specific:',
+      'Unselected files remain candidates for universal content'
+    );
+
+    const markedIndexSet = new Set<number>(indices);
+    markedPlatformSpecific = platformEligibleWorkspace.filter((_, idx) => markedIndexSet.has(idx));
+  }
+
+  const markedSet = new Set(markedPlatformSpecific);
+
+  // Stage 2: Choose universal from remaining (local + unmarked workspace)
+  const local = candidates.find(candidate => candidate.source === 'local');
+  const remainingWorkspace = candidates.filter(
+    candidate => candidate.source === 'workspace' && !markedSet.has(candidate)
+  );
+  const universalChoices: SaveCandidate[] = [...(local ? [local] : []), ...remainingWorkspace];
+
+  const resolvePlatformSpecific = (selection: SaveCandidate): SaveCandidate[] => {
+    if (!markedSet.has(selection)) {
+      return markedPlatformSpecific;
+    }
+    return markedPlatformSpecific.filter(candidate => candidate !== selection);
+  };
+
+  if (universalChoices.length === 0) {
+    const fallbackSelection = candidates[0];
+    return {
+      selection: fallbackSelection,
+      platformSpecific: resolvePlatformSpecific(fallbackSelection)
+    };
+  }
+
+  if (universalChoices.length === 1) {
+    const selection = universalChoices[0];
+    return {
+      selection,
+      platformSpecific: resolvePlatformSpecific(selection)
+    };
+  }
+
   const response = await safePrompts({
     type: 'select',
     name: 'selectedIndex',
-    message: `Choose content to save for ${registryPath}:`,
-    choices: candidates.map((candidate, index) => ({
+    message: `Choose universal content to save for ${registryPath}:`,
+    choices: universalChoices.map((candidate, index) => ({
       title: formatCandidateLabel(candidate),
       value: index,
     })),
@@ -377,7 +548,11 @@ async function promptForCandidate(
   });
 
   const selectedIndex = (response as any).selectedIndex as number;
-  return candidates[selectedIndex];
+  const selection = universalChoices[selectedIndex];
+  return {
+    selection,
+    platformSpecific: resolvePlatformSpecific(selection)
+  };
 }
 
 function formatCandidateLabel(candidate: SaveCandidate): string {

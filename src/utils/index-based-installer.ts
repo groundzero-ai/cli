@@ -637,31 +637,51 @@ function groupPlannedFiles(plannedFiles: PlannedFile[]): Map<string, PlannedFile
 
 function buildPlannedTargetMap(plannedFiles: PlannedFile[], yamlOverrides: FormulaFile[]): Map<string, PlannedTargetDetail> {
   const map = new Map<string, PlannedTargetDetail>();
+
+  type PlannedWithParsed = { planned: PlannedFile; parsed: ReturnType<typeof parseUniversalPath> };
+  const universalPlanned: PlannedWithParsed[] = [];
+  const platformSuffixedPlanned: PlannedWithParsed[] = [];
+
   for (const planned of plannedFiles) {
-    for (const target of planned.targets) {
-      const normalizedRel = normalizePathForProcessing(target.relPath);
-
-      // Compute per-target content (apply platform YAML overrides for universal files)
-      let content = planned.content;
-      const parsed = parseUniversalPath(planned.registryPath);
-      if (parsed && target.platform && target.platform !== 'ai' && target.platform !== 'other') {
-        content = mergePlatformYamlOverride(
-          planned.content,
-          target.platform as Platform,
-          parsed.universalSubdir,
-          parsed.relPath,
-          yamlOverrides
-        );
-      }
-
-      map.set(normalizedRel, {
-        absPath: target.absPath,
-        relPath: normalizedRel,
-        content,
-        encoding: planned.encoding
-      });
+    const parsed = parseUniversalPath(planned.registryPath);
+    if (parsed?.platformSuffix) {
+      platformSuffixedPlanned.push({ planned, parsed });
+    } else {
+      universalPlanned.push({ planned, parsed });
     }
   }
+
+  const applyPlanned = (entries: PlannedWithParsed[]) => {
+    for (const { planned, parsed } of entries) {
+      for (const target of planned.targets) {
+        const normalizedRel = normalizePathForProcessing(target.relPath);
+
+        // Compute per-target content (apply platform YAML overrides for universal files)
+        let content = planned.content;
+        if (parsed && target.platform && target.platform !== 'ai' && target.platform !== 'other') {
+          content = mergePlatformYamlOverride(
+            planned.content,
+            target.platform as Platform,
+            parsed.universalSubdir,
+            parsed.relPath,
+            yamlOverrides
+          );
+        }
+
+        map.set(normalizedRel, {
+          absPath: target.absPath,
+          relPath: normalizedRel,
+          content,
+          encoding: planned.encoding
+        });
+      }
+    }
+  };
+
+  // Apply universal files first, then platform-suffixed files so platform-specific content wins when targets overlap.
+  applyPlanned(universalPlanned);
+  applyPlanned(platformSuffixedPlanned);
+
   return map;
 }
 
@@ -1057,8 +1077,38 @@ function attachTargetsToPlannedFiles(
   plannedFiles: PlannedFile[],
   platforms: Platform[]
 ): void {
+  // Precompute overrides: base universal path → set of platforms that have platform-suffixed variants
+  const overriddenByBase = new Map<string, Set<Platform>>();
+  for (const pf of plannedFiles) {
+    const parsed = parseUniversalPath(pf.registryPath);
+    if (parsed?.platformSuffix) {
+      const baseKey = `${parsed.universalSubdir}/${parsed.relPath}`;
+      if (!overriddenByBase.has(baseKey)) {
+        overriddenByBase.set(baseKey, new Set());
+      }
+      overriddenByBase.get(baseKey)!.add(parsed.platformSuffix as Platform);
+    }
+  }
+
   for (const planned of plannedFiles) {
-    planned.targets = mapRegistryPathToTargets(cwd, planned.registryPath, platforms);
+    const targets = mapRegistryPathToTargets(cwd, planned.registryPath, platforms);
+
+    const parsed = parseUniversalPath(planned.registryPath);
+    if (parsed && !parsed.platformSuffix) {
+      // Universal file: exclude platforms that have platform-specific variants
+      const baseKey = `${parsed.universalSubdir}/${parsed.relPath}`;
+      const excludedPlatforms = overriddenByBase.get(baseKey);
+      if (excludedPlatforms && excludedPlatforms.size > 0) {
+        planned.targets = targets.filter(t => 
+          !(t.platform && t.platform !== 'ai' && t.platform !== 'other' && excludedPlatforms.has(t.platform as Platform))
+        );
+      } else {
+        planned.targets = targets;
+      }
+    } else {
+      // Platform-suffixed file: use all targets as-is
+      planned.targets = targets;
+    }
   }
 }
 
