@@ -286,9 +286,13 @@ export async function buildMappingAndWriteIndex(
       currentPaths
     );
 
+    const previousFilesWithoutDirKeys = Object.fromEntries(
+      Object.entries(prunedPreviousFiles).filter(([key]) => !key.endsWith('/'))
+    );
+
     // Merge and write index - respect existing entries (post-pruning) and prune redundant children
     const mergedFiles = mergeMappingsRespectingExisting(
-      prunedPreviousFiles,
+      previousFilesWithoutDirKeys,
       newMapping
     );
     const indexRecord: FormulaIndexRecord = {

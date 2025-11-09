@@ -886,21 +886,11 @@ function buildIndexMappingFromPlans(plans: GroupPlan[]): Record<string, string[]
 
   for (const plan of plans) {
     refreshGroupTargetDirs(plan);
-
-    if (plan.key !== '' && plan.targetDirs.size > 0) {
-      const { dirTargets, fileTargetsByRegistryPath } = separateTargetsByPlatformDecision(plan);
-
-      // Build dir key mapping for platforms that can use it
-      Object.assign(mapping, buildDirKeyMapping(plan, dirTargets));
-
-      // Build individual file mappings for platforms that need it
-      Object.assign(mapping, buildFileMappings(fileTargetsByRegistryPath));
-      
-      continue;
+    const fileMappings = buildFallbackFileMappings(plan);
+    for (const [registryPath, values] of Object.entries(fileMappings)) {
+      const existing = mapping[registryPath] ?? [];
+      mapping[registryPath] = Array.from(new Set([...existing, ...values]));
     }
-
-    // Fallback: use individual file entries for all targets
-    Object.assign(mapping, buildFallbackFileMappings(plan));
   }
 
   return sortMapping(mapping);
