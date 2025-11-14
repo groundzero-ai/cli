@@ -73,8 +73,18 @@ export async function resolveFormulaFilesWithConflicts(
 
     for (const group of rootGroups) {
       const hasLocal = !!group.local;
-      const hasDifferingWorkspace = group.workspace.some(w => w.contentHash !== group.local?.contentHash);
-      if (!hasLocal || !hasDifferingWorkspace) {
+      const hasWorkspace = group.workspace.length > 0;
+
+      // A "differing" workspace set means either:
+      // - there is no local file yet (creation case), or
+      // - at least one workspace candidate differs from local
+      const hasDifferingWorkspace =
+        hasWorkspace &&
+        (!hasLocal || group.workspace.some(w => w.contentHash !== group.local?.contentHash));
+
+      // If there are no workspace candidates, or all workspace candidates are identical
+      // to the local one, there's nothing to do.
+      if (!hasWorkspace || !hasDifferingWorkspace) {
         continue;
       }
 
@@ -163,11 +173,16 @@ export async function resolveFormulaFilesWithConflicts(
 
   // Resolve conflicts and write chosen content back to local files
   for (const group of groups) {
-    // Only consider as conflict if local exists AND there is at least one differing workspace candidate
     const hasLocal = !!group.local;
-    const hasDifferingWorkspace = group.workspace.some(w => w.contentHash !== group.local?.contentHash);
+    const hasWorkspace = group.workspace.length > 0;
 
-    if (!hasLocal || !hasDifferingWorkspace) {
+    const hasDifferingWorkspace =
+      hasWorkspace &&
+      (!hasLocal || group.workspace.some(w => w.contentHash !== group.local?.contentHash));
+
+    // If there are no workspace candidates, or all workspace candidates are identical
+    // to the local one, skip.
+    if (!hasWorkspace || !hasDifferingWorkspace) {
       continue;
     }
 
