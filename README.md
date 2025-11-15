@@ -16,7 +16,7 @@ Build reusable formulas for use across multiple projects and AI coding platforms
 Learn more in the [official documentation](https://groundzero.enulus.com/docs).
 
 Looking to discover, download, or publish formulas?  
-The GroundZero registry is currently in private beta, [signup for early access](https://tally.so/r/wzaerk). 
+Check out the official [GroundZero formulas registry](https://groundzero.enulus.com). 
 
 > [!NOTE]  
 > For latest news and updates, follow the creator's X (Twitter) account
@@ -165,7 +165,7 @@ Feel free to create [PRs](https://github.com/groundzero-ai/cli/pulls) and [Githu
 
 ## Links
 
-- [Official Website](https://groundzero.enulus.com)
+- [Official Website and Registry](https://groundzero.enulus.com)
 - [Documentation](https://groundzero.enulus.com/docs)
 - [Discord](https://discord.gg/W5H54HZ8Fm)
 - [X (Twitter)](https://x.com/groundzero_ai)
