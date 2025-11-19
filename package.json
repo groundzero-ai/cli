@@ -1,18 +1,19 @@
 {
-  "name": "g0",
+  "name": "pnpkg",
   "version": "0.4.1",
   "publishConfig": {
     "access": "public"
   },
   "license": "Apache-2.0",
   "author": "Eric Lee",
-  "homepage": "https://groundzero.enulus.com",
+  "homepage": "https://openpackage.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/groundzero-ai/cli.git"
+    "url": "https://github.com/enulus/openpackage.git"
   },
-  "description": "GroundZero (g0) is the package manager for AI coding.",
+  "description": "OpenPackage (pnpkg) is the package manager for AI coding.",
   "keywords": [
+    "openpackage",
     "cli",
     "ai",
     "coding",
@@ -20,14 +21,14 @@
     "rules",
     "commands",
     "agents",
-    "groundzero",
-    "g0",
-    "gpm"
+    "pnpkg",
+    "opm"
   ],
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "g0": "./bin/g0"
+    "pnpkg": "./bin/pnpkg",
+    "openpackage": "./bin/pnpkg"
   },
   "scripts": {
     "build": "tsc",
