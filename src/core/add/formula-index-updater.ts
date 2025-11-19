@@ -340,7 +340,7 @@ export async function buildMappingAndWriteIndex(
       newMapping = buildExactFileMapping(formulaFiles, platforms);
     }
 
-    // Prune stale keys from previous index based on current files in .groundzero
+    // Prune stale keys from previous index based on current files in .openpackage
     // This ensures keys are updated when files/directories are moved or renamed
     const currentPaths = formulaFiles.map(f => f.path);
     const prunedPreviousFiles = pruneStaleKeysByCurrentFiles(

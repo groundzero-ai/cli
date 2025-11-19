@@ -1,18 +1,18 @@
 /**
- * Common types and interfaces for the G0 CLI application
+ * Common types and interfaces for the OpenPackage CLI application
  */
 
 import type { Platform } from '../constants/index.js';
 
 // Core application types
-export interface G0Directories {
+export interface OpenPackageDirectories {
   config: string;
   data: string;
   cache: string;
   runtime: string;
 }
 
-export interface G0Config {
+export interface OpenPackageConfig {
   defaultAuthor?: string;
   defaultLicense?: string;
   profiles?: Record<string, ProfileConfig>;
@@ -183,13 +183,13 @@ export interface CommandResult<T = any> {
 }
 
 // Error types
-export class G0Error extends Error {
+export class OpenPackageError extends Error {
   public code: string;
   public details?: any;
 
   constructor(message: string, code: string, details?: any) {
     super(message);
-    this.name = 'G0Error';
+    this.name = 'OpenPackageError';
     this.code = code;
     this.details = details;
   }

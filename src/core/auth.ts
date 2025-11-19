@@ -5,7 +5,7 @@ import { ConfigError } from '../utils/errors.js';
 import { getVersion } from '../utils/package.js';
 
 /**
- * Authentication management for G0 CLI
+ * Authentication management for OpenPackage CLI
  * Handles credential resolution and validation
  */
 
@@ -34,7 +34,7 @@ class AuthManager {
       }
 
       // 2. Profile-based authentication
-      const profileName = options.profile || process.env.G0_PROFILE || 'default';
+      const profileName = options.profile || process.env.OPENPACKAGEPROFILE || 'default';
       const isExplicitProfile = !!options.profile; // Profile was explicitly requested
       logger.debug(`Using profile: ${profileName}${isExplicitProfile ? ' (explicit)' : ''}`);
 
@@ -48,12 +48,12 @@ class AuthManager {
       if (isExplicitProfile) {
         if (!profile) {
           throw new ConfigError(
-            `Profile '${profileName}' not found. Please configure it with "g0 configure --profile ${profileName}"`
+            `Profile '${profileName}' not found. Please configure it with "opn configure --profile ${profileName}"`
           );
         }
         if (!profile.credentials?.api_key) {
           throw new ConfigError(
-            `Profile '${profileName}' has no API key configured. Please configure it with "g0 configure --profile ${profileName}"`
+            `Profile '${profileName}' has no API key configured. Please configure it with "opn configure --profile ${profileName}"`
           );
         }
       }
@@ -82,7 +82,7 @@ class AuthManager {
    * Get registry URL
    */
   getRegistryUrl(): string {
-    const registryUrl = "https://g0backend.enulus.com/v1";
+    const registryUrl = "https://backend.openpackage.dev/v1";
     // const registryUrl = "http://localhost:3000/v1";
     logger.debug(`Using registry URL: ${registryUrl}`);
     return registryUrl;
@@ -97,7 +97,7 @@ class AuthManager {
 
     if (!apiKey) {
       throw new ConfigError(
-        'No API key found. Please configure a profile with "g0 configure" or use --api-key option.'
+        'No API key found. Please configure a profile with "opn configure" or use --api-key option.'
       );
     }
 
@@ -113,7 +113,7 @@ class AuthManager {
     if (options.apiKey !== undefined && options.apiKey) {
       return '<api-key>';
     }
-    return options.profile || process.env.G0_PROFILE || 'default';
+    return options.profile || process.env.OPENPACKAGEPROFILE || 'default';
   }
 
   /**
@@ -138,7 +138,7 @@ class AuthManager {
     
     return {
       'Authorization': `Bearer ${apiKey}`,
-      'User-Agent': `g0-cli/${getVersion()}`
+      'User-Agent': `openpackage-cli/${getVersion()}`
     };
   }
 

@@ -8,7 +8,7 @@ import { displayFormulaConfig } from '../utils/formatters.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { exists, ensureDir } from '../utils/fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulaDir } from '../utils/paths.js';
+import { getLocalOpenPackageDir, getLocalFormulaYmlPath, getLocalFormulaDir } from '../utils/paths.js';
 import { normalizeFormulaName, validateFormulaName } from '../utils/formula-name.js';
 import { createBasicFormulaYml, addFormulaToYml } from '../utils/formula-management.js';
 
@@ -17,10 +17,10 @@ import { createBasicFormulaYml, addFormulaToYml } from '../utils/formula-managem
  */
 async function initFormulaCommand(force?: boolean): Promise<CommandResult> {
   const formulaDir = process.cwd();
-  const groundzeroDir = getLocalGroundZeroDir(formulaDir);
+  const openpackageDir = getLocalOpenPackageDir(formulaDir);
   const formulaYmlPath = getLocalFormulaYmlPath(formulaDir);
 
-  logger.info(`Initializing formula.yml in directory: ${groundzeroDir}`);
+  logger.info(`Initializing formula.yml in directory: ${openpackageDir}`);
 
   let formulaConfig: FormulaYml;
 
@@ -29,8 +29,8 @@ async function initFormulaCommand(force?: boolean): Promise<CommandResult> {
     if (force) {
       logger.info('Found existing formula.yml, forcing overwrite...');
       try {
-        // Ensure .groundzero directory exists
-        await ensureDir(groundzeroDir);
+        // Ensure .openpackage directory exists
+        await ensureDir(openpackageDir);
 
         // Prompt for formula details (npm init style)
         const defaultName = basename(formulaDir);
@@ -81,8 +81,8 @@ async function initFormulaCommand(force?: boolean): Promise<CommandResult> {
       const defaultName = basename(formulaDir);
       formulaConfig = await promptFormulaDetails(defaultName);
 
-      // Ensure .groundzero directory exists
-      await ensureDir(groundzeroDir);
+      // Ensure .openpackage directory exists
+      await ensureDir(openpackageDir);
 
       // Create the formula.yml file
       await writeFormulaYml(formulaYmlPath, formulaConfig);
@@ -114,10 +114,10 @@ async function initFormulaInFormulasDir(formulaName: string, force?: boolean): P
   validateFormulaName(formulaName);
   const normalizedFormulaName = normalizeFormulaName(formulaName);
 
-  // Ensure root .groundzero/formula.yml exists; do not overwrite if present
+  // Ensure root .openpackage/formula.yml exists; do not overwrite if present
   await createBasicFormulaYml(cwd, false);
 
-  // Get the formula directory path (.groundzero/formulas/{formulaName})
+  // Get the formula directory path (.openpackage/formulas/{formulaName})
   const formulaDir = getLocalFormulaDir(cwd, normalizedFormulaName);
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
@@ -184,12 +184,12 @@ async function initFormulaInFormulasDir(formulaName: string, force?: boolean): P
 export function setupInitCommand(program: Command): void {
   program
     .command('init')
-    .argument('[formula-name]', 'formula name for initialization in .groundzero/formulas/ (optional)')
+    .argument('[formula-name]', 'formula name for initialization in .openpackage/formulas/ (optional)')
     .description('Initialize a new formula.yml file. \n' +
       'Usage patterns:\n' +
-      '  g0 init                    # Initialize .groundzero/formula.yml in current directory\n' +
-      '  g0 init <formula-name>     # Initialize .groundzero/formulas/<formula-name>/formula.yml')
-    .option('-f, --force', 'overwrite existing root .groundzero/formula.yml (no effect for named init root patch)')
+      '  opn init                    # Initialize .openpackage/formula.yml in current directory\n' +
+      '  opn init <formula-name>     # Initialize .openpackage/formulas/<formula-name>/formula.yml')
+    .option('-f, --force', 'overwrite existing root .openpackage/formula.yml (no effect for named init root patch)')
     .action(withErrorHandling(async (formulaName?: string, options?: { force?: boolean }) => {
       if (formulaName) {
         const result = await initFormulaInFormulasDir(formulaName, options?.force);

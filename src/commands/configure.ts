@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { CommandResult } from '../types/index.js';
 import { profileManager } from '../core/profiles.js';
-import { ensureG0Directories } from '../core/directory.js';
+import { ensureOpenPackageDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { safePrompts } from '../utils/prompts.js';
@@ -25,7 +25,7 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     logger.info(`Setting up profile: ${profileName}`);
 
     // Ensure directories exist
-    await ensureG0Directories();
+    await ensureOpenPackageDirectories();
 
     showApiKeySignupMessage();
 
@@ -64,13 +64,13 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     if (profileName === 'default') {
       console.log('');
       console.log('💡 You can now use:');
-      console.log('  g0 push <formula-name>');
-      console.log('  g0 pull <formula-name>');
+      console.log('  opn push <formula-name>');
+      console.log('  opn pull <formula-name>');
     } else {
       console.log('');
       console.log('💡 You can now use:');
-      console.log(`  g0 push <formula-name> --profile ${profileName}`);
-      console.log(`  g0 pull <formula-name> --profile ${profileName}`);
+      console.log(`  opn push <formula-name> --profile ${profileName}`);
+      console.log(`  opn pull <formula-name> --profile ${profileName}`);
     }
 
     return {
@@ -100,8 +100,8 @@ async function listProfiles(): Promise<CommandResult> {
       console.log('No profiles configured.');
       console.log('');
       console.log('To create a profile, run:');
-      console.log('  g0 configure');
-      console.log('  g0 configure --profile <name>');
+      console.log('  opn configure');
+      console.log('  opn configure --profile <name>');
       return { success: true, data: { profiles: [] } };
     }
 

@@ -52,9 +52,9 @@ export async function handleDryRunMode(
 
   // Show formula.yml update
   if (formulaYmlExists) {
-    console.log(`\n✓ Would add to .groundzero/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
+    console.log(`\n✓ Would add to .openpackage/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
   } else {
-    console.log('\nNo .groundzero/formula.yml found - skipping dependency addition');
+    console.log('\nNo .openpackage/formula.yml found - skipping dependency addition');
   }
 
   return {

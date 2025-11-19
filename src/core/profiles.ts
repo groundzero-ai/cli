@@ -1,13 +1,13 @@
 import { join } from 'path';
 import { Profile, ProfileConfig, ProfileCredentials } from '../types/index.js';
 import { configManager } from './config.js';
-import { getG0Directories } from './directory.js';
+import { getOpenPackageDirectories } from './directory.js';
 import { readIniFile, writeIniFile, IniFile, setIniValue, removeIniSection, hasIniSection } from '../utils/ini.js';
 import { logger } from '../utils/logger.js';
 import { ConfigError } from '../utils/errors.js';
 
 /**
- * Profile management for G0 CLI
+ * Profile management for OpenPackage CLI
  * Handles profile configuration and credentials
  */
 
@@ -15,11 +15,11 @@ const CREDENTIALS_FILE_NAME = 'credentials';
 
 class ProfileManager {
   private credentialsPath: string;
-  private g0Dirs: ReturnType<typeof getG0Directories>;
+  private openPackageDirs: ReturnType<typeof getOpenPackageDirectories>;
 
   constructor() {
-    this.g0Dirs = getG0Directories();
-    this.credentialsPath = join(this.g0Dirs.config, CREDENTIALS_FILE_NAME);
+    this.openPackageDirs = getOpenPackageDirectories();
+    this.credentialsPath = join(this.openPackageDirs.config, CREDENTIALS_FILE_NAME);
   }
 
   /**
@@ -181,10 +181,10 @@ class ProfileManager {
   }
 
   /**
-   * Get G0 directories
+   * Get OpenPackage directories
    */
-  getDirectories(): ReturnType<typeof getG0Directories> {
-    return this.g0Dirs;
+  getDirectories(): ReturnType<typeof getOpenPackageDirectories> {
+    return this.openPackageDirs;
   }
 }
 

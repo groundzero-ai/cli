@@ -101,14 +101,14 @@ async function installAllFormulasCommand(
       console.log('✓ All formulas in formula.yml were skipped (matched root formula)');
       console.log('\nTips:');
       console.log('• Root formulas cannot be installed as dependencies');
-      console.log('• Use "g0 install <formula-name>" to install external formulas');
-      console.log('• Use "g0 save" to save your root formula to the registry');
+      console.log('• Use "opn install <formula-name>" to install external formulas');
+      console.log('• Use "opn save" to save your root formula to the registry');
     } else {
       console.log('⚠️ No formulas found in formula.yml');
       console.log('\nTips:');
       console.log('• Add formulas to the "formulas" array in formula.yml');
       console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
-      console.log('• Use "g0 install <formula-name>" to install a specific formula');
+      console.log('• Use "opn install <formula-name>" to install a specific formula');
     }
 
     return { success: true, data: { installed: 0, skipped: skippedRootFormulas.length } };
@@ -305,8 +305,8 @@ async function installFormulaCommand(
   if (await isRootFormula(cwd, formulaName)) {
     console.log(`⚠️  Cannot install ${formulaName} - it matches your project's root formula name`);
     console.log(`   This would create a circular dependency.`);
-    console.log(`💡 Tip: Use 'g0 install' without specifying a formula name to install all formulas`);
-    console.log(`   referenced in your .groundzero/formula.yml file.`);
+    console.log(`💡 Tip: Use 'opn install' without specifying a formula name to install all formulas`);
+    console.log(`   referenced in your .openpackage/formula.yml file.`);
     return {
       success: true,
       data: { skipped: true, reason: 'root formula' }

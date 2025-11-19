@@ -133,8 +133,8 @@ export function displayInstallationResults(
       console.log(`   • ${missing} (not found in registry)`);
     }
     console.log(`\n💡 To resolve missing dependencies:`);
-    console.log(`   • Create locally: g0 init && g0 save`);
-    console.log(`   • Pull from remote: g0 pull ${missingFormulas.join(' ')}`);
+    console.log(`   • Create locally: opn init && opn save`);
+    console.log(`   • Pull from remote: opn pull ${missingFormulas.join(' ')}`);
     console.log(`   • Remove from formula.yml`);
     console.log('');
   }

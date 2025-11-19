@@ -52,7 +52,7 @@ async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
  * Remove formula from formula.yml file
  */
 async function removeFormulaFromYml(targetDir: string, formulaName: string): Promise<boolean> {
-  // Check for .groundzero/formula.yml
+  // Check for .openpackage/formula.yml
   const configPaths = [
     getLocalFormulaYmlPath(targetDir)
   ];
@@ -109,7 +109,7 @@ async function displayDryRunInfo(
   targetDir: string,
   options: UninstallOptions,
   danglingDependencies: Set<string>,
-  groundzeroPath: string,
+  openpackagePath: string,
   formulasToRemove: string[]
 ): Promise<void> {
   console.log(`🔍 Dry run - showing what would be uninstalled:\n`);
@@ -286,7 +286,7 @@ async function uninstallFormulaCommand(
   
   const cwd = process.cwd();
   const aiRootPath = getAIDir(cwd);
-  const groundzeroPath = targetDir && targetDir !== '.'
+  const openpackagePath = targetDir && targetDir !== '.'
     ? join(aiRootPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
     : aiRootPath;
   
@@ -318,7 +318,7 @@ async function uninstallFormulaCommand(
   
   // Dry run mode
   if (options.dryRun) {
-    await displayDryRunInfo(formulaName, cwd, targetDir, options, danglingDependencies, groundzeroPath, formulasToRemove);
+    await displayDryRunInfo(formulaName, cwd, targetDir, options, danglingDependencies, openpackagePath, formulasToRemove);
     const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
     // Build platform cleanup summary via centralized discovery across all formulas
@@ -358,8 +358,8 @@ async function uninstallFormulaCommand(
     const removedAiFiles: string[] = [];
 
     // Remove empty directories under ai target path (if it exists)
-    if (await exists(groundzeroPath)) {
-      await removeEmptyDirectories(groundzeroPath);
+    if (await exists(openpackagePath)) {
+      await removeEmptyDirectories(openpackagePath);
     }
 
     // Discover platform-specific files BEFORE removing formula directories (to access formula.index.yml files)
@@ -386,7 +386,7 @@ async function uninstallFormulaCommand(
       }
     }
 
-    // Remove empty directories under .groundzero/formulas
+    // Remove empty directories under .openpackage/formulas
     if (await exists(formulasDir)) {
       await removeEmptyDirectories(formulasDir);
     }
@@ -465,8 +465,8 @@ async function uninstallFormulaCommand(
     if (await exists(formulasDir)) {
       await removeEmptyDirectories(formulasDir);
     }
-    if (await exists(groundzeroPath)) {
-      await removeEmptyDirectories(groundzeroPath);
+    if (await exists(openpackagePath)) {
+      await removeEmptyDirectories(openpackagePath);
     }
 
     // Remove all formulas being uninstalled from formula.yml

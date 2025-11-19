@@ -3,7 +3,7 @@ import * as semver from 'semver';
 import { safePrompts } from '../utils/prompts.js';
 import { FormulaYml, Formula } from '../types/index.js';
 import { formulaManager } from './formula.js';
-import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './groundzero.js';
+import { getInstalledFormulaVersion, scanGroundzeroFormulas } from './openpackage.js';
 import { logger } from '../utils/logger.js';
 import { FormulaNotFoundError, FormulaVersionNotFoundError, VersionConflictError } from '../utils/errors.js';
 import { isExactVersion } from '../utils/version-ranges.js';
@@ -178,9 +178,9 @@ export async function resolveDependencies(
               }
               
               errorMessage += `💡 To resolve this issue:\n`;
-              errorMessage += `   • Install the available version: g0 install ${formulaName}@latest\n`;
+              errorMessage += `   • Install the available version: opn install ${formulaName}@latest\n`;
               errorMessage += `   • Update the dependency to use an available version\n`;
-              errorMessage += `   • Create the required version locally: g0 init && g0 save\n`;
+              errorMessage += `   • Create the required version locally: opn init && opn save\n`;
               
               throw new FormulaVersionNotFoundError(errorMessage);
             }
@@ -237,7 +237,7 @@ export async function resolveDependencies(
     return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: Array.from(missing) };
   }
   
-  // 3.1. Check for already installed version in groundzero
+  // 3.1. Check for already installed version in openpackage
   const installedVersion = await getInstalledFormulaVersion(formulaName, targetDir);
   if (installedVersion) {
     const comparison = semver.compare(currentVersion, installedVersion);
@@ -359,13 +359,13 @@ export function displayDependencyTree(resolvedFormulas: ResolvedFormula[], silen
 }
 
 /**
- * Build dependency tree for all formulas in groundzero (used by uninstall)
+ * Build dependency tree for all formulas in openpackage (used by uninstall)
  */
-export async function buildDependencyTree(groundzeroPath: string, protectedFormulas: Set<string>): Promise<Map<string, DependencyNode>> {
+export async function buildDependencyTree(openpackagePath: string, protectedFormulas: Set<string>): Promise<Map<string, DependencyNode>> {
   const dependencyTree = new Map<string, DependencyNode>();
   
   // Use the shared scanGroundzeroFormulas function
-  const formulas = await scanGroundzeroFormulas(groundzeroPath);
+  const formulas = await scanGroundzeroFormulas(openpackagePath);
   
   // First pass: collect all formulas and their dependencies
   for (const [formulaName, formula] of formulas) {

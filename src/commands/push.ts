@@ -81,7 +81,7 @@ async function pushFormulaCommand(
         console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
         console.log('');
         console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
-        console.log('💡 Please create a stable formula using the command "g0 save <formula> stable".');
+        console.log('💡 Please create a stable formula using the command "opn save <formula> stable".');
         return { success: false, error: 'Only stable versions can be pushed' };
       } else {
         // Latest is prerelease and no version was specified -> prompt to convert
@@ -189,8 +189,8 @@ async function pushFormulaCommand(
         console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for formula '${parsedName}'`);
         console.log('');
         console.log('💡 Try one of these options:');
-        console.log('  • Increment version with command "g0 save <formula> stable"');
-        console.log('  • Update version with command "g0 save <formula>@<version>"');
+        console.log('  • Increment version with command "opn save <formula> stable"');
+        console.log('  • Update version with command "opn save <formula>@<version>"');
         console.log('  • Specify a version explicitly using <formula>@<version>');
         return { success: false, error: 'Version already exists' };
       }
@@ -199,8 +199,8 @@ async function pushFormulaCommand(
         console.error(`❌ Authentication failed: ${error.message}`);
         console.log('');
         console.log('💡 To configure authentication:');
-        console.log('  g0 configure');
-        console.log('  g0 configure --profile <name>');
+        console.log('  opn configure');
+        console.log('  opn configure --profile <name>');
         return { success: false, error: 'Authentication failed' };
       }
 
@@ -208,8 +208,8 @@ async function pushFormulaCommand(
         console.error(`❌ Access denied: ${error.message}`);
         console.log('');
         console.log('💡 To configure authentication:');
-        console.log('  g0 configure');
-        console.log('  g0 configure --profile <name>');
+        console.log('  opn configure');
+        console.log('  opn configure --profile <name>');
         return { success: false, error: 'Access denied' };
       }
       
@@ -236,7 +236,7 @@ async function pushFormulaCommand(
         console.log('💡 The upload may have timed out. You can:');
         console.log('  • Try again (the upload may have succeeded)');
         console.log('  • Check your internet connection');
-        console.log('  • Set G0_API_TIMEOUT environment variable for longer timeout');
+        console.log('  • Set OPENPACKAGEAPI_TIMEOUT environment variable for longer timeout');
       }
       
       return { success: false, error: error.message };

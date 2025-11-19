@@ -1,7 +1,7 @@
 import * as semver from 'semver';
 import { FormulaYml } from '../types/index.js';
 import { resolveDependencies, ResolvedFormula } from '../core/dependency-resolver.js';
-import { gatherRootVersionConstraints } from '../core/groundzero.js';
+import { gatherRootVersionConstraints } from '../core/openpackage.js';
 import { areFormulaNamesEquivalent } from './formula-name.js';
 
 /**

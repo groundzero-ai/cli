@@ -263,8 +263,6 @@ service-account-key.json
 # ============================================================================
 
 # Built CLI binaries (if applicable)
-# bin/g0
-# Uncomment above if you don't want to track the executable
 
 # Distribution packages
 dist-packages/
@@ -344,8 +342,6 @@ public
 # uploads/
 
 # CLI-specific working directories or cache
-.g0/
-.gpm/
-formulas-cache/
+.openpackage/
 
 # End of .gitignore

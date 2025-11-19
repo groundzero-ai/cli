@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { logger } from './utils/logger.js';
-import { ensureG0Directories } from './core/directory.js';
+import { ensureOpenPackageDirectories } from './core/directory.js';
 import { getVersion } from './utils/package.js';
 
 // Import command setup functions
@@ -22,10 +22,9 @@ import { setupConfigureCommand } from './commands/configure.js';
 import { setupDuplicateCommand } from './commands/duplicate.js';
 
 /**
- * G0 Formula Manager CLI - Main entry point
+ * OpenPackage CLI - Main entry point
  * 
- * A scalable command-line tool for managing code templates and formulas.
- * Built with TypeScript, Commander.js, and following CLI best practices.
+ * A scalable command-line tool for packaging AI coding files.
  */
 
 // Create the main program
@@ -33,8 +32,9 @@ const program = new Command();
 
 // Configure the main program
 program
-  .name('g0')
-  .description('G0 Formula Manager - Create, manage, and share code templates')
+  .name('openpackage')
+  .alias('opn')
+  .description('OpenPackage - The Package Manager for AI Coding')
   .version(getVersion())
   .configureHelp({
     sortSubcommands: true,
@@ -83,15 +83,15 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 /**
- * Initialize G0 directories on startup
+ * Initialize OpenPackage directories on startup
  */
-async function initializeG0(): Promise<void> {
+async function initializeOpenPackage(): Promise<void> {
   try {
-    await ensureG0Directories();
-    logger.debug('G0 directories initialized successfully');
+    await ensureOpenPackageDirectories();
+    logger.debug('OpenPackage directories initialized successfully');
   } catch (error) {
-    logger.error('Failed to initialize G0 directories', { error });
-    console.error('❌ Failed to initialize G0 directories. Please check permissions.');
+    logger.error('Failed to initialize OpenPackage directories', { error });
+    console.error('❌ Failed to initialize OpenPackage directories. Please check permissions.');
     process.exit(1);
   }
 }
@@ -99,10 +99,10 @@ async function initializeG0(): Promise<void> {
 /**
  * Main execution function
  */
-async function main(): Promise<void> {
+export async function run(): Promise<void> {
   try {
-    // Initialize G0 directories
-    await initializeG0();
+    // Initialize OpenPackage directories
+    await initializeOpenPackage();
     
     // Parse command line arguments
     await program.parseAsync();
@@ -116,13 +116,12 @@ async function main(): Promise<void> {
 
 // Only run main if this file is executed directly
 // Check if this module is the main module being executed
+// Note: When running via bin/openpackage, the wrapper script calls run() explicitly
 if (process.argv[1] && (
-    process.argv[1].endsWith('index.js') || 
-    process.argv[1].endsWith('index.ts') ||
-    process.argv[1].endsWith('/g0') ||
-    process.argv[1].endsWith('\\g0')
+    process.argv[1].endsWith('index.js') ||
+    process.argv[1].endsWith('index.ts')
   )) {
-  main().catch((error) => {
+  run().catch((error) => {
     logger.error('Fatal error in main execution', { error });
     console.error('❌ Fatal error occurred. Exiting.');
     process.exit(1);

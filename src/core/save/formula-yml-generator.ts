@@ -7,7 +7,7 @@ import { ensureDir, exists, isDirectory } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
 import { getLocalFormulaDir } from "../../utils/paths.js";
 import { ValidationError } from "../../utils/errors.js";
-import { ensureLocalGroundZeroStructure } from "../../utils/formula-management.js";
+import { ensureLocalOpenPackageStructure } from "../../utils/formula-management.js";
 import { hasFormulaVersion } from "../directory.js";
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES, WIP_SUFFIX } from "./constants.js";
 import { determineTargetVersion } from "./formula-yml-versioning.js";
@@ -27,10 +27,10 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   const cwd = process.cwd();
   
   // Ensure the target directory exists (including formulas subdirectory)
-  await ensureLocalGroundZeroStructure(cwd);
+  await ensureLocalOpenPackageStructure(cwd);
   await ensureDir(formulaDir);
   
-  // Create formula.yml in the formula directory (rTnot the main .groundzero directory)
+  // Create formula.yml in the formula directory (rTnot the main .openpackage directory)
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
   
   // Create default formula config
@@ -60,7 +60,7 @@ export async function getOrCreateFormulaYml(
   bump?: "patch" | "minor" | "major",
   force?: boolean
 ): Promise<FormulaYmlInfo> {
-  await ensureLocalGroundZeroStructure(cwd);
+  await ensureLocalOpenPackageStructure(cwd);
 
   const formulaDir = getLocalFormulaDir(cwd, name);
   if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {

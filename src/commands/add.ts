@@ -36,7 +36,7 @@ import {
 } from '../utils/fs.js';
 import {
   getLocalFormulaDir,
-  getLocalGroundZeroDir
+  getLocalOpenPackageDir
 } from '../utils/paths.js';
 import {
   parseFormulaYml,
@@ -91,8 +91,8 @@ export function setupAddCommand(program: Command): void {
     .description(
       'Copy supported workspace files or directories into a local formula directory.\n' +
       'Usage examples:\n' +
-      '  g0 add my-formula .cursor/rules/example.md\n' +
-      '  g0 add my-formula ai/helpers/\n'
+      '  opn add my-formula .cursor/rules/example.md\n' +
+      '  opn add my-formula ai/helpers/\n'
     )
     .option('--platform-specific', 'Save platform-specific variants for platform subdir inputs')
     .action(withErrorHandling(async (formulaName: string, inputPath: string, options: AddCommandOptions) => {
@@ -180,9 +180,9 @@ async function validateSourcePath(resolvedPath: string, cwd: string): Promise<vo
     throw new Error('Path must be within the current working directory.');
   }
 
-  const groundzeroDir = getLocalGroundZeroDir(cwd);
-  if (isWithinDirectory(groundzeroDir, resolvedPath)) {
-    throw new Error('Cannot add files from the .groundzero directory.');
+  const openpackageDir = getLocalOpenPackageDir(cwd);
+  if (isWithinDirectory(openpackageDir, resolvedPath)) {
+    throw new Error('Cannot add files from the .openpackage directory.');
   }
 }
 

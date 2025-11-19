@@ -352,7 +352,7 @@ async function pruneCommand(
     // 3. Dry run mode
     if (options.dryRun) {
       await confirmPruneOperation(toDelete, toPreserve);
-      console.log('\n🔍 Dry run complete. Use \'g0 prune\' without --dry-run to perform the cleanup.');
+      console.log('\n🔍 Dry run complete. Use \'opn prune\' without --dry-run to perform the cleanup.');
       
       const dryRunResult: PruneResult = {
         totalFound: allPrereleaseVersions.length,

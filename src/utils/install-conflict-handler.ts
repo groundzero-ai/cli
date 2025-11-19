@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { checkExistingFormulaInMarkdownFiles } from '../core/groundzero.js';
+import { checkExistingFormulaInMarkdownFiles } from '../core/openpackage.js';
 import { parseFormulaYml } from './formula-yml.js';
 import { exists } from './fs.js';
 import { logger } from './logger.js';
@@ -11,7 +11,7 @@ import { getVersionInfoFromDependencyTree } from './install-helpers.js';
 import { promptFormulaOverwrite } from './prompts.js';
 
 /**
- * Get currently installed version from .groundzero/formulas/<formula>/formula.yml
+ * Get currently installed version from .openpackage/formulas/<formula>/formula.yml
  */
 async function getInstalledFormulaVersion(cwd: string, formulaName: string): Promise<string | undefined> {
   try {

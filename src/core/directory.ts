@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
-import { G0Directories } from '../types/index.js';
+import { OpenPackageDirectories } from '../types/index.js';
 import { PLATFORM_DIRS, FORMULA_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -12,40 +12,40 @@ import { normalizeFormulaName } from '../utils/formula-name.js';
  */
 
 /**
- * Get GroundZero directories using unified dotfile convention
- * Uses ~/.groundzero on all platforms for consistency (like AWS CLI with ~/.aws)
+ * Get OpenPackage directories using unified dotfile convention
+ * Uses ~/.openpackage on all platforms for consistency (like AWS CLI with ~/.aws)
  * This approach prioritizes simplicity and cross-platform consistency
  */
-export function getG0Directories(): G0Directories {
+export function getOpenPackageDirectories(): OpenPackageDirectories {
   const homeDir = os.homedir();
-  const g0Dir = path.join(homeDir, PLATFORM_DIRS.GROUNDZERO);
+  const openPackageDir = path.join(homeDir, PLATFORM_DIRS.OPENPACKAGE);
   
   return {
-    config: g0Dir,
-    data: g0Dir,  // Same directory - follows dotfile convention
-    cache: path.join(g0Dir, FORMULA_DIRS.CACHE),
-    runtime: path.join(os.tmpdir(), 'groundzero')
+    config: openPackageDir,
+    data: openPackageDir,  // Same directory - follows dotfile convention
+    cache: path.join(openPackageDir, FORMULA_DIRS.CACHE),
+    runtime: path.join(os.tmpdir(), 'openpackage')
   };
 }
 
 /**
- * Ensure all G0 directories exist
+ * Ensure all OpenPackage directories exist
  */
-export async function ensureG0Directories(): Promise<G0Directories> {
-  const g0Dirs = getG0Directories();
+export async function ensureOpenPackageDirectories(): Promise<OpenPackageDirectories> {
+  const openPackageDirs = getOpenPackageDirectories();
   
   try {
     await Promise.all([
-      ensureDir(g0Dirs.config),
-      ensureDir(g0Dirs.data),
-      ensureDir(g0Dirs.cache),
-      ensureDir(g0Dirs.runtime)
+      ensureDir(openPackageDirs.config),
+      ensureDir(openPackageDirs.data),
+      ensureDir(openPackageDirs.cache),
+      ensureDir(openPackageDirs.runtime)
     ]);
     
-    logger.debug('G0 directories ensured', { directories: g0Dirs });
-    return g0Dirs;
+    logger.debug('OpenPackage directories ensured', { directories: openPackageDirs });
+    return openPackageDirs;
   } catch (error) {
-    logger.error('Failed to create G0 directories', { error, directories: g0Dirs });
+    logger.error('Failed to create OpenPackage directories', { error, directories: openPackageDirs });
     throw error;
   }
 }
@@ -54,8 +54,8 @@ export async function ensureG0Directories(): Promise<G0Directories> {
  * Get the registry directories
  */
 export function getRegistryDirectories(): { formulas: string } {
-  const g0Dirs = getG0Directories();
-  const registryDir = path.join(g0Dirs.data, 'registry');
+  const openPackageDirs = getOpenPackageDirectories();
+  const registryDir = path.join(openPackageDirs.data, 'registry');
   
   return {
     formulas: path.join(registryDir, FORMULA_DIRS.FORMULAS)
@@ -83,16 +83,16 @@ export async function ensureRegistryDirectories(): Promise<{ formulas: string }>
  * Get the cache directory for a specific type of cache
  */
 export function getCacheDirectory(cacheType: string): string {
-  const g0Dirs = getG0Directories();
-  return path.join(g0Dirs.cache, cacheType);
+  const openPackageDirs = getOpenPackageDirectories();
+  return path.join(openPackageDirs.cache, cacheType);
 }
 
 /**
  * Get the temporary directory for a specific operation
  */
 export function getTempDirectory(operation: string): string {
-  const g0Dirs = getG0Directories();
-  return path.join(g0Dirs.runtime, operation);
+  const openPackageDirs = getOpenPackageDirectories();
+  return path.join(openPackageDirs.runtime, operation);
 }
 
 /**

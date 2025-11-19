@@ -36,7 +36,7 @@ async function listFormulasCommand(options: ListOptions): Promise<CommandResult>
       } else if (options.filter) {
         console.log(`No formulas found matching filter: ${options.filter}`);
       } else {
-        console.log('No formulas found. Use "g0 init" to create your first formula.');
+        console.log('No formulas found. Use "opn init" to create your first formula.');
       }
       return { success: true, data: [] };
     }

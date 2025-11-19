@@ -240,8 +240,8 @@ function displayPullResults(
   }
   console.log('');
   console.log('✓ Next steps:');
-  console.log(`  g0 show ${result.formulaName}         # View formula details`);
-  console.log(`  g0 install ${result.formulaName}     # Install formula to current project`);
+  console.log(`  opn show ${result.formulaName}         # View formula details`);
+  console.log(`  opn install ${result.formulaName}     # Install formula to current project`);
 }
 
 /**
@@ -341,7 +341,7 @@ function handleMetadataFailure(
       console.log('');
       console.log('💡 Try one of these options:');
       console.log('  • Check the formula name spelling');
-      console.log('  • Use g0 search to find available formulas');
+      console.log('  • Use opn search to find available formulas');
       console.log('  • Verify you have access to this formula if it\'s private');
       return { success: false, error: 'Formula not found' };
     case 'access-denied':
@@ -351,15 +351,15 @@ function handleMetadataFailure(
         console.log('💡 This may be a private formula. Ensure you have VIEWER permissions.');
       }
       console.log('💡 To configure authentication:');
-      console.log('  g0 configure');
-      console.log('  g0 configure --profile <name>');
+      console.log('  opn configure');
+      console.log('  opn configure --profile <name>');
       return { success: false, error: 'Access denied' };
     case 'network':
       console.log('');
       console.log('💡 Try one of these options:');
       console.log('  • Check your internet connection');
       console.log('  • Try again (temporary network issue)');
-      console.log('  • Set G0_API_TIMEOUT environment variable for longer timeout');
+      console.log('  • Set OPENPACKAGEAPI_TIMEOUT environment variable for longer timeout');
       return { success: false, error: 'Download failed' };
     case 'integrity':
       console.error(`❌ Formula integrity verification failed: ${failure.message}`);

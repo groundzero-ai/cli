@@ -1,7 +1,7 @@
 # OpenPackage
 
-<a href="https://www.npmjs.com/package/pnpkg" target="blank">
-  <img src="https://img.shields.io/npm/v/pnpkg?style=flat-square" alt="Npm package for OpenPackage">
+<a href="https://www.npmjs.com/package/opn" target="blank">
+  <img src="https://img.shields.io/npm/v/opn?style=flat-square" alt="Npm package for OpenPackage">
 </a>
 <a href="https://discord.gg/W5H54HZ8Fm"  target="blank">
   <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="OpenPackage Discord">
@@ -26,7 +26,7 @@ Check out the official OpenPackage registry: [openpackage.dev/packages](https://
 
 npm
 ```bash
-npm install -g pnpkg
+npm install -g opn
 ```
 ## Use Cases
 
@@ -34,19 +34,19 @@ npm install -g pnpkg
 Reuse rules, slash commands, and more across multiple codebases.
 ```bash title="Terminal"
 # In current codebase
-pnpkg save essentials
+opn save essentials
 # In another codebase
-pnpkg install essentials
+opn install essentials
 ```  
 
 > [!NOTE]  
-> You can also use command `openpackage` instead of `pnpkg`
+> You can also use command `openpackage` instead of `opn`
 
 ### Sync files across multiple platforms
 Automatically sync your rules, slash commands, and more across multiple platform.
 ```bash title="Terminal"
 # Current codebase has .cursor, .claude, .opencode directories
-pnpkg save essentials .cursor/commands/essentials
+opn save essentials .cursor/commands/essentials
 # OpenPackage CLI automatically generates/syncs the same command files across all platforms.
 
 # Before save:
@@ -62,29 +62,29 @@ pnpkg save essentials .cursor/commands/essentials
 Create domain specific formulas for modular reuse.
 ```bash title="Terminal"
 # Create typescript formula
-pnpkg add typescript .cursor/rules/typescript
-pnpkg save typescript
+opn add typescript .cursor/rules/typescript
+opn save typescript
 
 # Create scalable-nextjs formula
-pnpkg add scalable-nextjs .cursor/rules/nextjs
-pnpkg save scalable-nextjs
+opn add scalable-nextjs .cursor/rules/nextjs
+opn save scalable-nextjs
 
 # Create scalable-nestjs formula
-pnpkg add scalable-nestjs .cursor/rules/nestjs
-pnpkg save scalable-nestjs
+opn add scalable-nestjs .cursor/rules/nestjs
+opn save scalable-nestjs
 
 # Create mongodb formula
-pnpkg add mongodb .cursor/rules/mongodb
-pnpkg save mongodb
+opn add mongodb .cursor/rules/mongodb
+opn save mongodb
 
 # In your NextJS codebase
-pnpkg install typescript
-pnpkg install scalable-nextjs
+opn install typescript
+opn install scalable-nextjs
 
 # In your NestJS codebase
-pnpkg install typescript
-pnpkg install scalable-nestjs
-pnpkg install mongodb
+opn install typescript
+opn install scalable-nestjs
+opn install mongodb
 ```  
 
 ## Usage
@@ -94,37 +94,37 @@ pnpkg install mongodb
 
 ### Add files/dirs to formula
 ```bash title="Terminal"
-pnpkg add <formula-name> <path-to-dir-or-file>
+opn add <formula-name> <path-to-dir-or-file>
 ```  
 Adds dirs or files to the formula.  
 
 ### Save a formula
 ```bash title="Terminal"
-pnpkg save <formula-name>
+opn save <formula-name>
 ```  
 Save the set of dirs and files as a formula for reuse and cross-platform sync.
 
 ### List formulas
 ```bash title="Terminal"
-pnpkg list
+opn list
 ```  
 Use the list command to show all formulas currently saved to the local registry.  
 
 ### Show formula details
 ```bash title="Terminal"
-pnpkg show <formula-name>
+opn show <formula-name>
 ```  
 The show command outputs the details of the formula and lists all included files.
 
 ### Install a formula
 ```bash title="Terminal"
-pnpkg install <formula-name>
+opn install <formula-name>
 ```  
 Use the install command to add all files under the specified formula to the codebase at cwd.
 
 ### Uninstall a formula
 ```bash title="Terminal"
-pnpkg uninstall <formula-name>
+opn uninstall <formula-name>
 ```  
 Use the uninstall command to remove all files for the specified formula from the codebase at cwd.
 

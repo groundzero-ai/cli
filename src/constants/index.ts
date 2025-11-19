@@ -1,5 +1,5 @@
 /**
- * Shared constants for the G0 CLI application
+ * Shared constants for the OpenPackage CLI application
  * This file provides a single source of truth for all directory names,
  * file patterns, and other constants used throughout the application.
  */
@@ -37,7 +37,7 @@ export const PLATFORM_ALIASES = {
 } as const;
 
 export const PLATFORM_DIRS = {
-  GROUNDZERO: '.groundzero',
+  OPENPACKAGE: '.openpackage',
   AI: 'ai',
 
   AUGMENT: '.augment',

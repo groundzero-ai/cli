@@ -3,7 +3,7 @@ import { FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml, writeFormulaYml } from './formula-yml.js';
 import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
 import { logger } from './logger.js';
-import { getLocalGroundZeroDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from './paths.js';
+import { getLocalOpenPackageDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from './paths.js';
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
@@ -12,15 +12,15 @@ import { formulaManager } from '../core/formula.js';
 import { FORMULA_INDEX_FILENAME } from './formula-index-yml.js';
 
 /**
- * Ensure local GroundZero directory structure exists
+ * Ensure local OpenPackage directory structure exists
  * Shared utility for both install and save commands
  */
-export async function ensureLocalGroundZeroStructure(cwd: string): Promise<void> {
-  const groundzeroDir = getLocalGroundZeroDir(cwd);
+export async function ensureLocalOpenPackageStructure(cwd: string): Promise<void> {
+  const openpackageDir = getLocalOpenPackageDir(cwd);
   const formulasDir = getLocalFormulasDir(cwd);
   
   await Promise.all([
-    ensureDir(groundzeroDir),
+    ensureDir(openpackageDir),
     ensureDir(formulasDir)
   ]);
 }
@@ -32,7 +32,7 @@ export async function ensureLocalGroundZeroStructure(cwd: string): Promise<void>
  * @returns the formula.yml if it was created, null if it already existed and force=false
  */
 export async function createBasicFormulaYml(cwd: string, force: boolean = false): Promise<FormulaYml | null> {
-  await ensureLocalGroundZeroStructure(cwd);
+  await ensureLocalOpenPackageStructure(cwd);
 
   const formulaYmlPath = getLocalFormulaYmlPath(cwd);
   const projectName = basename(cwd);
@@ -49,13 +49,13 @@ export async function createBasicFormulaYml(cwd: string, force: boolean = false)
     }
     await writeFormulaYml(formulaYmlPath, basicFormulaYml);
     logger.info(`Overwrote basic formula.yml with name: ${projectName}`);
-    console.log(`📋 Overwrote basic formula.yml in .groundzero/ with name: ${projectName}`);
+    console.log(`📋 Overwrote basic formula.yml in .openpackage/ with name: ${projectName}`);
     return basicFormulaYml;
   }
 
   await writeFormulaYml(formulaYmlPath, basicFormulaYml);
   logger.info(`Initialized workspace formula.yml`);
-  console.log(`📋 Initialized workspace formula.yml in .groundzero/`);
+  console.log(`📋 Initialized workspace formula.yml in .openpackage/`);
   return basicFormulaYml;
 }
 

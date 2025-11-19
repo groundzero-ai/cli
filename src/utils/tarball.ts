@@ -29,7 +29,7 @@ export interface ExtractedFormula {
 export async function createTarballFromFormula(formula: Formula): Promise<TarballInfo> {
   logger.debug(`Creating tarball for formula: ${formula.metadata.name}@${formula.metadata.version}`);
   
-  const tempDir = join(tmpdir(), `g0-tarball-${Date.now()}`);
+  const tempDir = join(tmpdir(), `openpackage-tarball-${Date.now()}`);
   const tarballPath = join(tempDir, 'formula.tar.gz');
   
   try {
@@ -92,7 +92,7 @@ export async function extractFormulaFromTarball(
 ): Promise<ExtractedFormula> {
   logger.debug(`Extracting formula from tarball (${tarballBuffer.length} bytes)`);
   
-  const tempDir = join(tmpdir(), `g0-extract-${Date.now()}`);
+  const tempDir = join(tmpdir(), `openpackage-extract-${Date.now()}`);
   const tarballPath = join(tempDir, 'formula.tar.gz');
   
   try {

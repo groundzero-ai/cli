@@ -3,7 +3,7 @@ import { InstallOptions } from '../../types/index.js';
 import { ResolvedFormula } from '../dependency-resolver.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { createPlatformDirectories } from '../platforms.js';
-import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../groundzero.js';
+import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../openpackage.js';
 import { resolveDependencies } from '../dependency-resolver.js';
 import { resolveDependenciesWithOverrides } from '../../utils/install-helpers.js';
 import { logger } from '../../utils/logger.js';

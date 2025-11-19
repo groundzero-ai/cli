@@ -6,7 +6,7 @@ import { normalizePathForProcessing } from './path-normalization.js';
 import { logger } from './logger.js';
 
 export const FORMULA_INDEX_FILENAME = 'formula.index.yml';
-const HEADER_COMMENT = '# This file is managed by GroundZero. Do not edit manually.';
+const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
 export interface FormulaIndexData {
   version: string;

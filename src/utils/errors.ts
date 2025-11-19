@@ -1,23 +1,23 @@
-import { G0Error, ErrorCodes, CommandResult } from '../types/index.js';
+import { OpenPackageError, ErrorCodes, CommandResult } from '../types/index.js';
 import { logger } from './logger.js';
 
 /**
- * Custom error classes for different types of errors in the G0 CLI
+ * Custom error classes for different types of errors in the OpenPackage CLI
  */
 
-export class FormulaNotFoundError extends G0Error {
+export class FormulaNotFoundError extends OpenPackageError {
   constructor(formulaName: string) {
     super(`Formula '${formulaName}' not found`, ErrorCodes.FORMULA_NOT_FOUND, { formulaName });
   }
 }
 
-export class FormulaVersionNotFoundError extends G0Error {
+export class FormulaVersionNotFoundError extends OpenPackageError {
   constructor(message: string) {
     super(message, ErrorCodes.FORMULA_NOT_FOUND);
   }
 }
 
-export class VersionConflictError extends G0Error {
+export class VersionConflictError extends OpenPackageError {
   constructor(
     formulaName: string,
     details: {
@@ -32,49 +32,49 @@ export class VersionConflictError extends G0Error {
   }
 }
 
-export class FormulaAlreadyExistsError extends G0Error {
+export class FormulaAlreadyExistsError extends OpenPackageError {
   constructor(formulaName: string) {
     super(`Formula '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
   }
 }
 
-export class InvalidFormulaError extends G0Error {
+export class InvalidFormulaError extends OpenPackageError {
   constructor(reason: string, details?: any) {
     super(`Invalid formula: ${reason}`, ErrorCodes.INVALID_FORMULA, details);
   }
 }
 
-export class RegistryError extends G0Error {
+export class RegistryError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(`Registry error: ${message}`, ErrorCodes.REGISTRY_ERROR, details);
   }
 }
 
-export class NetworkError extends G0Error {
+export class NetworkError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(`Network error: ${message}`, ErrorCodes.NETWORK_ERROR, details);
   }
 }
 
-export class FileSystemError extends G0Error {
+export class FileSystemError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(`File system error: ${message}`, ErrorCodes.FILE_SYSTEM_ERROR, details);
   }
 }
 
-export class PermissionError extends G0Error {
+export class PermissionError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(`Permission error: ${message}`, ErrorCodes.PERMISSION_ERROR, details);
   }
 }
 
-export class ValidationError extends G0Error {
+export class ValidationError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(`Validation error: ${message}`, ErrorCodes.VALIDATION_ERROR, details);
   }
 }
 
-export class ConfigError extends G0Error {
+export class ConfigError extends OpenPackageError {
   constructor(message: string, details?: any) {
     super(message, ErrorCodes.CONFIG_ERROR, details);
   }
@@ -91,7 +91,7 @@ export class UserCancellationError extends Error {
  * Error handler function that provides consistent error handling across commands
  */
 export function handleError(error: unknown): CommandResult {
-  if (error instanceof G0Error) {
+  if (error instanceof OpenPackageError) {
     // For CLI UX, avoid noisy error logs by default; surface details only in verbose mode
     if (!(error instanceof FormulaVersionNotFoundError)) {
       logger.debug(error.message, { code: error.code, details: error.details });
@@ -139,17 +139,17 @@ export function withErrorHandling<T extends any[]>(
 }
 
 /**
- * Assertion helper that throws a G0Error if condition is false
+ * Assertion helper that throws a OpenPackageError if condition is false
  */
 export function assert(condition: boolean, message: string, code: ErrorCodes = ErrorCodes.VALIDATION_ERROR, details?: any): asserts condition {
   if (!condition) {
-    throw new G0Error(message, code, details);
+    throw new OpenPackageError(message, code, details);
   }
 }
 
 /**
- * Type guard to check if an error is a G0Error
+ * Type guard to check if an error is a OpenPackageError
  */
-export function isG0Error(error: unknown): error is G0Error {
-  return error instanceof G0Error;
+export function isOpenPackageError(error: unknown): error is OpenPackageError {
+  return error instanceof OpenPackageError;
 }

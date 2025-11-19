@@ -3,7 +3,7 @@ import { parseFormulaYml } from './formula-yml.js';
 import { getLocalFormulaYmlPath } from './paths.js';
 import { extractFormulasFromConfig } from './install-helpers.js';
 import { normalizeFormulaName } from './formula-name.js';
-import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
+import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/openpackage.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { logger } from './logger.js';
 import { FormulaYml } from '../types/index.js';

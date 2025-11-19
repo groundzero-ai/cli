@@ -257,6 +257,6 @@ export async function createHttpClient(authOptions?: AuthOptions): Promise<HttpC
   return new HttpClient({
     baseUrl: registryUrl,
     authOptions,
-    timeout: parseInt(process.env.G0_API_TIMEOUT || '30000')
+    timeout: parseInt(process.env.OPENPACKAGEAPI_TIMEOUT || '30000')
   });
 }

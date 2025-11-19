@@ -1,36 +1,36 @@
 import { join } from 'path';
-import { G0Config, G0Directories } from '../types/index.js';
+import { OpenPackageConfig, OpenPackageDirectories } from '../types/index.js';
 import { readJsonFile, writeJsonFile, exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { ConfigError } from '../utils/errors.js';
-import { getG0Directories } from './directory.js';
+import { getOpenPackageDirectories } from './directory.js';
 
 /**
- * Configuration management for the G0 CLI
+ * Configuration management for the OpenPackage CLI
  */
 
 const CONFIG_FILE_NAME = 'config.json';
 
 // Default configuration values
-const DEFAULT_CONFIG: G0Config = {
+const DEFAULT_CONFIG: OpenPackageConfig = {
   defaultAuthor: undefined,
   defaultLicense: 'MIT'
 };
 
 class ConfigManager {
-  private config: G0Config | null = null;
+  private config: OpenPackageConfig | null = null;
   private configPath: string;
-  private g0Dirs: G0Directories;
+  private openPackageDirs: OpenPackageDirectories;
 
   constructor() {
-    this.g0Dirs = getG0Directories();
-    this.configPath = join(this.g0Dirs.config, CONFIG_FILE_NAME);
+    this.openPackageDirs = getOpenPackageDirectories();
+    this.configPath = join(this.openPackageDirs.config, CONFIG_FILE_NAME);
   }
 
   /**
    * Load configuration from file, create default if it doesn't exist
    */
-  async load(): Promise<G0Config> {
+  async load(): Promise<OpenPackageConfig> {
     if (this.config) {
       return this.config;
     }
@@ -38,7 +38,7 @@ class ConfigManager {
     try {
       if (await exists(this.configPath)) {
         logger.debug(`Loading config from: ${this.configPath}`);
-        const fileConfig = await readJsonFile<G0Config>(this.configPath);
+        const fileConfig = await readJsonFile<OpenPackageConfig>(this.configPath);
         this.config = { ...DEFAULT_CONFIG, ...fileConfig };
       } else {
         logger.debug('Config file not found, using defaults');
@@ -73,7 +73,7 @@ class ConfigManager {
   /**
    * Get a configuration value
    */
-  async get<K extends keyof G0Config>(key: K): Promise<G0Config[K]> {
+  async get<K extends keyof OpenPackageConfig>(key: K): Promise<OpenPackageConfig[K]> {
     const config = await this.load();
     return config[key];
   }
@@ -81,7 +81,7 @@ class ConfigManager {
   /**
    * Set a configuration value
    */
-  async set<K extends keyof G0Config>(key: K, value: G0Config[K]): Promise<void> {
+  async set<K extends keyof OpenPackageConfig>(key: K, value: OpenPackageConfig[K]): Promise<void> {
     const config = await this.load();
     config[key] = value;
     this.config = config;
@@ -92,7 +92,7 @@ class ConfigManager {
   /**
    * Get all configuration values
    */
-  async getAll(): Promise<G0Config> {
+  async getAll(): Promise<OpenPackageConfig> {
     return await this.load();
   }
 
@@ -132,10 +132,10 @@ class ConfigManager {
   }
 
   /**
-   * Get G0 directories
+   * Get OpenPackage directories
    */
-  getDirectories(): G0Directories {
-    return this.g0Dirs;
+  getDirectories(): OpenPackageDirectories {
+    return this.openPackageDirs;
   }
 
 }

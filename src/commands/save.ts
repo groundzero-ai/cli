@@ -184,8 +184,8 @@ export function setupSaveCommand(program: Command): void {
     .argument('[version-type]', 'version type: stable (optional)')
     .description('Save a formula to local registry.\n' +
       'Usage:\n' +
-      '  g0 save <formula-name>                # Detects files and saves to registry\n' +
-      '  g0 save <formula-name> stable        # Save as stable version (with optional --bump)\n' +
+      '  opn save <formula-name>                # Detects files and saves to registry\n' +
+      '  opn save <formula-name> stable        # Save as stable version (with optional --bump)\n' +
       'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)

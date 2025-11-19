@@ -4,7 +4,7 @@ import * as semver from 'semver';
 import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
 import { parseFormulaYml } from '../utils/formula-yml.js';
 import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
-import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/groundzero.js';
+import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/openpackage.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
 import { exists } from '../utils/fs.js';
@@ -13,7 +13,7 @@ import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import {
   getLocalFormulaYmlPath,
   getLocalFormulasDir,
-  getLocalGroundZeroDir,
+  getLocalOpenPackageDir,
   getAIDir
 } from '../utils/paths.js';
 import { 
@@ -78,7 +78,7 @@ interface PlatformStatus {
 interface ProjectStatus {
   name: string;
   version: string;
-  groundzeroExists: boolean;
+  openpackageExists: boolean;
   formulaYmlExists: boolean;
   formulasDirectoryExists: boolean;
   platforms: PlatformStatus[];
@@ -106,7 +106,7 @@ interface CommandOptions {
 }
 
 /**
- * Scan local formula metadata from .groundzero/formulas directory
+ * Scan local formula metadata from .openpackage/formulas directory
  * Recursively scans to handle scoped formulas (e.g., @scope/name)
  */
 async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, FormulaYml>> {
@@ -250,7 +250,7 @@ async function analyzeFormulaStatus(
   // Ensure displayed version reflects the actual installed/detected version
   status.installedVersion = installedVersion;
 
-  // If local metadata is missing, likely .groundzero/formulas/<name>/formula.yml is missing or misnamed
+  // If local metadata is missing, likely .openpackage/formulas/<name>/formula.yml is missing or misnamed
   if (!localMetadata) {
     status.status = 'files-missing';
     status.issues = [`'${FILE_PATTERNS.FORMULA_YML}' is missing or misnamed`];
@@ -409,26 +409,26 @@ async function performStatusAnalysis(
   formulas: FormulaStatusInfo[];
 }> {
   // 1. Check basic project structure in parallel
-  const [groundzeroDir, formulaYmlPath, formulasDir, aiDir] = [
-    getLocalGroundZeroDir(cwd),
+  const [openpackageDir, formulaYmlPath, formulasDir, aiDir] = [
+    getLocalOpenPackageDir(cwd),
     getLocalFormulaYmlPath(cwd),
     getLocalFormulasDir(cwd),
     getAIDir(cwd)
   ];
   
-  const [groundzeroExists, formulaYmlExists, formulasDirExists, aiDirExists] = await Promise.all([
-    exists(groundzeroDir),
+  const [openpackageExists, formulaYmlExists, formulasDirExists, aiDirExists] = await Promise.all([
+    exists(openpackageDir),
     exists(formulaYmlPath),
     exists(formulasDir),
     exists(aiDir)
   ]);
   
-  if (!groundzeroExists || !formulaYmlExists) {
+  if (!openpackageExists || !formulaYmlExists) {
     throw new ValidationError(
-      `No .groundzero/formula.yml found in ${cwd}. This directory doesn't appear to be a formula project.\n\n` +
+      `No .openpackage/formula.yml found in ${cwd}. This directory doesn't appear to be a formula project.\n\n` +
       `💡 To initialize this as a formula project:\n` +
-      `   • Run 'g0 init' to create a new formula project\n` +
-      `   • Run 'g0 install' to install existing formulas`
+      `   • Run 'opn init' to create a new formula project\n` +
+      `   • Run 'opn install' to install existing formulas`
     );
   }
   
@@ -544,7 +544,7 @@ async function performStatusAnalysis(
   const projectInfo: ProjectStatus = {
     name: cwdConfig.name,
     version: cwdConfig.version,
-    groundzeroExists,
+    openpackageExists,
     formulaYmlExists,
     formulasDirectoryExists: formulasDirExists,
     aiDirectoryExists: aiDirExists,
@@ -567,7 +567,7 @@ function renderTreeView(
 ): void {
   // Project header with status indicators
   const statusIndicators = [
-    !projectInfo.groundzeroExists && '❌ .groundzero missing',
+    !projectInfo.openpackageExists && '❌ .openpackage missing',
     !projectInfo.formulaYmlExists && '❌ formula.yml missing',
     !projectInfo.aiDirectoryExists && '⚠️ ai directory missing'
   ].filter(Boolean);
@@ -847,9 +847,9 @@ function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: Retur
   if (totalFormulas === 0) {
     console.log('');
     console.log('💡 Tips:');
-    console.log('• Add formulas to formula.yml and run "g0 install" to install them');
-    console.log('• Use "g0 list" to see available formulas in the registry');
-    console.log('• Run "g0 init" to initialize this as a formula project');
+    console.log('• Add formulas to formula.yml and run "opn install" to install them');
+    console.log('• Use "opn list" to see available formulas in the registry');
+    console.log('• Run "opn init" to initialize this as a formula project');
   } else {
     const hasIssues = statusCounts.missing + statusCounts.mismatch + statusCounts.structureInvalid > 0;
     if (hasIssues) {
@@ -857,19 +857,19 @@ function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: Retur
       console.log('💡 Recommended actions:');
       
       if (statusCounts.missing > 0) {
-        console.log('• Run "g0 install" to install missing formulas');
+        console.log('• Run "opn install" to install missing formulas');
       }
       
       if (statusCounts.updateAvailable > 0) {
-        console.log('• Run "g0 install --force <formula-name>" to update specific formulas');
+        console.log('• Run "opn install --force <formula-name>" to update specific formulas');
       }
       
       if (statusCounts.structureInvalid > 0) {
-        console.log('• Run "g0 install --force" to repair structure issues');
+        console.log('• Run "opn install --force" to repair structure issues');
       }
       
       if (statusCounts.registryUnavailable > 0) {
-        console.log('• Check if missing formulas exist in remote registry with "g0 search"');
+        console.log('• Check if missing formulas exist in remote registry with "opn search"');
       }
     }
   }
