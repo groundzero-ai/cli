@@ -1,33 +1,32 @@
-# GroundZero Package Manager
+# OpenPackage
 
-<a href="https://www.npmjs.com/package/g0" target="blank">
-  <img src="https://img.shields.io/npm/v/g0?style=flat-square" alt="Npm package for GroundZero package manager">
+<a href="https://www.npmjs.com/package/pnpkg" target="blank">
+  <img src="https://img.shields.io/npm/v/pnpkg?style=flat-square" alt="Npm package for OpenPackage">
 </a>
 <a href="https://discord.gg/W5H54HZ8Fm"  target="blank">
-  <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="GroundZero Discord">
+  <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="OpenPackage Discord">
 </a>
 <br /><br />
 
-GroundZero (g0) is the package manager for AI coding.
+OpenPackage is the package manager for AI coding.
 
 Save and sync rules, slash commands, agents, and more.  
-Build reusable formulas for use across multiple projects and AI coding platforms.
+Build reusable packages for use across multiple projects and AI coding platforms.
 
-Learn more in the [official documentation](https://groundzero.enulus.com/docs).
+Learn more in the official docs: [openpackage.dev/docs](https://openpackage.dev/docs).
 
 Looking to discover, download, or publish formulas?  
-Check out the official [GroundZero formulas registry](https://groundzero.enulus.com). 
+Check out the official OpenPackage registry: [openpackage.dev/packages](https://openpackage.dev/packages). 
 
 > [!NOTE]  
 > For latest news and updates, follow the creator's X (Twitter) account
 > [@hyericlee](https://x.com/hyericlee)
-> or official [@groundzero_ai](https://x.com/groundzero_ai)
 
 ## Installation
 
 npm
 ```bash
-npm install -g g0
+npm install -g pnpkg
 ```
 ## Use Cases
 
@@ -35,17 +34,20 @@ npm install -g g0
 Reuse rules, slash commands, and more across multiple codebases.
 ```bash title="Terminal"
 # In current codebase
-g0 save essentials
+pnpkg save essentials
 # In another codebase
-g0 install essentials
+pnpkg install essentials
 ```  
+
+> [!NOTE]  
+> You can also use command `openpackage` instead of `pnpkg`
 
 ### Sync files across multiple platforms
 Automatically sync your rules, slash commands, and more across multiple platform.
 ```bash title="Terminal"
 # Current codebase has .cursor, .claude, .opencode directories
-g0 save essentials .cursor/commands/essentials
-# GroundZero CLI automatically generates/syncs the same command files across all platforms.
+pnpkg save essentials .cursor/commands/essentials
+# OpenPackage CLI automatically generates/syncs the same command files across all platforms.
 
 # Before save:
 # .cursor/commands/essentials/clean-code.md
@@ -60,82 +62,82 @@ g0 save essentials .cursor/commands/essentials
 Create domain specific formulas for modular reuse.
 ```bash title="Terminal"
 # Create typescript formula
-g0 add typescript .cursor/rules/typescript
-g0 save typescript
+pnpkg add typescript .cursor/rules/typescript
+pnpkg save typescript
 
 # Create scalable-nextjs formula
-g0 add scalable-nextjs .cursor/rules/nextjs
-g0 save scalable-nextjs
+pnpkg add scalable-nextjs .cursor/rules/nextjs
+pnpkg save scalable-nextjs
 
 # Create scalable-nestjs formula
-g0 add scalable-nestjs .cursor/rules/nestjs
-g0 save scalable-nestjs
+pnpkg add scalable-nestjs .cursor/rules/nestjs
+pnpkg save scalable-nestjs
 
 # Create mongodb formula
-g0 add mongodb .cursor/rules/mongodb
-g0 save mongodb
+pnpkg add mongodb .cursor/rules/mongodb
+pnpkg save mongodb
 
 # In your NextJS codebase
-g0 install typescript
-g0 install scalable-nextjs
+pnpkg install typescript
+pnpkg install scalable-nextjs
 
 # In your NestJS codebase
-g0 install typescript
-g0 install scalable-nestjs
-g0 install mongodb
+pnpkg install typescript
+pnpkg install scalable-nestjs
+pnpkg install mongodb
 ```  
 
 ## Usage
 
 > [!TIP]  
-> Formulas are essential to how GroundZero works. We highly recommend reading [What are Formulas?](https://groundzero.enulus.com/docs/what-are-formulas) to understand how formulas work.
+> Formulas are essential to how OpenPackage works. We highly recommend reading [What are Formulas?](https://openpackage.dev/docs/what-are-formulas) to understand how formulas work.
 
 ### Add files/dirs to formula
 ```bash title="Terminal"
-g0 add <formula-name> <path-to-dir-or-file>
+pnpkg add <formula-name> <path-to-dir-or-file>
 ```  
 Adds dirs or files to the formula.  
 
 ### Save a formula
 ```bash title="Terminal"
-g0 save <formula-name>
+pnpkg save <formula-name>
 ```  
 Save the set of dirs and files as a formula for reuse and cross-platform sync.
 
 ### List formulas
 ```bash title="Terminal"
-g0 list
+pnpkg list
 ```  
 Use the list command to show all formulas currently saved to the local registry.  
 
 ### Show formula details
 ```bash title="Terminal"
-g0 show <formula-name>
+pnpkg show <formula-name>
 ```  
 The show command outputs the details of the formula and lists all included files.
 
 ### Install a formula
 ```bash title="Terminal"
-g0 install <formula-name>
+pnpkg install <formula-name>
 ```  
 Use the install command to add all files under the specified formula to the codebase at cwd.
 
 ### Uninstall a formula
 ```bash title="Terminal"
-g0 uninstall <formula-name>
+pnpkg uninstall <formula-name>
 ```  
 Use the uninstall command to remove all files for the specified formula from the codebase at cwd.
 
 > [!TIP]  
-> Learn more by heading over to the [official docs](https://groundzero.enulus.com/docs).
+> Learn more by heading over to the [official docs](https://openpackage.dev/docs).
 
 ## Supported Platforms
 
-GroundZero performs installation and platform sync of files for supported AI coding platforms outlined by the table below.  
+OpenPackage performs installation and platform sync of files for supported AI coding platforms outlined by the table below.  
 Files and paths will be automatically converted to platform specific designations during `save` and `install`.
 
 > [!NOTE]  
-> GroundZero only searches and includes markdown files under supported platform directories and the root `ai/` directory.
+> OpenPackage only searches and includes markdown files under supported platform directories and the root `ai/` directory.
 
 | Platform | Directory | Root file | Rules | Commands | Agents | Skills |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -156,7 +158,7 @@ Files and paths will be automatically converted to platform specific designation
 
 We would love your help building the future of package management for AI coding.  
 
-Feel free to create [PRs](https://github.com/groundzero-ai/cli/pulls) and [Github issues](https://github.com/groundzero-ai/cli/issues) for:
+Feel free to create [PRs](https://github.com/enulus/OpenPackage/pulls) and [Github issues](https://github.com/enulus/OpenPackage/issues) for:
 - Bugs
 - Feature requests
 - Support for new platforms
@@ -165,7 +167,7 @@ Feel free to create [PRs](https://github.com/groundzero-ai/cli/pulls) and [Githu
 
 ## Links
 
-- [Official Website and Registry](https://groundzero.enulus.com)
-- [Documentation](https://groundzero.enulus.com/docs)
+- [Official Website and Registry](https://openpackage.dev)
+- [Documentation](https://openpackage.dev/docs)
 - [Discord](https://discord.gg/W5H54HZ8Fm)
-- [X (Twitter)](https://x.com/groundzero_ai)
+- [Creator X (Twitter)](https://x.com/hyericlee)
