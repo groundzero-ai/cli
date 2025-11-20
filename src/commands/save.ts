@@ -4,7 +4,7 @@ import { SaveOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { addPackageToYml } from '../utils/package-management.js';
+import { addPackageToYml, createBasicPackageYml } from '../utils/package-management.js';
 import { performPlatformSync } from '../core/sync/platform-sync.js';
 import { parsePackageInput, normalizePackageName } from '../utils/package-name.js';
 import { discoverPackageFilesForSave } from '../core/save/save-file-discovery.js';
@@ -29,6 +29,9 @@ async function savePackageCommand(
   options?: SaveOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
+
+  // Ensure the workspace-level package.yml exists for dependency tracking
+  await createBasicPackageYml(cwd);
 
   // Parse inputs to determine the pattern being used
   const { name, version: explicitVersion } = parsePackageInput(packageName);
