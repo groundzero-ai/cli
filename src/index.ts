@@ -33,7 +33,7 @@ const program = new Command();
 // Configure the main program
 program
   .name('openpackage')
-  .alias('opn')
+  .alias('opkg ')
   .description('OpenPackage - The Package Manager for AI Coding')
   .version(getVersion())
   .configureHelp({

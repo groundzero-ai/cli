@@ -1,5 +1,5 @@
 {
-  "name": "pnpkg",
+  "name": "opkg",
   "version": "0.4.1",
   "publishConfig": {
     "access": "public"
@@ -17,19 +17,21 @@
     "cli",
     "ai",
     "coding",
-    "package-manager",
+    "open",
+    "package",
+    "manager",
     "rules",
     "commands",
     "agents",
-    "pnpkg",
+    "skills",
+    "opkg",
     "opm"
   ],
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "pnpkg": "./bin/openpackage",
-    "openpackage": "./bin/openpackage",
-    "opn": "./bin/openpackage"
+    "opkg": "./bin/openpackage",
+    "openpackage": "./bin/openpackage"
   },
   "scripts": {
     "build": "tsc",

@@ -91,8 +91,8 @@ export function setupAddCommand(program: Command): void {
     .description(
       'Copy supported workspace files or directories into a local package directory.\n' +
       'Usage examples:\n' +
-      '  opn add my-package .cursor/rules/example.md\n' +
-      '  opn add my-package ai/helpers/\n'
+      '  opkg add my-package .cursor/rules/example.md\n' +
+      '  opkg add my-package ai/helpers/\n'
     )
     .option('--platform-specific', 'Save platform-specific variants for platform subdir inputs')
     .action(withErrorHandling(async (packageName: string, inputPath: string, options: AddCommandOptions) => {

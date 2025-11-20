@@ -178,9 +178,9 @@ export async function resolveDependencies(
               }
               
               errorMessage += `💡 To resolve this issue:\n`;
-              errorMessage += `   • Install the available version: opn install ${packageName}@latest\n`;
+              errorMessage += `   • Install the available version: opkg install ${packageName}@latest\n`;
               errorMessage += `   • Update the dependency to use an available version\n`;
-              errorMessage += `   • Create the required version locally: opn init && opn save\n`;
+              errorMessage += `   • Create the required version locally: opkg init && opkg save\n`;
               
               throw new PackageVersionNotFoundError(errorMessage);
             }

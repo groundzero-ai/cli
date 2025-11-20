@@ -1,7 +1,7 @@
 # OpenPackage
 
-<a href="https://www.npmjs.com/package/opn" target="blank">
-  <img src="https://img.shields.io/npm/v/opn?style=flat-square" alt="Npm package for OpenPackage">
+<a href="https://www.npmjs.com/package/opkg " target="blank">
+  <img src="https://img.shields.io/npm/v/opkg ?style=flat-square" alt="Npm package for OpenPackage">
 </a>
 <a href="https://discord.gg/W5H54HZ8Fm"  target="blank">
   <img src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=flat-square" alt="OpenPackage Discord">
@@ -26,7 +26,7 @@ Check out the official OpenPackage registry: [openpackage.dev/packages](https://
 
 npm
 ```bash
-npm install -g opn
+npm install -g opkg 
 ```
 ## Use Cases
 
@@ -34,19 +34,19 @@ npm install -g opn
 Reuse rules, slash commands, and more across multiple codebases.
 ```bash title="Terminal"
 # In current codebase
-opn save essentials
+opkg save essentials
 # In another codebase
-opn install essentials
+opkg install essentials
 ```  
 
 > [!NOTE]  
-> You can also use command `openpackage` instead of `opn`
+> You can also use command `openpackage` instead of `opkg`
 
 ### Sync files across multiple platforms
 Automatically sync your rules, slash commands, and more across multiple platform.
 ```bash title="Terminal"
 # Current codebase has .cursor, .claude, .opencode directories
-opn save essentials .cursor/commands/essentials
+opkg save essentials .cursor/commands/essentials
 # OpenPackage CLI automatically generates/syncs the same command files across all platforms.
 
 # Before save:
@@ -62,29 +62,29 @@ opn save essentials .cursor/commands/essentials
 Create domain specific packages for modular reuse.
 ```bash title="Terminal"
 # Create typescript package
-opn add typescript .cursor/rules/typescript
-opn save typescript
+opkg add typescript .cursor/rules/typescript
+opkg save typescript
 
 # Create scalable-nextjs package
-opn add scalable-nextjs .cursor/rules/nextjs
-opn save scalable-nextjs
+opkg add scalable-nextjs .cursor/rules/nextjs
+opkg save scalable-nextjs
 
 # Create scalable-nestjs package
-opn add scalable-nestjs .cursor/rules/nestjs
-opn save scalable-nestjs
+opkg add scalable-nestjs .cursor/rules/nestjs
+opkg save scalable-nestjs
 
 # Create mongodb package
-opn add mongodb .cursor/rules/mongodb
-opn save mongodb
+opkg add mongodb .cursor/rules/mongodb
+opkg save mongodb
 
 # In your NextJS codebase
-opn install typescript
-opn install scalable-nextjs
+opkg install typescript
+opkg install scalable-nextjs
 
 # In your NestJS codebase
-opn install typescript
-opn install scalable-nestjs
-opn install mongodb
+opkg install typescript
+opkg install scalable-nestjs
+opkg install mongodb
 ```  
 
 ## Usage
@@ -94,37 +94,37 @@ opn install mongodb
 
 ### Add files/dirs to package
 ```bash title="Terminal"
-opn add <package-name> <path-to-dir-or-file>
+opkg add <package> <path-to-dir-or-file>
 ```  
 Adds dirs or files to the package.  
 
 ### Save a package
 ```bash title="Terminal"
-opn save <package-name>
+opkg save <package>
 ```  
 Save the set of dirs and files as a package for reuse and cross-platform sync.
 
 ### List packages
 ```bash title="Terminal"
-opn list
+opkg list
 ```  
 Use the list command to show all packages currently saved to the local registry.  
 
 ### Show package details
 ```bash title="Terminal"
-opn show <package-name>
+opkg show <package>
 ```  
 The show command outputs the details of the package and lists all included files.
 
 ### Install a package
 ```bash title="Terminal"
-opn install <package-name>
+opkg install <package>
 ```  
 Use the install command to add all files under the specified package to the codebase at cwd.
 
 ### Uninstall a package
 ```bash title="Terminal"
-opn uninstall <package-name>
+opkg uninstall <package>
 ```  
 Use the uninstall command to remove all files for the specified package from the codebase at cwd.
 

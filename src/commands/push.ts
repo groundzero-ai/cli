@@ -81,7 +81,7 @@ async function pushPackageCommand(
         console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
         console.log('');
         console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
-        console.log('💡 Please create a stable package using the command "opn save <package> stable".');
+        console.log('💡 Please create a stable package using the command "opkg save <package> stable".');
         return { success: false, error: 'Only stable versions can be pushed' };
       } else {
         // Latest is prerelease and no version was specified -> prompt to convert
@@ -189,8 +189,8 @@ async function pushPackageCommand(
         console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for package '${parsedName}'`);
         console.log('');
         console.log('💡 Try one of these options:');
-        console.log('  • Increment version with command "opn save <package> stable"');
-        console.log('  • Update version with command "opn save <package>@<version>"');
+        console.log('  • Increment version with command "opkg save <package> stable"');
+        console.log('  • Update version with command "opkg save <package>@<version>"');
         console.log('  • Specify a version explicitly using <package>@<version>');
         return { success: false, error: 'Version already exists' };
       }
@@ -199,8 +199,8 @@ async function pushPackageCommand(
         console.error(`❌ Authentication failed: ${error.message}`);
         console.log('');
         console.log('💡 To configure authentication:');
-        console.log('  opn configure');
-        console.log('  opn configure --profile <name>');
+        console.log('  opkg configure');
+        console.log('  opkg configure --profile <name>');
         return { success: false, error: 'Authentication failed' };
       }
 
@@ -208,8 +208,8 @@ async function pushPackageCommand(
         console.error(`❌ Access denied: ${error.message}`);
         console.log('');
         console.log('💡 To configure authentication:');
-        console.log('  opn configure');
-        console.log('  opn configure --profile <name>');
+        console.log('  opkg configure');
+        console.log('  opkg configure --profile <name>');
         return { success: false, error: 'Access denied' };
       }
       

@@ -64,13 +64,13 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     if (profileName === 'default') {
       console.log('');
       console.log('💡 You can now use:');
-      console.log('  opn push <package-name>');
-      console.log('  opn pull <package-name>');
+      console.log('  opkg push <package-name>');
+      console.log('  opkg pull <package-name>');
     } else {
       console.log('');
       console.log('💡 You can now use:');
-      console.log(`  opn push <package-name> --profile ${profileName}`);
-      console.log(`  opn pull <package-name> --profile ${profileName}`);
+      console.log(`  opkg push <package-name> --profile ${profileName}`);
+      console.log(`  opkg pull <package-name> --profile ${profileName}`);
     }
 
     return {
@@ -100,8 +100,8 @@ async function listProfiles(): Promise<CommandResult> {
       console.log('No profiles configured.');
       console.log('');
       console.log('To create a profile, run:');
-      console.log('  opn configure');
-      console.log('  opn configure --profile <name>');
+      console.log('  opkg configure');
+      console.log('  opkg configure --profile <name>');
       return { success: true, data: { profiles: [] } };
     }
 

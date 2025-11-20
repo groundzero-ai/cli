@@ -101,14 +101,14 @@ async function installAllPackagesCommand(
       console.log('✓ All packages in package.yml were skipped (matched root package)');
       console.log('\nTips:');
       console.log('• Root packages cannot be installed as dependencies');
-      console.log('• Use "opn install <package-name>" to install external packages');
-      console.log('• Use "opn save" to save your root package to the registry');
+      console.log('• Use "opkg install <package-name>" to install external packages');
+      console.log('• Use "opkg save" to save your root package to the registry');
     } else {
       console.log('⚠️ No packages found in package.yml');
       console.log('\nTips:');
       console.log('• Add packages to the "packages" array in package.yml');
       console.log('• Add development packages to the "dev-packages" array in package.yml');
-      console.log('• Use "opn install <package-name>" to install a specific package');
+      console.log('• Use "opkg install <package-name>" to install a specific package');
     }
 
     return { success: true, data: { installed: 0, skipped: skippedRootPackages.length } };
@@ -305,7 +305,7 @@ async function installPackageCommand(
   if (await isRootPackage(cwd, packageName)) {
     console.log(`⚠️  Cannot install ${packageName} - it matches your project's root package name`);
     console.log(`   This would create a circular dependency.`);
-    console.log(`💡 Tip: Use 'opn install' without specifying a package name to install all packages`);
+    console.log(`💡 Tip: Use 'opkg install' without specifying a package name to install all packages`);
     console.log(`   referenced in your .openpackage/package.yml file.`);
     return {
       success: true,

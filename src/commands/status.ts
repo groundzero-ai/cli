@@ -427,8 +427,8 @@ async function performStatusAnalysis(
     throw new ValidationError(
       `No .openpackage/pkg.yml found in ${cwd}. This directory doesn't appear to be a package project.\n\n` +
       `💡 To initialize this as a package project:\n` +
-      `   • Run 'opn init' to create a new package project\n` +
-      `   • Run 'opn install' to install existing packages`
+      `   • Run 'opkg init' to create a new package project\n` +
+      `   • Run 'opkg install' to install existing packages`
     );
   }
   
@@ -847,9 +847,9 @@ function displayStatusSummary(packages: PackageStatusInfo[], statusCounts: Retur
   if (totalPackages === 0) {
     console.log('');
     console.log('💡 Tips:');
-    console.log('• Add packages to pkg.yml and run "opn install" to install them');
-    console.log('• Use "opn list" to see available packages in the registry');
-    console.log('• Run "opn init" to initialize this as a package project');
+    console.log('• Add packages to pkg.yml and run "opkg install" to install them');
+    console.log('• Use "opkg list" to see available packages in the registry');
+    console.log('• Run "opkg init" to initialize this as a package project');
   } else {
     const hasIssues = statusCounts.missing + statusCounts.mismatch + statusCounts.structureInvalid > 0;
     if (hasIssues) {
@@ -857,19 +857,19 @@ function displayStatusSummary(packages: PackageStatusInfo[], statusCounts: Retur
       console.log('💡 Recommended actions:');
       
       if (statusCounts.missing > 0) {
-        console.log('• Run "opn install" to install missing packages');
+        console.log('• Run "opkg install" to install missing packages');
       }
       
       if (statusCounts.updateAvailable > 0) {
-        console.log('• Run "opn install --force <package-name>" to update specific packages');
+        console.log('• Run "opkg install --force <package-name>" to update specific packages');
       }
       
       if (statusCounts.structureInvalid > 0) {
-        console.log('• Run "opn install --force" to repair structure issues');
+        console.log('• Run "opkg install --force" to repair structure issues');
       }
       
       if (statusCounts.registryUnavailable > 0) {
-        console.log('• Check if missing packages exist in remote registry with "opn search"');
+        console.log('• Check if missing packages exist in remote registry with "opkg search"');
       }
     }
   }

@@ -133,8 +133,8 @@ export function displayInstallationResults(
       console.log(`   • ${missing} (not found in registry)`);
     }
     console.log(`\n💡 To resolve missing dependencies:`);
-    console.log(`   • Create locally: opn init && opn save`);
-    console.log(`   • Pull from remote: opn pull ${missingPackages.join(' ')}`);
+    console.log(`   • Create locally: opkg init && opkg save`);
+    console.log(`   • Pull from remote: opkg pull ${missingPackages.join(' ')}`);
     console.log(`   • Remove from package.yml`);
     console.log('');
   }

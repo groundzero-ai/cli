@@ -187,8 +187,8 @@ export function setupInitCommand(program: Command): void {
     .argument('[package-name]', 'package name for initialization in .openpackage/packages/ (optional)')
     .description('Initialize a new package.yml file. \n' +
       'Usage patterns:\n' +
-      '  opn init                    # Initialize .openpackage/package.yml in current directory\n' +
-      '  opn init <package-name>     # Initialize .openpackage/packages/<package-name>/package.yml')
+      '  opkg init                    # Initialize .openpackage/package.yml in current directory\n' +
+      '  opkg init <package-name>     # Initialize .openpackage/packages/<package-name>/package.yml')
     .option('-f, --force', 'overwrite existing root .openpackage/package.yml (no effect for named init root patch)')
     .action(withErrorHandling(async (packageName?: string, options?: { force?: boolean }) => {
       if (packageName) {

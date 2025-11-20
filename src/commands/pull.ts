@@ -240,8 +240,8 @@ function displayPullResults(
   }
   console.log('');
   console.log('✓ Next steps:');
-  console.log(`  opn show ${result.packageName}         # View package details`);
-  console.log(`  opn install ${result.packageName}     # Install package to current project`);
+  console.log(`  opkg show ${result.packageName}         # View package details`);
+  console.log(`  opkg install ${result.packageName}     # Install package to current project`);
 }
 
 /**
@@ -341,7 +341,7 @@ function handleMetadataFailure(
       console.log('');
       console.log('💡 Try one of these options:');
       console.log('  • Check the package name spelling');
-      console.log('  • Use opn search to find available packages');
+      console.log('  • Use opkg search to find available packages');
       console.log('  • Verify you have access to this package if it\'s private');
       return { success: false, error: 'Package not found' };
     case 'access-denied':
@@ -351,8 +351,8 @@ function handleMetadataFailure(
         console.log('💡 This may be a private package. Ensure you have VIEWER permissions.');
       }
       console.log('💡 To configure authentication:');
-      console.log('  opn configure');
-      console.log('  opn configure --profile <name>');
+      console.log('  opkg configure');
+      console.log('  opkg configure --profile <name>');
       return { success: false, error: 'Access denied' };
     case 'network':
       console.log('');

@@ -48,12 +48,12 @@ class AuthManager {
       if (isExplicitProfile) {
         if (!profile) {
           throw new ConfigError(
-            `Profile '${profileName}' not found. Please configure it with "opn configure --profile ${profileName}"`
+            `Profile '${profileName}' not found. Please configure it with "opkg configure --profile ${profileName}"`
           );
         }
         if (!profile.credentials?.api_key) {
           throw new ConfigError(
-            `Profile '${profileName}' has no API key configured. Please configure it with "opn configure --profile ${profileName}"`
+            `Profile '${profileName}' has no API key configured. Please configure it with "opkg configure --profile ${profileName}"`
           );
         }
       }
@@ -97,7 +97,7 @@ class AuthManager {
 
     if (!apiKey) {
       throw new ConfigError(
-        'No API key found. Please configure a profile with "opn configure" or use --api-key option.'
+        'No API key found. Please configure a profile with "opkg configure" or use --api-key option.'
       );
     }
 
