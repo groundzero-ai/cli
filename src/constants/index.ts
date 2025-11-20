@@ -59,7 +59,7 @@ export const FILE_PATTERNS = {
   MD_FILES: '.md',
   MDC_FILES: '.mdc',
   TOML_FILES: '.toml',
-  FORMULA_YML: 'package.yml',
+  PACKAGE_YML: 'package.yml',
   README_MD: 'README.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',

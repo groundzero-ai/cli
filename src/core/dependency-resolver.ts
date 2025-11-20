@@ -16,7 +16,7 @@ import { registryManager } from './registry.js';
 export interface ResolvedPackage {
   name: string;
   version: string;
-  package: Package;
+  pkg: Package;
   isRoot: boolean;
   conflictResolution?: 'kept' | 'overwritten' | 'skipped';
   requiredVersion?: string; // The version required by the parent package
@@ -138,15 +138,15 @@ export async function resolveDependencies(
   }
 
   // 3. Attempt to repair dependency from local registry
-  let package: Package;
+  let pkg: Package;
   try {
     // Load package with resolved version
     logger.debug(`Attempting to load package '${packageName}' from local registry`, { 
       version: resolvedVersion, 
       originalRange: versionRange 
     });
-    package = await packageManager.loadPackage(packageName, resolvedVersion);
-    logger.debug(`Successfully loaded package '${packageName}' from local registry`, { version: package.metadata.version });
+    pkg = await packageManager.loadPackage(packageName, resolvedVersion);
+    logger.debug(`Successfully loaded package '${packageName}' from local registry`, { version: pkg.metadata.version });
   } catch (error) {
     if (error instanceof PackageNotFoundError) {
       // Auto-repair attempt: Check if package exists in registry but needs to be loaded
@@ -190,7 +190,7 @@ export async function resolveDependencies(
           // Try to reload the package metadata using resolved version (or original version if not resolved)
           const metadata = await registryManager.getPackageMetadata(packageName, resolvedVersion || version);
           // Attempt to load again with the resolved version - this might succeed if it was a temporary issue
-          package = await packageManager.loadPackage(packageName, resolvedVersion || version);
+          pkg = await packageManager.loadPackage(packageName, resolvedVersion || version);
           logger.info(`Successfully repaired and loaded package '${packageName}'`);
         } else {
           // Package truly doesn't exist - treat as missing dependency
@@ -213,7 +213,7 @@ export async function resolveDependencies(
     }
   }
   
-  const currentVersion = package.metadata.version;
+  const currentVersion = pkg.metadata.version;
   
   // 3. Check for existing resolution
   const existing = resolvedPackages.get(packageName);
@@ -225,7 +225,7 @@ export async function resolveDependencies(
       const shouldOverwrite = await promptOverwrite(packageName, existing.version, currentVersion);
       if (shouldOverwrite) {
         existing.version = currentVersion;
-        existing.package = package;
+        existing.pkg = pkg;
         existing.conflictResolution = 'overwritten';
       } else {
         existing.conflictResolution = 'skipped';
@@ -251,7 +251,7 @@ export async function resolveDependencies(
       resolvedPackages.set(packageName, {
         name: packageName,
         version: installedVersion,
-        package,
+        pkg,
         isRoot,
         conflictResolution: 'kept'
       });
@@ -262,7 +262,7 @@ export async function resolveDependencies(
       resolvedPackages.set(packageName, {
         name: packageName,
         version: installedVersion,
-        package,
+        pkg,
         isRoot,
         conflictResolution: 'kept'
       });
@@ -282,14 +282,14 @@ export async function resolveDependencies(
   resolvedPackages.set(packageName, {
     name: packageName,
     version: currentVersion,
-    package,
+    pkg,
     isRoot,
     requiredVersion: resolvedVersion, // Track the resolved version
     requiredRange: versionRange // Track the original range
   });
   
   // 5. Parse dependencies from package's package.yml
-  const packageYmlFile = package.files.find(f => f.path === 'package.yml');
+  const packageYmlFile = pkg.files.find(f => f.path === 'package.yml');
   if (packageYmlFile) {
     const config = yaml.load(packageYmlFile.content) as PackageYml;
     
@@ -368,13 +368,13 @@ export async function buildDependencyTree(openpackagePath: string, protectedPack
   const packages = await scanGroundzeroPackages(openpackagePath);
   
   // First pass: collect all packages and their dependencies
-  for (const [packageName, package] of packages) {
+  for (const [packageName, pkg] of packages) {
     const dependencies = new Set<string>();
     
     // Collect dependencies from both packages and dev-packages
     const allDeps = [
-      ...(package.packages || []),
-      ...(package['dev-packages'] || [])
+      ...(pkg.packages || []),
+      ...(pkg['dev-packages'] || [])
     ];
     
     for (const dep of allDeps) {
@@ -383,7 +383,7 @@ export async function buildDependencyTree(openpackagePath: string, protectedPack
     
     dependencyTree.set(packageName, {
       name: packageName,
-      version: package.version,
+      version: pkg.version,
       dependencies,
       dependents: new Set(),
       isProtected: protectedPackages.has(packageName)

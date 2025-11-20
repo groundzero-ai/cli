@@ -77,7 +77,7 @@ export function setupDuplicateCommand(program: Command): void {
     .argument('<package>', 'source package name or package@version')
     .argument('<newName>', 'new package name or newName@version')
     .action(withErrorHandling(async (pkg: string, newName: string) => {
-      const result = await duplicatePackageCommand(package, newName);
+      const result = await duplicatePackageCommand(pkg, newName);
       if (!result.success) {
         // If we already printed a user-friendly message, just exit with error
         if (result.error) throw new Error(result.error);

@@ -5,7 +5,7 @@ import { getLocalPackageDir } from './paths.js';
 import { normalizePathForProcessing } from './path-normalization.js';
 import { logger } from './logger.js';
 
-export const FORMULA_INDEX_FILENAME = 'package.index.yml';
+export const PACKAGE_INDEX_FILENAME = 'package.index.yml';
 const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
 export interface PackageIndexData {
@@ -20,7 +20,7 @@ export interface PackageIndexRecord extends PackageIndexData {
 
 export function getPackageIndexPath(cwd: string, packageName: string): string {
   const packageDir = getLocalPackageDir(cwd, packageName);
-  return join(packageDir, FORMULA_INDEX_FILENAME);
+  return join(packageDir, PACKAGE_INDEX_FILENAME);
 }
 
 export function ensureTrailingSlash(value: string): string {

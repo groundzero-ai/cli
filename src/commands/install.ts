@@ -87,12 +87,12 @@ async function installAllPackagesCommand(
   // Filter out any packages that match the root package name
   const packagesToInstall = [];
   const skippedRootPackages = [];
-  for (const package of allPackagesToInstall) {
-    if (await isRootPackage(cwd, package.name)) {
-      skippedRootPackages.push(package);
-      console.log(`⚠️  Skipping ${package.name} - it matches your project's root package name`);
+  for (const pkg of allPackagesToInstall) {
+    if (await isRootPackage(cwd, pkg.name)) {
+      skippedRootPackages.push(pkg);
+      console.log(`⚠️  Skipping ${pkg.name} - it matches your project's root package name`);
     } else {
-      packagesToInstall.push(package);
+      packagesToInstall.push(pkg);
     }
   }
 
@@ -115,9 +115,9 @@ async function installAllPackagesCommand(
   }
 
   console.log(`✓ Installing ${packagesToInstall.length} packages from package.yml:`);
-  packagesToInstall.forEach(package => {
-    const prefix = package.isDev ? '[dev] ' : '';
-    const label = package.version ? `${package.name}@${package.version}` : package.name;
+  packagesToInstall.forEach(pkg => {
+    const prefix = pkg.isDev ? '[dev] ' : '';
+    const label = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name;
     console.log(`  • ${prefix}${label}`);
   });
   if (skippedRootPackages.length > 0) {
@@ -135,9 +135,9 @@ async function installAllPackagesCommand(
   const results: Array<{ name: string; success: boolean; error?: string }> = [];
   const aggregateWarnings = new Set<string>();
   
-  for (const package of packagesToInstall) {
+  for (const pkg of packagesToInstall) {
     try {
-      const label = package.version ? `${package.name}@${package.version}` : package.name;
+      const label = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name;
 
       const baseConflictDecisions = options.conflictDecisions
         ? { ...options.conflictDecisions }
@@ -145,16 +145,16 @@ async function installAllPackagesCommand(
 
       const installOptions: InstallOptions = {
         ...options,
-        dev: package.isDev,
+        dev: pkg.isDev,
         resolvedPlatforms,
         conflictDecisions: baseConflictDecisions
       };
 
-      let conflictPlanningVersion = package.version;
-      if (package.version && !isExactVersion(package.version)) {
+      let conflictPlanningVersion = pkg.version;
+      if (pkg.version && !isExactVersion(pkg.version)) {
         try {
-          const localVersions = await listPackageVersions(package.name);
-          conflictPlanningVersion = resolveVersionRange(package.version, localVersions) ?? undefined;
+          const localVersions = await listPackageVersions(pkg.name);
+          conflictPlanningVersion = resolveVersionRange(pkg.version, localVersions) ?? undefined;
         } catch {
           conflictPlanningVersion = undefined;
         }
@@ -164,7 +164,7 @@ async function installAllPackagesCommand(
         try {
           const conflicts = await planConflictsForPackage(
             cwd,
-            package.name,
+            pkg.name,
             conflictPlanningVersion,
             resolvedPlatforms
           );
@@ -229,35 +229,35 @@ async function installAllPackagesCommand(
         }
       }
 
-      console.log(`\n🔧 Installing ${package.isDev ? '[dev] ' : ''}${label}...`);
+      console.log(`\n🔧 Installing ${pkg.isDev ? '[dev] ' : ''}${label}...`);
 
       const result = await installPackageCommand(
-        package.name,
+        pkg.name,
         targetDir,
         installOptions,
-        package.version
+        pkg.version
       );
       
       if (result.success) {
         totalInstalled++;
-        results.push({ name: package.name, success: true });
-        console.log(`✓ Successfully installed ${package.name}`);
+        results.push({ name: pkg.name, success: true });
+        console.log(`✓ Successfully installed ${pkg.name}`);
 
         if (result.warnings && result.warnings.length > 0) {
           result.warnings.forEach(warning => aggregateWarnings.add(warning));
         }
       } else {
         totalSkipped++;
-        results.push({ name: package.name, success: false, error: result.error });
-        console.log(`❌ Failed to install ${package.name}: ${result.error}`);
+        results.push({ name: pkg.name, success: false, error: result.error });
+        console.log(`❌ Failed to install ${pkg.name}: ${result.error}`);
       }
     } catch (error) {
       if (error instanceof UserCancellationError) {
         throw error; // Re-throw to allow clean exit
       }
       totalSkipped++;
-      results.push({ name: package.name, success: false, error: String(error) });
-      console.log(`❌ Failed to install ${package.name}: ${error}`);
+      results.push({ name: pkg.name, success: false, error: String(error) });
+      console.log(`❌ Failed to install ${pkg.name}: ${error}`);
     }
   }
   

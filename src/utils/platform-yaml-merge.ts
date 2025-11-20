@@ -159,13 +159,13 @@ export async function loadRegistryYamlOverrides(
   const overrides: PackageFile[] = [];
 
   // Load package from registry
-  const package = await packageManager.loadPackage(packageName, version);
+  const pkg = await packageManager.loadPackage(packageName, version);
 
   // Known platforms for suffix matching
   const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
   const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
 
-  for (const file of package.files) {
+  for (const file of pkg.files) {
     const path = file.path;
     // Must be in a universal subdir
     if (!subdirs.some(sd => path.startsWith(sd + '/'))) continue;

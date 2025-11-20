@@ -75,12 +75,12 @@ async function removePackageFromYml(targetDir: string, packageName: string): Pro
     let removed = false;
     
     // Remove from both packages and dev-packages arrays
-    const sections = [DEPENDENCY_ARRAYS.FORMULAS, DEPENDENCY_ARRAYS.DEV_FORMULAS] as const;
+    const sections = [DEPENDENCY_ARRAYS.PACKAGES, DEPENDENCY_ARRAYS.DEV_PACKAGES] as const;
     for (const section of sections) {
       if (config[section]) {
-        const initialLength = config[section]!.length;
-        config[section] = config[section]!.filter(dep => !arePackageNamesEquivalent(dep.name, packageName));
-        if (config[section]!.length < initialLength) {
+        const initialLength = config[section].length;
+        config[section] = config[section].filter(dep => !arePackageNamesEquivalent(dep.name, packageName));
+        if (config[section].length < initialLength) {
           removed = true;
           logger.info(`Removed ${packageName} from ${section}`);
         }
@@ -126,26 +126,26 @@ async function displayDryRunInfo(
   // Check package.yml files and README.md files that would be removed
   const packageYmlFilesToRemove: string[] = [];
   const readmeFilesToRemove: string[] = [];
-  for (const package of packagesToRemove) {
-    const packageDir = getLocalPackageDir(cwd, package);
-    const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+  for (const pkg of packagesToRemove) {
+    const packageDir = getLocalPackageDir(cwd, pkg);
+    const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
     const readmePath = join(packageDir, FILE_PATTERNS.README_MD);
     if (await exists(packageYmlPath)) {
-      packageYmlFilesToRemove.push(package);
+      packageYmlFilesToRemove.push(pkg);
     }
     if (await exists(readmePath)) {
-      readmeFilesToRemove.push(package);
+      readmeFilesToRemove.push(pkg);
     }
   }
 
   const totalMetadataFiles = packageYmlFilesToRemove.length + readmeFilesToRemove.length;
   if (totalMetadataFiles > 0) {
     console.log(`\n📄 Package metadata to remove (${totalMetadataFiles}):`);
-    for (const package of packageYmlFilesToRemove) {
-      console.log(`├── ${package}/package.yml`);
+    for (const pkg of packageYmlFilesToRemove) {
+      console.log(`├── ${pkg}/package.yml`);
     }
-    for (const package of readmeFilesToRemove) {
-      console.log(`├── ${package}/README.md`);
+    for (const pkg of readmeFilesToRemove) {
+      console.log(`├── ${pkg}/README.md`);
     }
   } else {
     console.log(`\n📄 Package metadata to remove: none`);
@@ -197,8 +197,8 @@ async function displayDryRunInfo(
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
   if (hasConfigFile.some(exists => exists)) {
     console.log(`📋 Would attempt to remove packages from package dependencies:`);
-    for (const package of packagesToRemove) {
-      console.log(`├── ${package}`);
+    for (const pkg of packagesToRemove) {
+      console.log(`├── ${pkg}`);
     }
   } else {
     console.log('📋 No package.yml file to update');
@@ -255,15 +255,15 @@ function displayUninstallSuccess(
 
   if (successfulRemovals.length > 0) {
     console.log(`📋 Removed from package dependencies:`);
-    for (const [package] of successfulRemovals) {
-      console.log(`   ├── ${package}`);
+    for (const [pkg] of successfulRemovals) {
+      console.log(`   ├── ${pkg}`);
     }
   }
 
   if (failedRemovals.length > 0) {
     console.log(`⚠️  Could not update package.yml for:`);
-    for (const [package] of failedRemovals) {
-      console.log(`   ├── ${package} (not found or not listed)`);
+    for (const [pkg] of failedRemovals) {
+      console.log(`   ├── ${pkg} (not found or not listed)`);
     }
   }
 
@@ -369,9 +369,9 @@ async function uninstallPackageCommand(
 
     // Remove package.yml files and directories for all packages being removed
     const packagesDir = getLocalPackagesDir(cwd);
-    for (const package of packagesToRemove) {
-      const packageDir = getLocalPackageDir(cwd, package);
-      const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+    for (const pkg of packagesToRemove) {
+      const packageDir = getLocalPackageDir(cwd, pkg);
+      const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
 
       // Remove the package.yml file if it exists
       if (await exists(packageYmlPath)) {
@@ -471,8 +471,8 @@ async function uninstallPackageCommand(
 
     // Remove all packages being uninstalled from package.yml
     const ymlRemovalResults: Record<string, boolean> = {};
-    for (const package of packagesToRemove) {
-      ymlRemovalResults[package] = await removePackageFromYml(cwd, package);
+    for (const pkg of packagesToRemove) {
+      ymlRemovalResults[pkg] = await removePackageFromYml(cwd, pkg);
     }
     const removedFromYml = ymlRemovalResults[packageName];
 

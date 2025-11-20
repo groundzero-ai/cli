@@ -23,9 +23,9 @@ async function showPackageCommand(packageInput: string): Promise<CommandResult> 
     const { name, version } = parsePackageInput(packageInput);
     
     // Load package (resolves ranges to a specific version)
-    const package = await packageManager.loadPackage(name, version);
-    const metadata = package.metadata;
-    const files = package.files;
+    const pkg = await packageManager.loadPackage(name, version);
+    const metadata = pkg.metadata;
+    const files = pkg.files;
     
     // Display package details
     console.log(`✓ Package: ${metadata.name}`);

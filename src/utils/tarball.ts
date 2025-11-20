@@ -27,7 +27,7 @@ export interface ExtractedPackage {
  * Create a tarball from package files
  */
 export async function createTarballFromPackage(pkg: Package): Promise<TarballInfo> {
-  logger.debug(`Creating tarball for package: ${package.metadata.name}@${package.metadata.version}`);
+  logger.debug(`Creating tarball for package: ${pkg.metadata.name}@${pkg.metadata.version}`);
   
   const tempDir = join(tmpdir(), `openpackage-tarball-${Date.now()}`);
   const tarballPath = join(tempDir, 'package.tar.gz');
@@ -37,7 +37,7 @@ export async function createTarballFromPackage(pkg: Package): Promise<TarballInf
     await ensureDir(tempDir);
     
     // Write package files to temp directory
-    for (const file of package.files) {
+    for (const file of pkg.files) {
       const filePath = join(tempDir, file.path);
       await ensureDir(join(filePath, '..'));
       await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
@@ -50,7 +50,7 @@ export async function createTarballFromPackage(pkg: Package): Promise<TarballInf
         file: tarballPath,
         cwd: tempDir
       },
-      package.files.map(f => f.path)
+      pkg.files.map(f => f.path)
     );
     
     // Read tarball into buffer
@@ -67,7 +67,7 @@ export async function createTarballFromPackage(pkg: Package): Promise<TarballInf
       checksum
     };
   } catch (error) {
-    logger.error('Failed to create tarball', { error, packageName: package.metadata.name });
+    logger.error('Failed to create tarball', { error, packageName: pkg.metadata.name });
     throw new ValidationError(`Failed to create tarball: ${error}`);
   } finally {
     // Clean up temp directory

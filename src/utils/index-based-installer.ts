@@ -36,7 +36,7 @@ import { parseUniversalPath } from './platform-file.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 
 import {
-  FORMULA_INDEX_FILENAME,
+  PACKAGE_INDEX_FILENAME,
   getPackageIndexPath,
   readPackageIndex,
   writePackageIndex,
@@ -437,7 +437,7 @@ async function collectPackageDirectories(
   const results: Array<{ packageName: string; dir: string }> = [];
 
   async function recurse(currentDir: string, relativeBase: string): Promise<void> {
-    const packageYmlPath = join(currentDir, FILE_PATTERNS.FORMULA_YML);
+    const packageYmlPath = join(currentDir, FILE_PATTERNS.PACKAGE_YML);
     if (await exists(packageYmlPath)) {
       const packageName = relativeBase.replace(new RegExp(`\\${sep}`, 'g'), '/');
       results.push({ packageName, dir: currentDir });
@@ -470,7 +470,7 @@ export async function loadOtherPackageIndexes(
 
   for (const entry of directories) {
     if (entry.packageName === excludePackage) continue;
-    const indexPath = join(entry.dir, FORMULA_INDEX_FILENAME);
+    const indexPath = join(entry.dir, PACKAGE_INDEX_FILENAME);
     if (!(await exists(indexPath))) continue;
 
     const record = await readPackageIndex(cwd, entry.packageName);
@@ -555,10 +555,10 @@ async function loadRegistryFileEntries(
   packageName: string,
   version: string
 ): Promise<RegistryFileEntry[]> {
-  const package = await packageManager.loadPackage(packageName, version);
+  const pkg = await packageManager.loadPackage(packageName, version);
   const entries: RegistryFileEntry[] = [];
 
-  for (const file of package.files) {
+  for (const file of pkg.files) {
     const normalized = normalizeRegistryPath(file.path);
 
     // Skip root files - these are handled by installRootFilesFromMap

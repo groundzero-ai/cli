@@ -151,7 +151,7 @@ async function ensurePackageExists(cwd: string, packageName: string): Promise<En
   const normalizedName = normalizePackageName(packageName);
 
   const packageDir = getLocalPackageDir(cwd, normalizedName);
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
 
   await ensureDir(packageDir);
 

@@ -398,12 +398,12 @@ async function savePackageToLocalRegistry(
   (metadata as any).created = response.version.createdAt;
   (metadata as any).updated = response.version.updatedAt;
 
-  const package: Package = {
+  const pkg: Package = {
     metadata: metadata as PackageYml,
     files: extracted.files
   };
 
-  await packageManager.savePackage(package);
+  await packageManager.savePackage(pkg);
 }
 
 function mapErrorToFailure(error: unknown): RemotePullFailure {

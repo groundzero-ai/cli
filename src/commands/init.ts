@@ -119,7 +119,7 @@ async function initPackageInPackagesDir(packageName: string, force?: boolean): P
 
   // Get the package directory path (.openpackage/packages/{packageName})
   const packageDir = getLocalPackageDir(cwd, normalizedPackageName);
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
 
   logger.info(`Initializing package.yml for '${packageName}' in directory: ${packageDir}`);
 

@@ -1,7 +1,7 @@
 import { join } from 'path';
-import { PLATFORM_DIRS, FILE_PATTERNS, FORMULA_DIRS } from '../constants/index.js';
+import { PLATFORM_DIRS, FILE_PATTERNS, PACKAGE_DIRS } from '../constants/index.js';
 import { exists } from './fs.js';
-import { arePackageNamesEquivalent, SCOPED_FORMULA_REGEX } from './package-name.js';
+import { arePackageNamesEquivalent, SCOPED_PACKAGE_REGEX } from './package-name.js';
 import { parsePackageYml } from './package-yml.js';
 
 /**
@@ -13,7 +13,7 @@ import { parsePackageYml } from './package-yml.js';
  * Get the path to the local package.yml file
  */
 export function getLocalPackageYmlPath(cwd: string): string {
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FILE_PATTERNS.FORMULA_YML);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FILE_PATTERNS.PACKAGE_YML);
 }
 
 /**
@@ -44,7 +44,7 @@ export function getLocalOpenPackageDir(cwd: string): string {
  * Get the local packages directory path
  */
 export function getLocalPackagesDir(cwd: string): string {
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES);
 }
 
 /**
@@ -52,12 +52,12 @@ export function getLocalPackagesDir(cwd: string): string {
  * Handles scoped packages with nested directory structure (@scope/name -> @scope/name/)
  */
 export function getLocalPackageDir(cwd: string, packageName: string): string {
-  const scopedMatch = packageName.match(SCOPED_FORMULA_REGEX);
+  const scopedMatch = packageName.match(SCOPED_PACKAGE_REGEX);
   if (scopedMatch) {
     const [, scope, localName] = scopedMatch;
-    return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS, '@' + scope, localName);
+    return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES, '@' + scope, localName);
   }
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS, packageName);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES, packageName);
 }
 
 /**

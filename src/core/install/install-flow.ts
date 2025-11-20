@@ -119,7 +119,7 @@ export async function resolveDependenciesForInstall(
   } catch (error) {
     if (error instanceof VersionConflictError) {
       const conflictDetails: any = (error as any).details || {};
-      const conflictName = conflictDetails.packageName || conflictDetails.package || packageName;
+      const conflictName = conflictDetails.packageName || conflictDetails.pkg || packageName;
       const available: string[] = conflictDetails.availableVersions || [];
 
       let chosenVersion: string | null = null;
@@ -167,7 +167,7 @@ export async function processConflictResolution(
     return { cancelled: true };
   }
 
-  const finalResolvedPackages = resolvedPackages.filter(package => !conflictResult.skippedPackages.includes(package.name));
+  const finalResolvedPackages = resolvedPackages.filter(pkg => !conflictResult.skippedPackages.includes(pkg.name));
 
   return { finalResolvedPackages, conflictResult };
 }

@@ -1,4 +1,3 @@
-import { join } from 'path';
 import { packageManager } from '../core/package.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
 import type { PackageFile } from '../types/index.js';
@@ -39,11 +38,11 @@ export async function discoverAndCategorizeFiles(
   platforms: Platform[]
 ): Promise<CategorizedInstallFiles> {
   // Load once
-  const package = await packageManager.loadPackage(packageName, version);
+  const pkg = await packageManager.loadPackage(packageName, version);
 
   // Priority 1: Path-based files (all files from package)
   const pathBasedFiles: PackageFile[] = [];
-  for (const file of package.files) {
+  for (const file of pkg.files) {
     const p = file.path;
     if (p === 'package.yml') continue; // never install registry package.yml
     // Root files handled separately
@@ -51,7 +50,7 @@ export async function discoverAndCategorizeFiles(
   }
 
   // Priority 2: Root files (platform root + AGENTS.md)
-  const rootFiles = collectRootFiles(package.files, platforms);
+  const rootFiles = collectRootFiles(pkg.files, platforms);
 
   return { pathBasedFiles, rootFiles };
 }

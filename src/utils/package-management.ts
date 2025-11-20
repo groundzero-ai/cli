@@ -4,12 +4,12 @@ import { parsePackageYml, writePackageYml } from './package-yml.js';
 import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalOpenPackageDir, getLocalPackageYmlPath, getLocalPackagesDir, getLocalPackageDir } from './paths.js';
-import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
+import { DEPENDENCY_ARRAYS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
 import { normalizePackageName, arePackageNamesEquivalent } from './package-name.js';
 import { packageManager } from '../core/package.js';
-import { FORMULA_INDEX_FILENAME } from './package-index-yml.js';
+import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -100,19 +100,19 @@ export async function addPackageToYml(
   const currentLocation = await findPackageLocation(cwd, packageName);
   
   let targetArray: 'packages' | 'dev-packages';
-  if (currentLocation === DEPENDENCY_ARRAYS.DEV_FORMULAS && !isDev) {
-    targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
+  if (currentLocation === DEPENDENCY_ARRAYS.DEV_PACKAGES && !isDev) {
+    targetArray = DEPENDENCY_ARRAYS.DEV_PACKAGES;
     logger.info(`Keeping package in dev-packages: ${packageName}@${packageVersion}`);
-  } else if (currentLocation === DEPENDENCY_ARRAYS.FORMULAS && isDev) {
-    targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
+  } else if (currentLocation === DEPENDENCY_ARRAYS.PACKAGES && isDev) {
+    targetArray = DEPENDENCY_ARRAYS.DEV_PACKAGES;
     logger.info(`Moving package from packages to dev-packages: ${packageName}@${packageVersion}`);
   } else {
-    targetArray = isDev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
+    targetArray = isDev ? DEPENDENCY_ARRAYS.DEV_PACKAGES : DEPENDENCY_ARRAYS.PACKAGES;
   }
   
   // Initialize arrays if they don't exist
   if (!config.packages) config.packages = [];
-  if (!config[DEPENDENCY_ARRAYS.DEV_FORMULAS]) config[DEPENDENCY_ARRAYS.DEV_FORMULAS] = [];
+  if (!config[DEPENDENCY_ARRAYS.DEV_PACKAGES]) config[DEPENDENCY_ARRAYS.DEV_PACKAGES] = [];
   
   // Remove from current location if moving between arrays
   if (currentLocation && currentLocation !== targetArray) {
@@ -153,17 +153,17 @@ export async function writeLocalPackageFromRegistry(
   packageName: string,
   version: string
 ): Promise<void> {
-  const package = await packageManager.loadPackage(packageName, version);
+  const pkg = await packageManager.loadPackage(packageName, version);
   const localPackageDir = getLocalPackageDir(cwd, packageName);
 
   await ensureDir(localPackageDir);
 
   // Build set of files that should exist after installation
   const filesToKeep = new Set<string>(
-    package.files.map(file => file.path)
+    pkg.files.map(file => file.path)
   );
   // Always preserve package.index.yml
-  filesToKeep.add(FORMULA_INDEX_FILENAME);
+  filesToKeep.add(PACKAGE_INDEX_FILENAME);
 
   // List all existing files in the directory
   const existingFiles: string[] = [];
@@ -190,7 +190,7 @@ export async function writeLocalPackageFromRegistry(
 
   // Write all files from the package
   await Promise.all(
-    package.files.map(async (file) => {
+    pkg.files.map(async (file) => {
       const targetPath = join(localPackageDir, file.path);
       const encoding = (file.encoding ?? 'utf8') as BufferEncoding;
       await writeTextFile(targetPath, file.content, encoding);
@@ -217,12 +217,12 @@ async function findPackageLocation(
     
     // Check in packages array
     if (config.packages?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
-      return DEPENDENCY_ARRAYS.FORMULAS;
+      return DEPENDENCY_ARRAYS.PACKAGES;
     }
 
     // Check in dev-packages array
-    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
-      return DEPENDENCY_ARRAYS.DEV_FORMULAS;
+    if (config[DEPENDENCY_ARRAYS.DEV_PACKAGES]?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
+      return DEPENDENCY_ARRAYS.DEV_PACKAGES;
     }
     
     return null;

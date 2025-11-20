@@ -16,7 +16,7 @@ import { promptPackageOverwrite } from './prompts.js';
 async function getInstalledPackageVersion(cwd: string, packageName: string): Promise<string | undefined> {
   try {
     const packageDir = getLocalPackageDir(cwd, packageName);
-    const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+    const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
     if (await exists(packageYmlPath)) {
       const config = await parsePackageYml(packageYmlPath);
       return config.version;

@@ -18,8 +18,8 @@ export async function handleDryRunMode(
   const mainPackage = resolvedPackages.find(f => f.isRoot);
   if (mainPackage) {
     console.log(`Package: ${mainPackage.name} v${mainPackage.version}`);
-    if (mainPackage.package.metadata.description) {
-      console.log(`Description: ${mainPackage.package.metadata.description}`);
+    if (mainPackage.pkg.metadata.description) {
+      console.log(`Description: ${mainPackage.pkg.metadata.description}`);
     }
     console.log('');
   }

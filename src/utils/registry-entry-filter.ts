@@ -27,7 +27,7 @@ export function isRootRegistryPath(registryPath: string): boolean {
 
 export function isSkippableRegistryPath(registryPath: string): boolean {
   const normalized = normalizeRegistryPath(registryPath);
-  if (normalized === FILE_PATTERNS.FORMULA_YML) {
+  if (normalized === FILE_PATTERNS.PACKAGE_YML) {
     return true;
   }
 

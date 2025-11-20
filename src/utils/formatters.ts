@@ -41,10 +41,10 @@ export function displayPackageTable(packages: PackageTableEntry[], title?: strin
   console.log('-'.repeat(nameWidth) + '-'.repeat(versionWidth) + '-----------');
   
   // Display each package
-  for (const package of packages) {
-    const name = package.name.padEnd(nameWidth);
-    const version = package.version.padEnd(versionWidth);
-    const description = package.description || '(no description)';
+  for (const pkg of packages) {
+    const name = pkg.name.padEnd(nameWidth);
+    const version = pkg.version.padEnd(versionWidth);
+    const description = pkg.description || '(no description)';
     console.log(`${name}${version}${description}`);
   }
   
@@ -66,12 +66,12 @@ export function displayExtendedPackageTable(packages: PackageTableEntry[]): void
   console.log('-------'.padEnd(20) + '---------'.padEnd(12) + '------'.padEnd(15) + '----'.padEnd(15) + '---------');
   
   // Display each package
-  for (const package of packages) {
-    const name = package.name.padEnd(20);
-    const version = package.version.padEnd(12);
-    const status = (package.status || '').padEnd(15);
-    const type = (package.type || '').padEnd(15);
-    const available = (package.available || '-').padEnd(9);
+  for (const pkg of packages) {
+    const name = pkg.name.padEnd(20);
+    const version = pkg.version.padEnd(12);
+    const status = (pkg.status || '').padEnd(15);
+    const type = (pkg.type || '').padEnd(15);
+    const available = (pkg.available || '-').padEnd(9);
     
     console.log(`${name}${version}${status}${type}${available}`);
   }

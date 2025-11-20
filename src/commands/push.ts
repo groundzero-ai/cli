@@ -70,8 +70,8 @@ async function pushPackageCommand(
     }
     
     // Load package and determine version
-    let package = await packageManager.loadPackage(parsedName, parsedVersion);
-    let versionToPush = parsedVersion || package.metadata.version;
+    let pkg = await packageManager.loadPackage(parsedName, parsedVersion);
+    let versionToPush = parsedVersion || pkg.metadata.version;
     attemptedVersion = versionToPush;
 
     // Reject or handle prerelease versions
@@ -95,7 +95,7 @@ async function pushPackageCommand(
 
         const stableVersion = computeStableVersion(versionToPush);
         console.log(`Converting to stable '${stableVersion}' and pushing...`);
-        package = await createStablePackageVersion(package, stableVersion);
+        pkg = await createStablePackageVersion(pkg, stableVersion);
         versionToPush = stableVersion;
         attemptedVersion = versionToPush;
       }
@@ -122,15 +122,15 @@ async function pushPackageCommand(
     
     // Step 1: Validate package completeness
     console.log('✓ Package validation complete');
-    console.log(`  • Name: ${package.metadata.name}`);
+    console.log(`  • Name: ${pkg.metadata.name}`);
     console.log(`  • Version: ${versionToPush}`);
-    console.log(`  • Description: ${package.metadata.description || '(no description)'}`);
-    console.log(`  • Files: ${package.files.length}`);
+    console.log(`  • Description: ${pkg.metadata.description || '(no description)'}`);
+    console.log(`  • Files: ${pkg.files.length}`);
     
     // Step 2: Create tarball
     console.log('✓ Creating tarball...');
-    const tarballInfo = await createTarballFromPackage(package);
-    console.log(`✓ Created tarball (${package.files.length} files, ${formatFileSize(tarballInfo.size)})`);
+    const tarballInfo = await createTarballFromPackage(pkg);
+    console.log(`✓ Created tarball (${pkg.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
     // Step 3: Prepare upload data
     const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);

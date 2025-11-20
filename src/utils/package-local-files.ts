@@ -6,7 +6,7 @@ import {
   readTextFile
 } from './fs.js';
 import { findFilesByExtension } from './file-processing.js';
-import { FORMULA_INDEX_FILENAME } from './package-index-yml.js';
+import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import {
   isAllowedRegistryPath,
   isRootRegistryPath,
@@ -27,14 +27,14 @@ export async function readLocalPackageFilesForIndex(packageDir: string): Promise
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
 
-    if (normalizedPath === FORMULA_INDEX_FILENAME) {
+    if (normalizedPath === PACKAGE_INDEX_FILENAME) {
       continue;
     }
 
     const isAllowed = isAllowedRegistryPath(normalizedPath);
     const isRoot = isRootRegistryPath(normalizedPath);
     const isYamlOverride = isYamlOverrideFile(normalizedPath);
-    const isPackageYml = normalizedPath === FILE_PATTERNS.FORMULA_YML;
+    const isPackageYml = normalizedPath === FILE_PATTERNS.PACKAGE_YML;
     const isRootLevelFile = !normalizedPath.includes('/');
 
     if (!isAllowed && !isRoot && !isYamlOverride && !isPackageYml && !isRootLevelFile) {
@@ -53,6 +53,6 @@ export async function readLocalPackageFilesForIndex(packageDir: string): Promise
 }
 
 function isYamlOverrideFile(normalizedPath: string): boolean {
-  return normalizedPath !== FILE_PATTERNS.FORMULA_YML && isSkippableRegistryPath(normalizedPath);
+  return normalizedPath !== FILE_PATTERNS.PACKAGE_YML && isSkippableRegistryPath(normalizedPath);
 }
 

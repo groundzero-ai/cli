@@ -31,20 +31,20 @@ async function findPrereleaseVersions(packageFilter?: string): Promise<Prereleas
   const packages = await registryManager.listPackages(undefined, true); // Get all versions, no filter yet
   const prereleaseVersions: PrereleaseVersion[] = [];
   
-  for (const package of packages) {
+  for (const pkg of packages) {
     // Apply exact package name filtering if provided
-    if (packageFilter && package.name !== packageFilter) {
+    if (packageFilter && pkg.name !== packageFilter) {
       continue;
     }
     
-    if (isLocalVersion(package.version)) {
-      const baseVersion = extractBaseVersion(package.version);
-      const timestamp = extractTimestamp(package.version);
-      const packagePath = getPackageVersionPath(package.name, package.version);
+    if (isLocalVersion(pkg.version)) {
+      const baseVersion = extractBaseVersion(pkg.version);
+      const timestamp = extractTimestamp(pkg.version);
+      const packagePath = getPackageVersionPath(pkg.name, pkg.version);
       
       prereleaseVersions.push({
-        packageName: package.name,
-        version: package.version,
+        packageName: pkg.name,
+        version: pkg.version,
         baseVersion,
         timestamp,
         path: packagePath

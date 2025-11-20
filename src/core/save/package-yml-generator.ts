@@ -31,7 +31,7 @@ async function createPackageYmlInDirectory(packageDir: string, packageName: stri
   await ensureDir(packageDir);
   
   // Create package.yml in the package directory (rTnot the main .openpackage directory)
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
   
   // Create default package config
   const packageConfig: PackageYml = {
@@ -70,7 +70,7 @@ export async function getOrCreatePackageYml(
   }
 
   const normalizedName = normalizePackageName(name);
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
 
   let packageConfig: PackageYml;
   let isNewPackage = false;
@@ -82,7 +82,7 @@ export async function getOrCreatePackageYml(
       console.log(`✓ Found existing package ${packageConfig.name}@${packageConfig.version}`);
     } catch (error) {
       throw new ValidationError(
-        ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace("%s", packageYmlPath).replace("%s", String(error))
+        ERROR_MESSAGES.PARSE_PACKAGE_YML_FAILED.replace("%s", packageYmlPath).replace("%s", String(error))
       );
     }
   } else {

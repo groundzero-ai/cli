@@ -26,7 +26,7 @@ export interface GroundzeroPackage {
  */
 async function findPackageConfigFile(directoryPath: string): Promise<string | null> {
   const openpackagePackageYmlPath = getLocalPackageYmlPath(directoryPath);
-  const packageYmlPath = join(directoryPath, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(directoryPath, FILE_PATTERNS.PACKAGE_YML);
   
   if (await exists(openpackagePackageYmlPath)) {
     return openpackagePackageYmlPath;
@@ -116,7 +116,7 @@ export async function scanGroundzeroPackages(openpackagePath: string): Promise<M
 
     const packageDirs = await findDirectoriesContainingFile(
       packagesDir,
-      FILE_PATTERNS.FORMULA_YML,
+      FILE_PATTERNS.PACKAGE_YML,
       async (filePath) => {
         try {
           return await parsePackageYml(filePath);
@@ -198,7 +198,7 @@ export async function gatherGlobalVersionConstraints(cwd: string, includeResolut
     try {
       const packageDirs = await findDirectoriesContainingFile(
         packagesDir,
-        FILE_PATTERNS.FORMULA_YML,
+        FILE_PATTERNS.PACKAGE_YML,
         async (filePath) => {
           try {
             return await parsePackageYml(filePath);

@@ -118,10 +118,10 @@ async function scanLocalPackageMetadata(cwd: string): Promise<Map<string, Packag
   }
   
   try {
-    // Use the generic recursive scanner to find all package.yml files
+    // Use the generic recursive scanner to find all pkg.yml files
     const packageDirs = await findDirectoriesContainingFile(
       packagesDir,
-      FILE_PATTERNS.FORMULA_YML,
+      FILE_PATTERNS.PACKAGE_YML,
       async (filePath) => {
         try {
           return await parsePackageYml(filePath);
@@ -250,10 +250,10 @@ async function analyzePackageStatus(
   // Ensure displayed version reflects the actual installed/detected version
   status.installedVersion = installedVersion;
 
-  // If local metadata is missing, likely .openpackage/packages/<name>/package.yml is missing or misnamed
+  // If local metadata is missing, likely .openpackage/packages/<name>/pkg.yml is missing or misnamed
   if (!localMetadata) {
     status.status = 'files-missing';
-    status.issues = [`'${FILE_PATTERNS.FORMULA_YML}' is missing or misnamed`];
+    status.issues = [`'${FILE_PATTERNS.PACKAGE_YML}' is missing or misnamed`];
     // Avoid confusing 0.0.0 display when metadata is missing
     status.installedVersion = requiredVersion;
     return status;
@@ -383,12 +383,12 @@ async function buildPackageDependencyTree(
     logger.warn(`Failed to resolve dependencies for ${packageName}`, { error });
     
     // Fallback to basic dependency scanning
-    const package = availablePackages.get(packageName);
-    if (!package?.packages) {
+    const pkg = availablePackages.get(packageName);
+    if (!pkg?.packages) {
       return [];
     }
     
-    const fallbackPromises = package.packages.map(async (dep) => {
+    const fallbackPromises = pkg.packages.map(async (dep) => {
       const availableDep = availablePackages.get(dep.name) || null;
       const localMeta = localMetadata.get(dep.name) || null;
       return analyzePackageStatus(dep, availableDep, localMeta, 'dependency', registryCheck);
@@ -425,17 +425,17 @@ async function performStatusAnalysis(
   
   if (!openpackageExists || !packageYmlExists) {
     throw new ValidationError(
-      `No .openpackage/package.yml found in ${cwd}. This directory doesn't appear to be a package project.\n\n` +
+      `No .openpackage/pkg.yml found in ${cwd}. This directory doesn't appear to be a package project.\n\n` +
       `💡 To initialize this as a package project:\n` +
       `   • Run 'opn init' to create a new package project\n` +
       `   • Run 'opn install' to install existing packages`
     );
   }
   
-  // 2. Parse main package.yml and detect platforms in parallel
+  // 2. Parse main pkg.yml and detect platforms in parallel
   const [cwdConfig, platformStatuses] = await Promise.all([
     parsePackageYml(packageYmlPath).catch(error => {
-      throw new ValidationError(`Failed to parse package.yml: ${error}`);
+      throw new ValidationError(`Failed to parse pkg.yml: ${error}`);
     }),
     options.platforms ? detectPlatformStatus(cwd) : Promise.resolve([])
   ]);
@@ -444,21 +444,21 @@ async function performStatusAnalysis(
   // First collect all package names including dependencies
   const packageNames = new Set<string>([
     ...(cwdConfig.packages || []).map(f => normalizePackageName(f.name)),
-    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => normalizePackageName(f.name))
+    ...(cwdConfig[DEPENDENCY_ARRAYS.PACKAGES] || []).map(f => normalizePackageName(f.name))
   ]);
 
   // Resolve dependencies for each package to get their names
-  for (const package of cwdConfig.packages || []) {
+  for (const pkg of cwdConfig.packages || []) {
     try {
       const constraints = await gatherGlobalVersionConstraints(cwd);
       const rootConstraints = await gatherRootVersionConstraints(cwd);
       const result = await resolveDependencies(
-        package.name,
+        pkg.name,
         cwd,
         true,
         new Set(),
         new Map(),
-        package.version,
+        pkg.version,
         new Map(),
         constraints,
         rootConstraints
@@ -478,7 +478,7 @@ async function performStatusAnalysis(
         packageNames.add(normalizePackageName(missing));
       }
     } catch (error) {
-      logger.debug(`Failed to resolve dependencies for ${package.name}`, { error });
+      logger.debug(`Failed to resolve dependencies for ${pkg.name}`, { error });
     }
   }
 
@@ -501,14 +501,14 @@ async function performStatusAnalysis(
   // 4. Analyze all packages in parallel
   const allPackages = [
     ...(cwdConfig.packages || []).map(f => ({ ...f, type: 'package' as PackageType })),
-    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => ({ ...f, type: 'dev-package' as PackageType }))
+    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_PACKAGES] || []).map(f => ({ ...f, type: 'dev-package' as PackageType }))
   ];
   
-  const analysisPromises = allPackages.map(async (package) => {
-    const available = availablePackages.get(package.name) || null;
-    const localMeta = localMetadata.get(package.name) || null;
-    const status = await analyzePackageStatus(package, available, localMeta, package.type, options.registry);
-    const detected = detectedByFrontmatter.get(package.name);
+  const analysisPromises = allPackages.map(async (pkg) => {
+    const available = availablePackages.get(pkg.name) || null;
+    const localMeta = localMetadata.get(pkg.name) || null;
+    const status = await analyzePackageStatus(pkg, available, localMeta, pkg.type, options.registry);
+    const detected = detectedByFrontmatter.get(pkg.name);
     if (detected) {
       status.fileSummary = {
         aiFiles: { found: detected.aiFiles.length, paths: detected.aiFiles },
@@ -521,15 +521,15 @@ async function performStatusAnalysis(
     if (status.status === 'installed') {
       try {
         status.dependencies = await buildPackageDependencyTree(
-          package.name,
+          pkg.name,
           cwd,
           availablePackages,
           localMetadata,
-          package.version,
+          pkg.version,
           options.registry
         );
       } catch (error) {
-        logger.warn(`Failed to build dependency tree for ${package.name}`, { error });
+        logger.warn(`Failed to build dependency tree for ${pkg.name}`, { error });
         status.issues = status.issues || [];
         status.issues.push(`Dependency analysis failed: ${error}`);
       }
@@ -568,7 +568,7 @@ function renderTreeView(
   // Project header with status indicators
   const statusIndicators = [
     !projectInfo.openpackageExists && '❌ .openpackage missing',
-    !projectInfo.packageYmlExists && '❌ package.yml missing',
+    !projectInfo.packageYmlExists && '❌ pkg.yml missing',
     !projectInfo.aiDirectoryExists && '⚠️ ai directory missing'
   ].filter(Boolean);
   
@@ -590,9 +590,9 @@ function renderTreeView(
   }
   
   console.log('');
-  packages.forEach((package, i) => {
+  packages.forEach((pkg, i) => {
     const isLast = i === packages.length - 1;
-    renderPackageTree(package, '', isLast, options.depth, 1);
+    renderPackageTree(pkg, '', isLast, options.depth, 1);
   });
 }
 
@@ -617,15 +617,15 @@ const STATUS_ICONS: Record<PackageStatus, string> = {
  * Get status suffix for display
  */
 function getStatusSuffix(pkg: PackageStatusInfo): string {
-  switch (package.status) {
+  switch (pkg.status) {
     case 'missing':
       return ' (missing)';
     case 'outdated':
-      return ` (outdated: ${package.availableVersion} available)`;
+      return ` (outdated: ${pkg.availableVersion} available)`;
     case 'dependency-mismatch':
       return ' (version mismatch)';
     case 'update-available':
-      return package.registryVersion ? ` (update: ${package.registryVersion})` : ' (update available)';
+      return pkg.registryVersion ? ` (update: ${pkg.registryVersion})` : ' (update available)';
     case 'registry-unavailable':
       return ' (not in registry)';
     case 'structure-invalid':
@@ -647,32 +647,32 @@ function getStatusSuffix(pkg: PackageStatusInfo): string {
  * Render individual package in enhanced tree format
  */
 function renderPackageTree(
-  package: PackageStatusInfo,
+  pkg: PackageStatusInfo,
   prefix: string,
   isLast: boolean,
   maxDepth?: number,
   currentDepth: number = 1
 ): void {
   const connector = isLast ? '└── ' : '├── ';
-  const typePrefix = package.type === 'dev-package' ? '[dev] ' : '';
-  const statusIcon = STATUS_ICONS[package.status] || '❓';
-  const statusSuffix = getStatusSuffix(package);
-  const conflictInfo = package.conflictResolution ? ` [${package.conflictResolution}]` : '';
+  const typePrefix = pkg.type === 'dev-package' ? '[dev] ' : '';
+  const statusIcon = STATUS_ICONS[pkg.status] || '❓';
+  const statusSuffix = getStatusSuffix(pkg);
+  const conflictInfo = pkg.conflictResolution ? ` [${pkg.conflictResolution}]` : '';
   
-  console.log(`${prefix}${connector}${statusIcon} ${typePrefix}${package.name}@${package.installedVersion}${statusSuffix}${conflictInfo}`);
+  console.log(`${prefix}${connector}${statusIcon} ${typePrefix}${pkg.name}@${pkg.installedVersion}${statusSuffix}${conflictInfo}`);
   
   // Show issues if any
-  if (package.issues?.length) {
+  if (pkg.issues?.length) {
     const issuePrefix = prefix + (isLast ? '    ' : '│   ');
-    package.issues.forEach(issue => {
+    pkg.issues.forEach(issue => {
       console.log(`${issuePrefix}⚠️  ${issue}`);
     });
   }
 
   // Optional file-level summary (verbose)
-  if ((package as any).fileSummary && (globalThis as any).__statusVerbose) {
+  if ((pkg as any).fileSummary && (globalThis as any).__statusVerbose) {
     const fsPrefix = prefix + (isLast ? '    ' : '│   ');
-    const fs = (package as any).fileSummary as NonNullable<PackageStatusInfo['fileSummary']>;
+    const fs = (pkg as any).fileSummary as NonNullable<PackageStatusInfo['fileSummary']>;
     console.log(`${fsPrefix}📄 ai files: ${fs.aiFiles.found}`);
     const platforms = Object.keys(fs.platformFiles || {});
     if (platforms.length > 0) {
@@ -692,16 +692,16 @@ function renderPackageTree(
   }
   
   // Show dependencies if within depth limit
-  if (package.dependencies?.length) {
+  if (pkg.dependencies?.length) {
     if (!maxDepth || currentDepth < maxDepth) {
       const childPrefix = prefix + (isLast ? '    ' : '│   ');
-      package.dependencies.forEach((dep, j) => {
-        const isLastChild = j === package.dependencies!.length - 1;
+      pkg.dependencies.forEach((dep, j) => {
+        const isLastChild = j === pkg.dependencies!.length - 1;
         renderPackageTree(dep, childPrefix, isLastChild, maxDepth, currentDepth + 1);
       });
     } else {
       const childPrefix = prefix + (isLast ? '    ' : '│   ');
-      console.log(`${childPrefix}└── (${package.dependencies.length} dependencies - use --depth to see more)`);
+      console.log(`${childPrefix}└── (${pkg.dependencies.length} dependencies - use --depth to see more)`);
     }
   }
 }
@@ -713,10 +713,10 @@ function collectAllPackages(packages: PackageStatusInfo[]): PackageStatusInfo[] 
   const allPackages: PackageStatusInfo[] = [];
   
   function collect(packageList: PackageStatusInfo[]) {
-    for (const package of packageList) {
-      allPackages.push(package);
-      if (package.dependencies) {
-        collect(package.dependencies);
+    for (const pkg of packageList) {
+      allPackages.push(pkg);
+      if (pkg.dependencies) {
+        collect(pkg.dependencies);
       }
     }
   }
@@ -753,19 +753,19 @@ function renderFlatView(packages: PackageStatusInfo[], options: { registry?: boo
   console.log(headers.map((_, i) => '-'.repeat(widths[i] - 1).padEnd(widths[i])).join(''));
   
   // Display each package
-  allPackages.forEach(package => {
+  allPackages.forEach(pkg => {
     const values = [
-      package.name.padEnd(widths[0]),
-      package.installedVersion.padEnd(widths[1]),
-      package.status.padEnd(widths[2]),
-      package.type.padEnd(widths[3])
+      pkg.name.padEnd(widths[0]),
+      pkg.installedVersion.padEnd(widths[1]),
+      pkg.status.padEnd(widths[2]),
+      pkg.type.padEnd(widths[3])
     ];
     
     if (options.registry) {
-      values.push((package.registryVersion || '-').padEnd(widths[4]));
+      values.push((pkg.registryVersion || '-').padEnd(widths[4]));
     }
     
-    const issues = package.issues ? package.issues.slice(0, 2).join('; ') : '-';
+    const issues = pkg.issues ? pkg.issues.slice(0, 2).join('; ') : '-';
     values.push(issues.length > 27 ? issues.substring(0, 24) + '...' : issues);
     
     console.log(values.join(''));
@@ -775,8 +775,8 @@ function renderFlatView(packages: PackageStatusInfo[], options: { registry?: boo
   
   // Summary by status
   const statusCounts = new Map<string, number>();
-  allPackages.forEach(package => {
-    statusCounts.set(package.status, (statusCounts.get(package.status) || 0) + 1);
+  allPackages.forEach(pkg => {
+    statusCounts.set(pkg.status, (statusCounts.get(pkg.status) || 0) + 1);
   });
   
   console.log('\nStatus Summary:');
@@ -799,8 +799,8 @@ function calculateStatusCounts(packages: PackageStatusInfo[]) {
     structureInvalid: 0
   };
   
-  packages.forEach(package => {
-    switch (package.status) {
+  packages.forEach(pkg => {
+    switch (pkg.status) {
       case 'installed': counts.installed++; break;
       case 'missing': counts.missing++; break;
       case 'outdated': counts.outdated++; break;
@@ -847,7 +847,7 @@ function displayStatusSummary(packages: PackageStatusInfo[], statusCounts: Retur
   if (totalPackages === 0) {
     console.log('');
     console.log('💡 Tips:');
-    console.log('• Add packages to package.yml and run "opn install" to install them');
+    console.log('• Add packages to pkg.yml and run "opn install" to install them');
     console.log('• Use "opn list" to see available packages in the registry');
     console.log('• Run "opn init" to initialize this as a package project');
   } else {

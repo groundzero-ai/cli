@@ -184,7 +184,7 @@ export function setupDeleteCommand(program: Command): void {
     .option('-f, --force', 'skip confirmation prompt')
     .option('-i, --interactive', 'interactively select version to delete')
     .action(withErrorHandling(async (pkg: string, options: DeleteOptions) => {
-      const result = await deletePackageCommand(package, options);
+      const result = await deletePackageCommand(pkg, options);
       if (!result.success) {
         throw new Error(result.error || 'Delete operation failed');
       }

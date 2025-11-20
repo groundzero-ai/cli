@@ -240,9 +240,9 @@ export class RegistryManager {
       const packages = await this.listPackages();
       let lastUpdated: string | undefined;
       
-      for (const package of packages) {
-        if (!lastUpdated || package.lastUpdated > lastUpdated) {
-          lastUpdated = package.lastUpdated;
+      for (const pkg of packages) {
+        if (!lastUpdated || pkg.lastUpdated > lastUpdated) {
+          lastUpdated = pkg.lastUpdated;
         }
       }
       
@@ -273,21 +273,21 @@ export class RegistryManager {
       const issues: string[] = [];
       const packages = await this.listPackages();
       
-      for (const package of packages) {
+      for (const pkg of packages) {
         try {
-          const metadata = await this.getPackageMetadata(package.name);
-          
+          const metadata = await this.getPackageMetadata(pkg.name);
+
           // Check metadata consistency
-          if (metadata.name !== package.name) {
-            issues.push(`Name mismatch in package '${package.name}': package.yml says '${metadata.name}'`);
+          if (metadata.name !== pkg.name) {
+            issues.push(`Name mismatch in package '${pkg.name}': package.yml says '${metadata.name}'`);
           }
-          
-          if (semver.neq(metadata.version, package.version)) {
-            issues.push(`Version mismatch in package '${package.name}': registry says '${package.version}', package.yml says '${metadata.version}'`);
+
+          if (semver.neq(metadata.version, pkg.version)) {
+            issues.push(`Version mismatch in package '${pkg.name}': registry says '${pkg.version}', package.yml says '${metadata.version}'`);
           }
-          
+
         } catch (error) {
-          issues.push(`Failed to validate package '${package.name}': ${error}`);
+          issues.push(`Failed to validate package '${pkg.name}': ${error}`);
         }
       }
       

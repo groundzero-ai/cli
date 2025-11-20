@@ -55,7 +55,7 @@ export function transformPackageFilesForVersionChange(
   packageName: string
 ): PackageFile[] {
   return files.map((file) => {
-    if (file.path === FILE_PATTERNS.FORMULA_YML) {
+    if (file.path === FILE_PATTERNS.PACKAGE_YML) {
       try {
         const parsed = yaml.load(file.content) as PackageYml;
         const updated: PackageYml = {
@@ -90,7 +90,7 @@ export function transformPackageFilesMetadata(
 ): PackageFile[] {
   return files.map((file) => {
     // Update package.yml
-    if (file.path === FILE_PATTERNS.FORMULA_YML) {
+    if (file.path === FILE_PATTERNS.PACKAGE_YML) {
       try {
         const parsed = yaml.load(file.content) as PackageYml;
         const updated: PackageYml = {

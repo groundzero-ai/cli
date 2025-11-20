@@ -12,10 +12,10 @@ export function extractPackagesFromConfig(config: PackageYml): Array<{ name: str
   
   // Extract regular packages
   if (config.packages) {
-    for (const package of config.packages) {
+    for (const pkg of config.packages) {
       packages.push({
-        name: package.name,
-        version: package.version,
+        name: pkg.name,
+        version: pkg.version,
         isDev: false
       });
     }
@@ -23,10 +23,10 @@ export function extractPackagesFromConfig(config: PackageYml): Array<{ name: str
   
   // Extract dev packages
   if (config['dev-packages']) {
-    for (const package of config['dev-packages']) {
+    for (const pkg of config['dev-packages']) {
       packages.push({
-        name: package.name,
-        version: package.version,
+        name: pkg.name,
+        version: pkg.version,
         isDev: true
       });
     }

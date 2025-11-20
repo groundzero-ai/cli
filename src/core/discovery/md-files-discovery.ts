@@ -19,7 +19,7 @@ export function shouldIncludeMarkdownFile(
 ): boolean {
   // For directory mode in platform directories, include files without conflicting frontmatter
   // if (isDirectoryMode) {
-  //   if (!frontmatter || !frontmatter.package || frontmatter.package.name === packageName) {
+  //   if (!frontmatter || !frontmatter.pkg || frontmatter.pkg.name === packageName) {
   //     logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
   //     return true;
   //   }
@@ -28,7 +28,7 @@ export function shouldIncludeMarkdownFile(
   // }
 
   // Otherwise, include files with matching frontmatter
-  if (frontmatter?.package?.name && arePackageNamesEquivalent(frontmatter.package.name, packageName)) {
+  if (frontmatter?.pkg?.name && arePackageNamesEquivalent(frontmatter.pkg.name, packageName)) {
     logger.debug(`Including ${mdFile.relativePath} from ${platform} (matches package name in frontmatter)`);
     return true;
   }

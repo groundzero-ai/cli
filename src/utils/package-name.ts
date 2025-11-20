@@ -4,13 +4,13 @@ import { PackageDependency } from '../types/index.js';
 /**
  * Regex pattern for scoped package names (@scope/name)
  */
-export const SCOPED_FORMULA_REGEX = /^@([^\/]+)\/(.+)$/;
+export const SCOPED_PACKAGE_REGEX = /^@([^\/]+)\/(.+)$/;
 
 /**
  * Error messages for package name validation
  */
 const ERROR_MESSAGES = {
-  INVALID_FORMULA_NAME: 'Invalid package name: %s. Package names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Package names are case-insensitive and will be normalized to lowercase.'
+  INVALID_PACKAGE_NAME: 'Invalid package name: %s. Package names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Package names are case-insensitive and will be normalized to lowercase.'
 } as const;
 
 /**
@@ -21,16 +21,16 @@ const ERROR_MESSAGES = {
 export function validatePackageName(name: string): void {
   // Check length
   if (name.length === 0 || name.length > 214) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', name));
+    throw new ValidationError(ERROR_MESSAGES.INVALID_PACKAGE_NAME.replace('%s', name));
   }
 
   // Check for leading/trailing spaces
   if (name.trim() !== name) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', name));
+    throw new ValidationError(ERROR_MESSAGES.INVALID_PACKAGE_NAME.replace('%s', name));
   }
 
   // Check if it's a scoped name (@scope/name format)
-  const scopedMatch = name.match(SCOPED_FORMULA_REGEX);
+  const scopedMatch = name.match(SCOPED_PACKAGE_REGEX);
   if (scopedMatch) {
     const [, scope, localName] = scopedMatch;
 
@@ -56,17 +56,17 @@ export function validatePackageName(name: string): void {
 function validatePackageNamePart(part: string, fullName: string): void {
   // Check first character
   if (/^[0-9.\-]/.test(part)) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', fullName));
+    throw new ValidationError(ERROR_MESSAGES.INVALID_PACKAGE_NAME.replace('%s', fullName));
   }
 
   // Check for consecutive special characters
   if (/(\.\.|__|--)/.test(part)) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', fullName));
+    throw new ValidationError(ERROR_MESSAGES.INVALID_PACKAGE_NAME.replace('%s', fullName));
   }
 
   // Check allowed characters only
   if (!/^[a-z0-9._-]+$/.test(part)) {
-    throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', fullName));
+    throw new ValidationError(ERROR_MESSAGES.INVALID_PACKAGE_NAME.replace('%s', fullName));
   }
 }
 

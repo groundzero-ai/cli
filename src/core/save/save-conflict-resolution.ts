@@ -1,8 +1,8 @@
 import { dirname, join } from 'path';
 import type { PackageFile } from '../../types/index.js';
 import type { PackageYmlInfo } from './package-yml-generator.js';
-import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, type Platform } from '../../constants/index.js';
-import { FORMULA_INDEX_FILENAME, readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
+import { PACKAGE_INDEX_FILENAME, readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
 import { ensureDir, exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.js';
@@ -274,7 +274,7 @@ async function loadLocalCandidates(packageDir: string): Promise<SaveCandidate[]>
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
 
-    if (normalizedPath === FORMULA_INDEX_FILENAME) {
+    if (normalizedPath === PACKAGE_INDEX_FILENAME) {
       continue;
     }
 
@@ -742,7 +742,7 @@ async function writeRootSelection(
  */
 function isYamlOverrideFileForSave(normalizedPath: string): boolean {
   // Must be skippable (which includes YAML override check) but not package.yml
-  return normalizedPath !== FILE_PATTERNS.FORMULA_YML && isSkippableRegistryPath(normalizedPath);
+  return normalizedPath !== FILE_PATTERNS.PACKAGE_YML && isSkippableRegistryPath(normalizedPath);
 }
 
 async function readFilteredLocalPackageFiles(packageDir: string): Promise<PackageFile[]> {
@@ -751,14 +751,14 @@ async function readFilteredLocalPackageFiles(packageDir: string): Promise<Packag
 
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
-    if (normalizedPath === FORMULA_INDEX_FILENAME) continue;
+    if (normalizedPath === PACKAGE_INDEX_FILENAME) continue;
 
     // Allow files that are either allowed by normal rules, root files, YAML override files,
     // or any root-level files adjacent to package.yml (including package.yml itself)
     const isAllowed = isAllowedRegistryPath(normalizedPath);
     const isRoot = isRootRegistryPath(normalizedPath);
     const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);
-    const isPackageYml = normalizedPath === FILE_PATTERNS.FORMULA_YML;
+    const isPackageYml = normalizedPath === FILE_PATTERNS.PACKAGE_YML;
     const isRootLevelFile = !normalizedPath.includes('/');
 
     if (!isAllowed && !isRoot && !isYamlOverride && !isPackageYml && !isRootLevelFile) continue;

@@ -25,11 +25,11 @@ export async function installAiFiles(
 
   try {
     // Get package from registry
-    const package = await packageManager.loadPackage(packageName, version);
+    const pkg = await packageManager.loadPackage(packageName, version);
 
     // Filter to only install AI directory files (those starting with ai/) - allow all file types
     const aiPrefix = `${PLATFORM_DIRS.AI}/`;
-    const filesToInstall = package.files.filter(file => file.path.startsWith(aiPrefix))
+    const filesToInstall = pkg.files.filter(file => file.path.startsWith(aiPrefix))
 
     if (filesToInstall.length === 0) {
       logger.debug(`No AI directory files to install for ${packageName}@${version || 'latest'}`);
