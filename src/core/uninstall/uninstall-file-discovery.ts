@@ -49,10 +49,10 @@ function deriveSourceDir(relPath: string): string {
 }
 
 async function discoverViaIndex(
-  formulaName: string
+  packageName: string
 ): Promise<UninstallDiscoveredFile[]> {
   const cwd = process.cwd();
-  const index = await readPackageIndex(cwd, formulaName);
+  const index = await readPackageIndex(cwd, packageName);
   const owned = await expandIndexToFilePaths(cwd, index);
   const results: UninstallDiscoveredFile[] = [];
 
@@ -68,7 +68,7 @@ async function discoverViaIndex(
   return results;
 }
 
-async function discoverLightweightRootFiles(cwd: string, formulaName: string): Promise<UninstallDiscoveredFile[]> {
+async function discoverLightweightRootFiles(cwd: string, packageName: string): Promise<UninstallDiscoveredFile[]> {
   // Collect unique root files from platform definitions
   const seen = new Set<string>();
   const results: UninstallDiscoveredFile[] = [];
@@ -82,7 +82,7 @@ async function discoverLightweightRootFiles(cwd: string, formulaName: string): P
     if (!(await exists(absPath))) continue;
     try {
       const content = await readTextFile(absPath);
-      const extracted = extractPackageContentFromRootFile(content, formulaName);
+      const extracted = extractPackageContentFromRootFile(content, packageName);
       if (!extracted) continue;
       results.push({ fullPath: absPath, sourceDir: platform, isRootFile: true });
     } catch {
@@ -93,16 +93,16 @@ async function discoverLightweightRootFiles(cwd: string, formulaName: string): P
   return results;
 }
 
-export async function discoverPackageFilesForUninstall(formulaName: string): Promise<UninstallDiscoveredFile[]> {
+export async function discoverPackageFilesForUninstall(packageName: string): Promise<UninstallDiscoveredFile[]> {
   const cwd = process.cwd();
   const results: UninstallDiscoveredFile[] = [];
 
   // Index-based discovery (exact ownership from installation)
-  const indexFiles = await discoverViaIndex(formulaName);
+  const indexFiles = await discoverViaIndex(packageName);
   results.push(...indexFiles);
 
   // Root files are updated (not deleted) — still detect them for reporting
-  const rootFiles = await discoverLightweightRootFiles(cwd, formulaName);
+  const rootFiles = await discoverLightweightRootFiles(cwd, packageName);
   results.push(...rootFiles);
 
   // Dedupe by fullPath

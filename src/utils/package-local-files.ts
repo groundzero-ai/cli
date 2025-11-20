@@ -16,12 +16,12 @@ import {
 
 const UTF8_ENCODING = 'utf8';
 
-export async function readLocalPackageFilesForIndex(formulaDir: string): Promise<PackageFile[]> {
-  if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
+export async function readLocalPackageFilesForIndex(packageDir: string): Promise<PackageFile[]> {
+  if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
     return [];
   }
 
-  const entries = await findFilesByExtension(formulaDir, [], formulaDir);
+  const entries = await findFilesByExtension(packageDir, [], packageDir);
   const files: PackageFile[] = [];
 
   for (const entry of entries) {

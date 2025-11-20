@@ -10,12 +10,12 @@ import { getFileMtime } from '../utils/file-processing.js';
 import type { DiscoveredFile } from '../types/index.js';
 
 /**
- * Discover root-level AGENTS.md content designated for a specific formula.
- * Only includes content between markers: <!-- formula: <name> --><content><!-- -->
+ * Discover root-level AGENTS.md content designated for a specific package.
+ * Only includes content between markers: <!-- package: <name> --><content><!-- -->
  */
 export async function discoverAgentsMdFile(
   cwd: string,
-  formulaName: string
+  packageName: string
 ): Promise<DiscoveredFile | null> {
   const agentsPath = join(cwd, FILE_PATTERNS.AGENTS_MD);
   if (!(await exists(agentsPath))) {
@@ -24,7 +24,7 @@ export async function discoverAgentsMdFile(
 
   try {
     const content = await readTextFile(agentsPath);
-    const extracted = extractPackageContentFromRootFile(content, formulaName);
+    const extracted = extractPackageContentFromRootFile(content, packageName);
     if (!extracted) {
       return null; // No matching section; treat as non-existent
     }
@@ -55,7 +55,7 @@ export async function discoverAgentsMdFile(
  */
 export async function discoverAllRootFiles(
   cwd: string,
-  formulaName: string
+  packageName: string
 ): Promise<DiscoveredFile[]> {
   const results: DiscoveredFile[] = [];
 
@@ -82,7 +82,7 @@ export async function discoverAllRootFiles(
 
     try {
       const content = await readTextFile(absPath);
-      const extracted = extractPackageContentFromRootFile(content, formulaName);
+      const extracted = extractPackageContentFromRootFile(content, packageName);
       if (!extracted) {
         continue; // No matching section in this root file
       }

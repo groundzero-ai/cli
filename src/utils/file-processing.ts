@@ -69,7 +69,7 @@ export async function findFilesByExtension(
 /**
  * Recursively find directories containing a specific file
  * @param rootDir - Root directory to start searching from
- * @param targetFileName - Name of the file to search for (e.g., 'formula.yml')
+ * @param targetFileName - Name of the file to search for (e.g., 'package.yml')
  * @param parseCallback - Optional callback to parse and validate the file content
  * @returns Array of directory paths where the file was found
  */
@@ -128,7 +128,7 @@ export async function findDirectoriesContainingFile<T = void>(
  */
 export async function processMdFileForDiscovery(
   file: { fullPath: string; relativePath: string },
-  formulaName: string,
+  packageName: string,
   platform: Platformish,
   registryPathPrefix: string,
 ): Promise<DiscoveredFile | null> {

@@ -19,14 +19,14 @@ import { normalizePathForProcessing } from '../../utils/path-normalization.js';
  */
 async function discoverPlatformFiles(
   config: PlatformSearchConfig,
-  formulaName: string,
+  packageName: string,
 ): Promise<DiscoveredFile[]> {
 
   // Handle AI directory separately - does not contain platform subdirectory structure
   if (config.platform === PLATFORM_AI) {
     return discoverFiles(
       PLATFORM_DIRS.AI,
-      formulaName,
+      packageName,
       config.platform,
       PLATFORM_DIRS.AI, // AI directory uses 'ai' prefix
     );
@@ -42,7 +42,7 @@ async function discoverPlatformFiles(
     if (await exists(subdirPath) && await isDirectory(subdirPath)) {
       const files = await discoverFiles(
         subdirPath,
-        formulaName,
+        packageName,
         config.platform,
         subdirName, // Universal registry path
       );
@@ -83,13 +83,13 @@ function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): Discover
 /**
  * Unified file discovery function that searches platform-specific directories
  */
-export async function discoverPlatformFilesUnified(cwd: string, formulaName: string): Promise<DiscoveredFile[]> {
+export async function discoverPlatformFilesUnified(cwd: string, packageName: string): Promise<DiscoveredFile[]> {
   const platformConfigs = await buildPlatformSearchConfig(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
 
   // Process all platform configurations in parallel
   const discoveryPromises = platformConfigs.map(async (config) => {
-    return discoverPlatformFiles(config, formulaName);
+    return discoverPlatformFiles(config, packageName);
   });
 
   const discoveredFiles = await Promise.all(discoveryPromises);

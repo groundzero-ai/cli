@@ -40,7 +40,7 @@ export async function obtainSourceDirAndRegistryPath(
 
 export async function discoverFiles(
   rootDir: string,
-  formulaName: string,
+  packageName: string,
   platform: Platformish,
   registryPathPrefix: string
 ): Promise<DiscoveredFile[]> {
@@ -50,7 +50,7 @@ export async function discoverFiles(
 
   const mdFiles = await discoverMdFiles(
     rootDir,
-    formulaName,
+    packageName,
     platform,
     registryPathPrefix
   )
@@ -63,7 +63,7 @@ export async function discoverFiles(
  */
 // export async function discoverFiles(
 //   directoryPath: string,
-//   formulaName: string,
+//   packageName: string,
 //   platform: Platformish,
 //   registryPathPrefix: string = '',
 // ): Promise<DiscoveredFile[]> {
@@ -81,7 +81,7 @@ export async function discoverFiles(
 
 //   // Process files in parallel using the extracted helper
 //   const processPromises = allFiles.map(async (file) =>
-//     processMdFileForDiscovery(file, formulaName, platform, registryPathPrefix)
+//     processMdFileForDiscovery(file, packageName, platform, registryPathPrefix)
 //   );
 
 //   const results = await Promise.all(processPromises);

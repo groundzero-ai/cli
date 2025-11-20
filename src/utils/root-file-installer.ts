@@ -25,7 +25,7 @@ export interface RootFileInstallResult {
  */
 export async function installRootFilesFromMap(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   rootFilesMap: Map<string, string>,
   detectedPlatforms: Platform[]
 ): Promise<RootFileInstallResult> {
@@ -46,10 +46,10 @@ export async function installRootFilesFromMap(
     if (!content) continue;
 
     try {
-      const wasUpdated = await installSingleRootFile(cwd, platformDef.rootFile, formulaName, content);
+      const wasUpdated = await installSingleRootFile(cwd, platformDef.rootFile, packageName, content);
       if (wasUpdated) result.updated.push(platformDef.rootFile);
       else result.installed.push(platformDef.rootFile);
-      logger.debug(`Installed root file ${platformDef.rootFile} for ${formulaName} (from ${sourceFileName})`);
+      logger.debug(`Installed root file ${platformDef.rootFile} for ${packageName} (from ${sourceFileName})`);
     } catch (error) {
       logger.error(`Failed to install root file ${platformDef.rootFile}: ${error}`);
       result.skipped.push(platformDef.rootFile);
@@ -62,18 +62,18 @@ export async function installRootFilesFromMap(
 
 /**
  * Install or update a single root file at cwd root.
- * Preserves existing content and merges formula section using markers.
+ * Preserves existing content and merges package section using markers.
  * 
  * @param cwd - Current working directory
  * @param rootFileName - Name of the root file (e.g., 'CLAUDE.md')
- * @param formulaName - Name of the formula
+ * @param packageName - Name of the package
  * @param registryContent - Section body from the registry to merge (no markers)
  * @returns True if file was updated (existed before), false if newly created
  */
 async function installSingleRootFile(
   cwd: string,
   rootFileName: string,
-  formulaName: string,
+  packageName: string,
   registryContent: string
 ): Promise<boolean> {
   const targetPath = join(cwd, rootFileName);
@@ -90,10 +90,10 @@ async function installSingleRootFile(
   // Registry stores only the section body (markers are added during merge)
   const sectionBody = registryContent.trim();
 
-  // Merge formula content into the file
+  // Merge package content into the file
   const mergedContent = mergePackageContentIntoRootFile(
     existingContent,
-    formulaName,
+    packageName,
     sectionBody
   );
 

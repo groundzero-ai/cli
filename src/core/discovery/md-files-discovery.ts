@@ -15,11 +15,11 @@ export function shouldIncludeMarkdownFile(
   mdFile: { relativePath: string },
   frontmatter: any,
   platform: Platformish,
-  formulaName: string,
+  packageName: string,
 ): boolean {
   // For directory mode in platform directories, include files without conflicting frontmatter
   // if (isDirectoryMode) {
-  //   if (!frontmatter || !frontmatter.formula || frontmatter.formula.name === formulaName) {
+  //   if (!frontmatter || !frontmatter.package || frontmatter.package.name === packageName) {
   //     logger.debug(`Including ${mdFile.relativePath} from ${sourceDir} (directory mode, no conflicting frontmatter)`);
   //     return true;
   //   }
@@ -28,8 +28,8 @@ export function shouldIncludeMarkdownFile(
   // }
 
   // Otherwise, include files with matching frontmatter
-  if (frontmatter?.formula?.name && arePackageNamesEquivalent(frontmatter.formula.name, formulaName)) {
-    logger.debug(`Including ${mdFile.relativePath} from ${platform} (matches formula name in frontmatter)`);
+  if (frontmatter?.package?.name && arePackageNamesEquivalent(frontmatter.package.name, packageName)) {
+    logger.debug(`Including ${mdFile.relativePath} from ${platform} (matches package name in frontmatter)`);
     return true;
   }
 
@@ -42,7 +42,7 @@ export function shouldIncludeMarkdownFile(
  */
 async function processMdFileForDiscovery(
   file: { fullPath: string; relativePath: string },
-  formulaName: string,
+  packageName: string,
   platform: Platformish,
   registryPathPrefix: string,
 ): Promise<DiscoveredFile | null> {
@@ -86,7 +86,7 @@ async function processMdFileForDiscovery(
  */
 export async function discoverMdFiles(
   directoryPath: string,
-  formulaName: string,
+  packageName: string,
   platform: Platformish,
   registryPathPrefix: string = '',
 ): Promise<DiscoveredFile[]> {
@@ -104,7 +104,7 @@ export async function discoverMdFiles(
 
   // Process files in parallel using the extracted helper
   const processPromises = allFiles.map(async (file) =>
-    processMdFileForDiscovery(file, formulaName, platform, registryPathPrefix)
+    processMdFileForDiscovery(file, packageName, platform, registryPathPrefix)
   );
 
   const results = await Promise.all(processPromises);

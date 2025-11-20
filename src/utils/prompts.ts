@@ -47,38 +47,38 @@ export async function promptConfirmation(message: string, initial: boolean = fal
 }
 
 /**
- * Prompt for overwrite confirmation with specific formula context
+ * Prompt for overwrite confirmation with specific package context
  */
-export async function promptPackageOverwrite(formulaName: string, existingVersion?: string): Promise<boolean> {
+export async function promptPackageOverwrite(packageName: string, existingVersion?: string): Promise<boolean> {
   const versionSuffix = existingVersion ? ` (${existingVersion})` : '';
   return await promptConfirmation(
-    `Package '${formulaName}' already exists${versionSuffix}. Overwrite all files?`,
+    `Package '${packageName}' already exists${versionSuffix}. Overwrite all files?`,
     false
   );
 }
 
 /**
- * Prompt for formula deletion confirmation
+ * Prompt for package deletion confirmation
  */
-export async function promptPackageDelete(formulaName: string): Promise<boolean> {
+export async function promptPackageDelete(packageName: string): Promise<boolean> {
   return await promptConfirmation(
-    `Are you sure you want to delete formula '${formulaName}'? This action cannot be undone.`,
+    `Are you sure you want to delete package '${packageName}'? This action cannot be undone.`,
     false
   );
 }
 
 /**
- * Prompt for creating a new formula
+ * Prompt for creating a new package
  */
 export async function promptCreatePackage(): Promise<boolean> {
   return await promptConfirmation(
-    'No formula.yml found. Would you like to create a new formula?',
+    'No package.yml found. Would you like to create a new package?',
     true
   );
 }
 
 /**
- * Package details prompt for interactive formula creation
+ * Package details prompt for interactive package creation
  */
 export async function promptPackageDetails(defaultName?: string): Promise<PackageYml> {
   const cwd = process.cwd();
@@ -126,7 +126,7 @@ export async function promptPackageDetails(defaultName?: string): Promise<Packag
     {
       type: 'confirm',
       name: 'private',
-      message: 'Private formula?',
+      message: 'Private package?',
       initial: false
     }
   ]);
@@ -148,9 +148,9 @@ export async function promptPackageDetails(defaultName?: string): Promise<Packag
 }
 
 /**
- * Package details prompt for named formula creation (skips name prompt)
+ * Package details prompt for named package creation (skips name prompt)
  */
-export async function promptPackageDetailsForNamed(formulaName: string): Promise<PackageYml> {
+export async function promptPackageDetailsForNamed(packageName: string): Promise<PackageYml> {
   const response = await safePrompts([
     {
       type: 'text',
@@ -178,7 +178,7 @@ export async function promptPackageDetailsForNamed(formulaName: string): Promise
     {
       type: 'confirm',
       name: 'private',
-      message: 'Private formula?',
+      message: 'Private package?',
       initial: false
     }
   ]);
@@ -189,7 +189,7 @@ export async function promptPackageDetailsForNamed(formulaName: string): Promise
     : [];
 
   const config: PackageYml = {
-    name: normalizePackageName(formulaName),
+    name: normalizePackageName(packageName),
     version: response.version,
     ...(response.description && { description: response.description }),
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
@@ -209,7 +209,7 @@ export function isCancelled(result: any): boolean {
 /**
  * Prompt user to enter a new version number
  */
-export async function promptNewVersion(formulaName: string, versionContext: string): Promise<string> {
+export async function promptNewVersion(packageName: string, versionContext: string): Promise<string> {
   // Extract current version from context for validation
   const currentVersionMatch = versionContext.match(/current: ([^,)]+)/);
   const currentVersion = currentVersionMatch ? currentVersionMatch[1] : versionContext;
@@ -217,7 +217,7 @@ export async function promptNewVersion(formulaName: string, versionContext: stri
   const response = await safePrompts({
     type: 'text',
     name: 'version',
-    message: `Enter a new version for '${formulaName}' (${versionContext}):`,
+    message: `Enter a new version for '${packageName}' (${versionContext}):`,
     initial: currentVersion,
     validate: (value: string) => {
       if (!value) return 'Version is required';
@@ -237,9 +237,9 @@ export async function promptNewVersion(formulaName: string, versionContext: stri
 /**
  * Prompt user to confirm version overwrite
  */
-export async function promptVersionOverwrite(formulaName: string, oldVersion: string, newVersion: string): Promise<boolean> {
+export async function promptVersionOverwrite(packageName: string, oldVersion: string, newVersion: string): Promise<boolean> {
   return await promptConfirmation(
-    `Overwrite formula '${formulaName}' version ${oldVersion} with version ${newVersion}?`,
+    `Overwrite package '${packageName}' version ${oldVersion} with version ${newVersion}?`,
     false
   );
 }
@@ -269,14 +269,14 @@ export async function promptPlatformSelection(): Promise<string[]> {
  * Prompt for version selection from available versions
  */
 export async function promptVersionSelection(
-  formulaName: string,
+  packageName: string,
   versions: string[],
   action: string = ''
 ): Promise<string> {
   const response = await safePrompts({
     type: 'select',
     name: 'version',
-    message: `Select version of '${formulaName}' ${action}:`,
+    message: `Select version of '${packageName}' ${action}:`,
     choices: versions.map(version => ({
       title: version,
       value: version
@@ -291,11 +291,11 @@ export async function promptVersionSelection(
  * Prompt for confirmation when deleting specific version
  */
 export async function promptVersionDelete(
-  formulaName: string, 
+  packageName: string, 
   version: string
 ): Promise<boolean> {
   return await promptConfirmation(
-    `Are you sure you want to delete version '${version}' of formula '${formulaName}'? This action cannot be undone.`,
+    `Are you sure you want to delete version '${version}' of package '${packageName}'? This action cannot be undone.`,
     false
   );
 }
@@ -304,12 +304,12 @@ export async function promptVersionDelete(
  * Prompt for confirmation when deleting all versions
  */
 export async function promptAllVersionsDelete(
-  formulaName: string, 
+  packageName: string, 
   versionCount: number
 ): Promise<boolean> {
   const versionText = versionCount === 1 ? 'version' : 'versions';
   return await promptConfirmation(
-    `Are you sure you want to delete all ${versionCount} ${versionText} of formula '${formulaName}'? This action cannot be undone.`,
+    `Are you sure you want to delete all ${versionCount} ${versionText} of package '${packageName}'? This action cannot be undone.`,
     false
   );
 }
@@ -318,7 +318,7 @@ export async function promptAllVersionsDelete(
  * Prompt for confirmation when deleting prerelease versions of a base version
  */
 export async function promptPrereleaseVersionsDelete(
-  formulaName: string,
+  packageName: string,
   baseVersion: string,
   prereleaseVersions: string[]
 ): Promise<boolean> {
@@ -326,7 +326,7 @@ export async function promptPrereleaseVersionsDelete(
   const versionsList = prereleaseVersions.join(', ');
   
   return await promptConfirmation(
-    `Are you sure you want to delete ${prereleaseVersions.length} prerelease ${versionText} of '${formulaName}@${baseVersion}'?\n` +
+    `Are you sure you want to delete ${prereleaseVersions.length} prerelease ${versionText} of '${packageName}@${baseVersion}'?\n` +
     `Versions to delete: ${versionsList}\n` +
     `This action cannot be undone.`,
     false
@@ -334,10 +334,10 @@ export async function promptPrereleaseVersionsDelete(
 }
 
 /**
- * Prompt user for formula installation conflict resolution
+ * Prompt user for package installation conflict resolution
  */
 export async function promptPackageInstallConflict(
-  formulaName: string,
+  packageName: string,
   existingVersion: string,
   newVersion: string,
   requiredVersion?: string
@@ -351,7 +351,7 @@ export async function promptPackageInstallConflict(
   const response = await safePrompts({
     type: 'select',
     name: 'choice',
-    message: `Package '${formulaName}' already installed. How would you like to proceed?`,
+    message: `Package '${packageName}' already installed. How would you like to proceed?`,
     choices: [
       {
         title: `Keep installed - Skip installation`,
@@ -379,13 +379,13 @@ export async function promptPackageInstallConflict(
  * Prompt user for version conflict resolution when saving
  */
 export async function promptVersionConflictResolution(
-  formulaName: string,
+  packageName: string,
   existingVersion: string
 ): Promise<'bump-patch' | 'bump-minor' | 'overwrite'> {
   const response = await safePrompts({
     type: 'select',
     name: 'choice',
-    message: `Version '${existingVersion}' of formula '${formulaName}' already exists. How would you like to proceed?`,
+    message: `Version '${existingVersion}' of package '${packageName}' already exists. How would you like to proceed?`,
     choices: [
       {
         title: `Bump patch - Increment patch version (${existingVersion} → ${bumpPatchVersion(existingVersion)})`,
@@ -413,13 +413,13 @@ export async function promptVersionConflictResolution(
  * Prompt user to confirm overwrite with double confirmation
  */
 export async function promptOverwriteConfirmation(
-  formulaName: string,
+  packageName: string,
   version: string
 ): Promise<boolean> {
   const response = await safePrompts({
     type: 'confirm',
     name: 'confirmed',
-    message: `Are you sure you want to overwrite version '${version}' of formula '${formulaName}'? This action cannot be undone.`,
+    message: `Are you sure you want to overwrite version '${version}' of package '${packageName}'? This action cannot be undone.`,
     initial: false
   });
 

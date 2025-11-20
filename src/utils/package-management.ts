@@ -17,69 +17,69 @@ import { FORMULA_INDEX_FILENAME } from './package-index-yml.js';
  */
 export async function ensureLocalOpenPackageStructure(cwd: string): Promise<void> {
   const openpackageDir = getLocalOpenPackageDir(cwd);
-  const formulasDir = getLocalPackagesDir(cwd);
+  const packagesDir = getLocalPackagesDir(cwd);
   
   await Promise.all([
     ensureDir(openpackageDir),
-    ensureDir(formulasDir)
+    ensureDir(packagesDir)
   ]);
 }
 
 /**
- * Create a basic formula.yml file if it doesn't exist
+ * Create a basic package.yml file if it doesn't exist
  * Shared utility for both install and save commands
- * @param force - If true, overwrite existing formula.yml
- * @returns the formula.yml if it was created, null if it already existed and force=false
+ * @param force - If true, overwrite existing package.yml
+ * @returns the package.yml if it was created, null if it already existed and force=false
  */
 export async function createBasicPackageYml(cwd: string, force: boolean = false): Promise<PackageYml | null> {
   await ensureLocalOpenPackageStructure(cwd);
 
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
   const projectName = basename(cwd);
   const basicPackageYml: PackageYml = {
     name: projectName,
     version: '0.1.0',
-    formulas: [],
-    'dev-formulas': []
+    packages: [],
+    'dev-packages': []
   };
 
-  if (await exists(formulaYmlPath)) {
+  if (await exists(packageYmlPath)) {
     if (!force) {
-      return null; // formula.yml already exists, no need to create
+      return null; // package.yml already exists, no need to create
     }
-    await writePackageYml(formulaYmlPath, basicPackageYml);
-    logger.info(`Overwrote basic formula.yml with name: ${projectName}`);
-    console.log(`📋 Overwrote basic formula.yml in .openpackage/ with name: ${projectName}`);
+    await writePackageYml(packageYmlPath, basicPackageYml);
+    logger.info(`Overwrote basic package.yml with name: ${projectName}`);
+    console.log(`📋 Overwrote basic package.yml in .openpackage/ with name: ${projectName}`);
     return basicPackageYml;
   }
 
-  await writePackageYml(formulaYmlPath, basicPackageYml);
-  logger.info(`Initialized workspace formula.yml`);
-  console.log(`📋 Initialized workspace formula.yml in .openpackage/`);
+  await writePackageYml(packageYmlPath, basicPackageYml);
+  logger.info(`Initialized workspace package.yml`);
+  console.log(`📋 Initialized workspace package.yml in .openpackage/`);
   return basicPackageYml;
 }
 
 /**
- * Add a formula dependency to formula.yml with smart placement logic
+ * Add a package dependency to package.yml with smart placement logic
  * Shared utility for both install and save commands
  */
 export async function addPackageToYml(
   cwd: string,
-  formulaName: string,
-  formulaVersion: string,
+  packageName: string,
+  packageVersion: string,
   isDev: boolean = false,
   originalVersion?: string, // The original version/range that was requested
   silent: boolean = false
 ): Promise<void> {
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
   
-  if (!(await exists(formulaYmlPath))) {
-    return; // If no formula.yml exists, ignore this step
+  if (!(await exists(packageYmlPath))) {
+    return; // If no package.yml exists, ignore this step
   }
   
-  const config = await parsePackageYml(formulaYmlPath);
+  const config = await parsePackageYml(packageYmlPath);
   
-  // Determine the version to write to formula.yml
+  // Determine the version to write to package.yml
   let versionToWrite: string;
   
   if (originalVersion) {
@@ -87,37 +87,37 @@ export async function addPackageToYml(
     versionToWrite = originalVersion;
   } else {
     // For save command, strip prerelease versioning and create caret range
-    const baseVersion = extractBaseVersion(formulaVersion);
+    const baseVersion = extractBaseVersion(packageVersion);
     versionToWrite = createCaretRange(baseVersion);
   }
   
   const dependency: PackageDependency = {
-    name: normalizePackageName(formulaName),
+    name: normalizePackageName(packageName),
     version: versionToWrite
   };
   
   // Find current location and determine target location
-  const currentLocation = await findPackageLocation(cwd, formulaName);
+  const currentLocation = await findPackageLocation(cwd, packageName);
   
-  let targetArray: 'formulas' | 'dev-formulas';
+  let targetArray: 'packages' | 'dev-packages';
   if (currentLocation === DEPENDENCY_ARRAYS.DEV_FORMULAS && !isDev) {
     targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
-    logger.info(`Keeping formula in dev-formulas: ${formulaName}@${formulaVersion}`);
+    logger.info(`Keeping package in dev-packages: ${packageName}@${packageVersion}`);
   } else if (currentLocation === DEPENDENCY_ARRAYS.FORMULAS && isDev) {
     targetArray = DEPENDENCY_ARRAYS.DEV_FORMULAS;
-    logger.info(`Moving formula from formulas to dev-formulas: ${formulaName}@${formulaVersion}`);
+    logger.info(`Moving package from packages to dev-packages: ${packageName}@${packageVersion}`);
   } else {
     targetArray = isDev ? DEPENDENCY_ARRAYS.DEV_FORMULAS : DEPENDENCY_ARRAYS.FORMULAS;
   }
   
   // Initialize arrays if they don't exist
-  if (!config.formulas) config.formulas = [];
+  if (!config.packages) config.packages = [];
   if (!config[DEPENDENCY_ARRAYS.DEV_FORMULAS]) config[DEPENDENCY_ARRAYS.DEV_FORMULAS] = [];
   
   // Remove from current location if moving between arrays
   if (currentLocation && currentLocation !== targetArray) {
     const currentArray = config[currentLocation]!;
-    const currentIndex = currentArray.findIndex(dep => arePackageNamesEquivalent(dep.name, formulaName));
+    const currentIndex = currentArray.findIndex(dep => arePackageNamesEquivalent(dep.name, packageName));
     if (currentIndex >= 0) {
       currentArray.splice(currentIndex, 1);
     }
@@ -125,44 +125,44 @@ export async function addPackageToYml(
   
   // Update or add dependency
   const targetArrayRef = config[targetArray]!;
-  const existingIndex = targetArrayRef.findIndex(dep => arePackageNamesEquivalent(dep.name, formulaName));
+  const existingIndex = targetArrayRef.findIndex(dep => arePackageNamesEquivalent(dep.name, packageName));
   
   if (existingIndex >= 0) {
     targetArrayRef[existingIndex] = dependency;
     if (!silent) {
-      logger.info(`Updated existing formula dependency: ${formulaName}@${formulaVersion}`);
-      console.log(`✓ Updated ${formulaName}@${formulaVersion} in main formula.yml`);
+      logger.info(`Updated existing package dependency: ${packageName}@${packageVersion}`);
+      console.log(`✓ Updated ${packageName}@${packageVersion} in main package.yml`);
     }
   } else {
     targetArrayRef.push(dependency);
     if (!silent) {
-      logger.info(`Added new formula dependency: ${formulaName}@${formulaVersion}`);
-      console.log(`✓ Added ${formulaName}@${formulaVersion} to main formula.yml`);
+      logger.info(`Added new package dependency: ${packageName}@${packageVersion}`);
+      console.log(`✓ Added ${packageName}@${packageVersion} to main package.yml`);
     }
   }
   
-  await writePackageYml(formulaYmlPath, config);
+  await writePackageYml(packageYmlPath, config);
 }
 
 /**
- * Copy the full formula directory from the local registry into the project structure
- * Removes all existing files except formula.index.yml before writing new files
+ * Copy the full package directory from the local registry into the project structure
+ * Removes all existing files except package.index.yml before writing new files
  */
 export async function writeLocalPackageFromRegistry(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   version: string
 ): Promise<void> {
-  const formula = await packageManager.loadPackage(formulaName, version);
-  const localPackageDir = getLocalPackageDir(cwd, formulaName);
+  const package = await packageManager.loadPackage(packageName, version);
+  const localPackageDir = getLocalPackageDir(cwd, packageName);
 
   await ensureDir(localPackageDir);
 
   // Build set of files that should exist after installation
   const filesToKeep = new Set<string>(
-    formula.files.map(file => file.path)
+    package.files.map(file => file.path)
   );
-  // Always preserve formula.index.yml
+  // Always preserve package.index.yml
   filesToKeep.add(FORMULA_INDEX_FILENAME);
 
   // List all existing files in the directory
@@ -174,7 +174,7 @@ export async function writeLocalPackageFromRegistry(
     }
   }
 
-  // Remove files that are no longer in the formula (except formula.index.yml)
+  // Remove files that are no longer in the package (except package.index.yml)
   const filesToRemove = existingFiles.filter(file => !filesToKeep.has(file));
   await Promise.all(
     filesToRemove.map(async (file) => {
@@ -188,9 +188,9 @@ export async function writeLocalPackageFromRegistry(
     })
   );
 
-  // Write all files from the formula
+  // Write all files from the package
   await Promise.all(
-    formula.files.map(async (file) => {
+    package.files.map(async (file) => {
       const targetPath = join(localPackageDir, file.path);
       const encoding = (file.encoding ?? 'utf8') as BufferEncoding;
       await writeTextFile(targetPath, file.content, encoding);
@@ -199,35 +199,35 @@ export async function writeLocalPackageFromRegistry(
 }
 
 /**
- * Find formula location in formula.yml
+ * Find package location in package.yml
  * Helper function for addPackageToYml
  */
 async function findPackageLocation(
   cwd: string,
-  formulaName: string
-): Promise<'formulas' | 'dev-formulas' | null> {
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
+  packageName: string
+): Promise<'packages' | 'dev-packages' | null> {
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
   
-  if (!(await exists(formulaYmlPath))) {
+  if (!(await exists(packageYmlPath))) {
     return null;
   }
   
   try {
-    const config = await parsePackageYml(formulaYmlPath);
+    const config = await parsePackageYml(packageYmlPath);
     
-    // Check in formulas array
-    if (config.formulas?.some(dep => arePackageNamesEquivalent(dep.name, formulaName))) {
+    // Check in packages array
+    if (config.packages?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
       return DEPENDENCY_ARRAYS.FORMULAS;
     }
 
-    // Check in dev-formulas array
-    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => arePackageNamesEquivalent(dep.name, formulaName))) {
+    // Check in dev-packages array
+    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
       return DEPENDENCY_ARRAYS.DEV_FORMULAS;
     }
     
     return null;
   } catch (error) {
-    logger.warn(`Failed to parse formula.yml: ${error}`);
+    logger.warn(`Failed to parse package.yml: ${error}`);
     return null;
   }
 }

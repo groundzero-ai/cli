@@ -9,10 +9,10 @@ import { logger } from './logger.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { buildOpenMarkerRegex, CLOSE_MARKER_REGEX } from './root-file-extractor.js';
 
-/** Remove a single formula section from root-file content using markers */
-function stripPackageSection(content: string, formulaName: string): { changed: boolean; content: string } {
+/** Remove a single package section from root-file content using markers */
+function stripPackageSection(content: string, packageName: string): { changed: boolean; content: string } {
   if (!content) return { changed: false, content };
-  const openRe = buildOpenMarkerRegex(formulaName);
+  const openRe = buildOpenMarkerRegex(packageName);
   const closeRe = CLOSE_MARKER_REGEX;
   const openMatch = openRe.exec(content);
   if (!openMatch) return { changed: false, content };
@@ -24,11 +24,11 @@ function stripPackageSection(content: string, formulaName: string): { changed: b
   return { changed: true, content: before + after };
 }
 
-/** Remove multiple formula sections from content */
-function stripMultiplePackageSections(content: string, formulaNames: string[]): { changed: boolean; content: string } {
+/** Remove multiple package sections from content */
+function stripMultiplePackageSections(content: string, packageNames: string[]): { changed: boolean; content: string } {
   let changed = false;
   let current = content;
-  for (const name of formulaNames) {
+  for (const name of packageNames) {
     const result = stripPackageSection(current, name);
     if (result.changed) changed = true;
     current = result.content;
@@ -49,14 +49,14 @@ function getUniqueRootFilenames(): string[] {
 /**
  * Compute which root files would be updated after stripping sections
  */
-export async function computeRootFileRemovalPlan(cwd: string, formulaNames: string[]): Promise<{ toUpdate: string[] }> {
+export async function computeRootFileRemovalPlan(cwd: string, packageNames: string[]): Promise<{ toUpdate: string[] }> {
   const toUpdate: string[] = [];
   const rootFiles = getUniqueRootFilenames();
   for (const filename of rootFiles) {
     const absPath = join(cwd, filename);
     if (!(await exists(absPath))) continue;
     const original = await readTextFile(absPath);
-    const { changed, content } = stripMultiplePackageSections(original, formulaNames);
+    const { changed, content } = stripMultiplePackageSections(original, packageNames);
     if (!changed) continue;
     // Always update root files, never delete them (even if empty)
     toUpdate.push(filename);
@@ -65,16 +65,16 @@ export async function computeRootFileRemovalPlan(cwd: string, formulaNames: stri
 }
 
 /**
- * Apply root-file updates for provided formulas
+ * Apply root-file updates for provided packages
  */
-export async function applyRootFileRemovals(cwd: string, formulaNames: string[]): Promise<{ updated: string[] }> {
+export async function applyRootFileRemovals(cwd: string, packageNames: string[]): Promise<{ updated: string[] }> {
   const updated: string[] = [];
   const rootFiles = getUniqueRootFilenames();
   for (const filename of rootFiles) {
     const absPath = join(cwd, filename);
     if (!(await exists(absPath))) continue;
     const original = await readTextFile(absPath);
-    const { changed, content } = stripMultiplePackageSections(original, formulaNames);
+    const { changed, content } = stripMultiplePackageSections(original, packageNames);
     if (!changed) continue;
     // Always update root files, never delete them (even if empty)
     await writeTextFile(absPath, content);

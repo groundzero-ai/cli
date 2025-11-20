@@ -1,6 +1,6 @@
 /**
  * Platform Sync Module
- * Utility functions for syncing saved formula files across detected platforms
+ * Utility functions for syncing saved package files across detected platforms
  */
 
 import { getDetectedPlatforms } from '../platforms.js';
@@ -20,15 +20,15 @@ export interface PlatformSyncResult {
 
 export async function performPlatformSync(
   cwd: string,
-  formulaName: string,
-  formulaVersion: string,
-  formulaFiles: PackageFile[],
+  packageName: string,
+  packageVersion: string,
+  packageFiles: PackageFile[],
   options: InstallOptions = {}
 ): Promise<PlatformSyncResult> {
   const detectedPlatforms = await getDetectedPlatforms(cwd);
 
   logger.debug(
-    `Planning platform sync for formula ${formulaName}@${formulaVersion} across ${detectedPlatforms.length} platforms`
+    `Planning platform sync for package ${packageName}@${packageVersion} across ${detectedPlatforms.length} platforms`
   );
 
   const syncOptions: InstallOptions = {
@@ -39,14 +39,14 @@ export async function performPlatformSync(
 
   const plannerOutcome = await applyPlannedSyncForPackageFiles(
     cwd,
-    formulaName,
-    formulaVersion,
-    formulaFiles,
+    packageName,
+    packageVersion,
+    packageFiles,
     detectedPlatforms,
     syncOptions
   );
 
-  const rootSyncResult = await syncRootFiles(cwd, formulaFiles, formulaName, detectedPlatforms);
+  const rootSyncResult = await syncRootFiles(cwd, packageFiles, packageName, detectedPlatforms);
 
   return {
     created: [...plannerOutcome.operation.installedFiles, ...rootSyncResult.created],

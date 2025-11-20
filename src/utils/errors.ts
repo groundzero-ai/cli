@@ -6,41 +6,41 @@ import { logger } from './logger.js';
  */
 
 export class PackageNotFoundError extends OpenPackageError {
-  constructor(formulaName: string) {
-    super(`Package '${formulaName}' not found`, ErrorCodes.FORMULA_NOT_FOUND, { formulaName });
+  constructor(packageName: string) {
+    super(`Package '${packageName}' not found`, ErrorCodes.PACKAGE_NOT_FOUND, { packageName });
   }
 }
 
 export class PackageVersionNotFoundError extends OpenPackageError {
   constructor(message: string) {
-    super(message, ErrorCodes.FORMULA_NOT_FOUND);
+    super(message, ErrorCodes.PACKAGE_NOT_FOUND);
   }
 }
 
 export class VersionConflictError extends OpenPackageError {
   constructor(
-    formulaName: string,
+    packageName: string,
     details: {
       ranges: string[];
       parents?: string[];
       availableVersions?: string[];
     }
   ) {
-    const msg = `No version of '${formulaName}' satisfies ranges: ${details.ranges.join(', ')}${details.availableVersions?.length ? `. Available: ${details.availableVersions.join(', ')}` : ''}`;
-    super(msg, ErrorCodes.VALIDATION_ERROR, { formulaName, ...details });
+    const msg = `No version of '${packageName}' satisfies ranges: ${details.ranges.join(', ')}${details.availableVersions?.length ? `. Available: ${details.availableVersions.join(', ')}` : ''}`;
+    super(msg, ErrorCodes.VALIDATION_ERROR, { packageName, ...details });
     this.name = 'VersionConflictError';
   }
 }
 
 export class PackageAlreadyExistsError extends OpenPackageError {
-  constructor(formulaName: string) {
-    super(`Package '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
+  constructor(packageName: string) {
+    super(`Package '${packageName}' already exists`, ErrorCodes.PACKAGE_ALREADY_EXISTS, { packageName });
   }
 }
 
 export class InvalidPackageError extends OpenPackageError {
   constructor(reason: string, details?: any) {
-    super(`Invalid formula: ${reason}`, ErrorCodes.INVALID_FORMULA, details);
+    super(`Invalid package: ${reason}`, ErrorCodes.INVALID_PACKAGE, details);
   }
 }
 

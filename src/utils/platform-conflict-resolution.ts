@@ -1,6 +1,6 @@
 /**
  * Platform Conflict Resolution Module
- * Utility functions for resolving platform-specific file conflicts during formula saving
+ * Utility functions for resolving platform-specific file conflicts during package saving
  */
 
 import { join, basename, dirname } from 'path';

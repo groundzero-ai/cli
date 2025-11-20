@@ -18,33 +18,33 @@ export interface RootFileProcessResult {
 }
 
 /**
- * Add a formula marker to a root file if not already present
+ * Add a package marker to a root file if not already present
  *
  * @param filePath - Path to the root file
- * @param formulaName - Name of the formula to add
+ * @param packageName - Name of the package to add
  * @returns Result indicating if the file was processed and why
  */
 export async function addPackageToRootFile(
   filePath: string,
-  formulaName: string
+  packageName: string
 ): Promise<RootFileProcessResult> {
   logger.debug(`Processing root file: ${filePath}`);
 
   try {
     const content = await readTextFile(filePath);
 
-    // Check if formula marker already exists
-    const existingContent = extractPackageContentFromRootFile(content, formulaName);
+    // Check if package marker already exists
+    const existingContent = extractPackageContentFromRootFile(content, packageName);
     if (existingContent !== null) {
-      console.log(`✓ Package '${formulaName}' is already added to ${getPathLeaf(filePath)}`);
+      console.log(`✓ Package '${packageName}' is already added to ${getPathLeaf(filePath)}`);
       return { processed: false, reason: 'already_exists' };
     }
 
     // Add empty marker section at the end
-    const updatedContent = mergePackageContentIntoRootFile(content, formulaName, '');
+    const updatedContent = mergePackageContentIntoRootFile(content, packageName, '');
     await writeTextFile(filePath, updatedContent);
 
-    console.log(`✓ Added formula marker for '${formulaName}' to ${getPathLeaf(filePath)}`);
+    console.log(`✓ Added package marker for '${packageName}' to ${getPathLeaf(filePath)}`);
     return { processed: true };
 
   } catch (error) {

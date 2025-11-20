@@ -70,8 +70,8 @@ export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): Frontm
       continue;
     }
 
-    // Only create merge plans for files that exist locally for this formula
-    // This prevents creating overrides for workspace-only files from other formulas
+    // Only create merge plans for files that exist locally for this package
+    // This prevents creating overrides for workspace-only files from other packages
     if (!group.local) {
       continue;
     }
@@ -208,7 +208,7 @@ function getOverrideRelativePath(registryPath: string, platform: Platform): stri
  * Resolve override decisions for each platform, handling conflicts based on mtime.
  */
 export async function resolveOverrideDecisions(
-  formulaDir: string,
+  packageDir: string,
   plan: FrontmatterMergePlan
 ): Promise<Map<Platform, OverrideResolution>> {
   const resolutions = new Map<Platform, OverrideResolution>();
@@ -227,7 +227,7 @@ export async function resolveOverrideDecisions(
         : workspaceOverride;
     const workspaceMtime = entry.candidate.mtime;
 
-    const absolutePath = join(formulaDir, relativePath);
+    const absolutePath = join(packageDir, relativePath);
     let localFrontmatter: any;
     let localMtime: number | undefined;
 
@@ -317,7 +317,7 @@ async function promptYamlOverrideDecision(
   platform: Platform,
   registryPath: string,
   workspaceFilePath: string,
-  formulaFilePath: string,
+  packageFilePath: string,
 ): Promise<'workspace' | 'local'> {
   const response = await safePrompts({
     type: 'select',
@@ -329,7 +329,7 @@ async function promptYamlOverrideDecision(
         value: 'workspace',
       },
       {
-        title: `Package (${formulaFilePath})`,
+        title: `Package (${packageFilePath})`,
         value: 'local',
       }
     ]
@@ -358,13 +358,13 @@ function createYamlPreview(data: any): string {
  * Apply frontmatter merge plans: resolve conflicts, update universal files, and write overrides.
  */
 export async function applyFrontmatterMergePlans(
-  formulaDir: string,
+  packageDir: string,
   plans: FrontmatterMergePlan[]
 ): Promise<void> {
   for (const plan of plans) {
-    plan.overrideDecisions = await resolveOverrideDecisions(formulaDir, plan);
-    await updateUniversalMarkdown(formulaDir, plan);
-    await applyOverrideFiles(formulaDir, plan);
+    plan.overrideDecisions = await resolveOverrideDecisions(packageDir, plan);
+    await updateUniversalMarkdown(packageDir, plan);
+    await applyOverrideFiles(packageDir, plan);
   }
 }
 
@@ -372,10 +372,10 @@ export async function applyFrontmatterMergePlans(
  * Update the universal markdown file with computed universal frontmatter.
  */
 async function updateUniversalMarkdown(
-  formulaDir: string,
+  packageDir: string,
   plan: FrontmatterMergePlan
 ): Promise<void> {
-  const universalPath = join(formulaDir, plan.registryPath);
+  const universalPath = join(packageDir, plan.registryPath);
 
   if (!(await exists(universalPath))) {
     return;
@@ -398,7 +398,7 @@ async function updateUniversalMarkdown(
  * Apply platform-specific override files based on resolved decisions.
  */
 async function applyOverrideFiles(
-  formulaDir: string,
+  packageDir: string,
   plan: FrontmatterMergePlan
 ): Promise<void> {
   if (!plan.overrideDecisions) {
@@ -406,14 +406,14 @@ async function applyOverrideFiles(
   }
 
   // Safety check: don't write overrides unless the universal file exists locally
-  // This prevents creating override files for files that don't belong to this formula
-  const universalPath = join(formulaDir, plan.registryPath);
+  // This prevents creating override files for files that don't belong to this package
+  const universalPath = join(packageDir, plan.registryPath);
   if (!(await exists(universalPath))) {
     return;
   }
 
   for (const resolution of plan.overrideDecisions.values()) {
-    const overridePath = join(formulaDir, resolution.relativePath);
+    const overridePath = join(packageDir, resolution.relativePath);
     const finalFrontmatter = resolution.finalFrontmatter;
 
     if (finalFrontmatter === undefined) {

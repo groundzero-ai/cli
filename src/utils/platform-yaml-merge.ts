@@ -96,7 +96,7 @@ function formatWithFrontmatter(data: Record<string, any>, body: string): string 
  *
  * - Only acts on markdown files (relPath must end with .md)
  * - Looks for `{universalSubdir}/{base}.{platform}.yml` in the provided files
- * - If found, merges YAML (non-formula) before the formula block
+ * - If found, merges YAML (non-package) before the package block
  * - Returns original content if no matching override
  */
 export function mergePlatformYamlOverride(
@@ -104,14 +104,14 @@ export function mergePlatformYamlOverride(
   targetPlatform: Platform,
   universalSubdir: string,
   relPath: string,
-  formulaFiles: PackageFile[]
+  packageFiles: PackageFile[]
 ): string {
   try {
     if (!relPath.endsWith(FILE_PATTERNS.MD_FILES)) return universalContent;
 
     const base = relPath.slice(0, -FILE_PATTERNS.MD_FILES.length);
     const overridePath = `${universalSubdir}/${base}.${targetPlatform}.yml`;
-    const matchingYml = formulaFiles.find(f => f.path === overridePath);
+    const matchingYml = packageFiles.find(f => f.path === overridePath);
 
     if (!matchingYml?.content?.trim()) {
       return universalContent;
@@ -149,23 +149,23 @@ export function mergePlatformYamlOverride(
 }
 
 /**
- * Load platform-specific YAML override files from the registry for a formula version.
+ * Load platform-specific YAML override files from the registry for a package version.
  * Matches files in universal subdirs with pattern: "{subdir}/{base}.{platform}.yml"
  */
 export async function loadRegistryYamlOverrides(
-  formulaName: string,
+  packageName: string,
   version: string
 ): Promise<PackageFile[]> {
   const overrides: PackageFile[] = [];
 
-  // Load formula from registry
-  const formula = await packageManager.loadPackage(formulaName, version);
+  // Load package from registry
+  const package = await packageManager.loadPackage(packageName, version);
 
   // Known platforms for suffix matching
   const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
   const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
 
-  for (const file of formula.files) {
+  for (const file of package.files) {
     const path = file.path;
     // Must be in a universal subdir
     if (!subdirs.some(sd => path.startsWith(sd + '/'))) continue;

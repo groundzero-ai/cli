@@ -166,19 +166,19 @@ function collapseFileEntriesToDirKeys(
 }
 
 /**
- * Build mapping from PackageFile[] and write/merge to formula.index.yml.
+ * Build mapping from PackageFile[] and write/merge to package.index.yml.
  * Automatically collapses file entries into directory keys when appropriate.
  */
 export interface BuildIndexOptions {
   /**
    * When true, do not collapse file entries into directory keys.
-   * Keeps exact file paths as keys in formula.index.yml.
+   * Keeps exact file paths as keys in package.index.yml.
    */
   preserveExactPaths?: boolean;
 }
 
 /**
- * Build a mapping that preserves exact file keys for the provided formulaFiles.
+ * Build a mapping that preserves exact file keys for the provided packageFiles.
  * For universal subdirs, maps to platform-specific installed paths using detected platforms.
  * For platform-specific paths (with .platform suffix), only maps to that specific platform.
  * For ai/ paths and other non-universal paths, keeps the value as the same path.
@@ -190,7 +190,7 @@ export interface BuildIndexOptions {
  * their target files are excluded from the universal key (e.g., setup.md) to avoid duplication.
  */
 function buildExactFileMapping(
-  formulaFiles: PackageFile[],
+  packageFiles: PackageFile[],
   platforms: Platform[]
 ): Record<string, string[]> {
   const mapping: Record<string, string[]> = {};
@@ -206,7 +206,7 @@ function buildExactFileMapping(
   };
 
   // First pass: record platform-specific target files keyed by base universal key
-  for (const file of formulaFiles) {
+  for (const file of packageFiles) {
     const normalized = normalizeRegistryPath(file.path);
     if (isRootRegistryPath(normalized)) continue;
     if (isSkippableRegistryPath(normalized)) continue;
@@ -231,7 +231,7 @@ function buildExactFileMapping(
   }
 
   // Second pass: build exact mappings and prune universal values that are covered by platform-specific keys
-  for (const file of formulaFiles) {
+  for (const file of packageFiles) {
     const normalized = normalizeRegistryPath(file.path);
     if (isRootRegistryPath(normalized)) continue;
     if (isSkippableRegistryPath(normalized)) continue;
@@ -293,41 +293,41 @@ function buildExactFileMapping(
 
 export async function buildMappingAndWriteIndex(
   cwd: string,
-  formulaName: string,
-  formulaFiles: PackageFile[],
+  packageName: string,
+  packageFiles: PackageFile[],
   platforms: Platform[],
   options: BuildIndexOptions = {}
 ): Promise<void> {
   try {
     // Read existing index and other indexes for conflict context
-    const previousIndex = await readPackageIndex(cwd, formulaName);
-    const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
+    const previousIndex = await readPackageIndex(cwd, packageName);
+    const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
 
-    // Resolve version (prefer previous index; otherwise read from formula.yml)
+    // Resolve version (prefer previous index; otherwise read from package.yml)
     let version = previousIndex?.version || '';
     if (!version) {
-      const formulaDir = getLocalPackageDir(cwd, formulaName);
-      const formulaYmlPath = join(formulaDir, 'formula.yml');
-      if (await exists(formulaYmlPath)) {
+      const packageDir = getLocalPackageDir(cwd, packageName);
+      const packageYmlPath = join(packageDir, 'package.yml');
+      if (await exists(packageYmlPath)) {
         try {
-          const formulaYml = await parsePackageYml(formulaYmlPath);
-          version = formulaYml.version;
+          const packageYml = await parsePackageYml(packageYmlPath);
+          version = packageYml.version;
         } catch (error) {
-          logger.warn(`Failed to read formula.yml for version: ${error}`);
+          logger.warn(`Failed to read package.yml for version: ${error}`);
           return;
         }
       }
     }
 
     if (!version) {
-      logger.debug(`No version found for ${formulaName}, skipping index update`);
+      logger.debug(`No version found for ${packageName}, skipping index update`);
       return;
     }
 
     // Build mapping using same flow as install
     let newMapping = await buildIndexMappingForPackageFiles(
       cwd,
-      formulaFiles,
+      packageFiles,
       platforms,
       previousIndex,
       otherIndexes
@@ -337,12 +337,12 @@ export async function buildMappingAndWriteIndex(
     // - If preserveExactPaths is true: force exact file keys and strip dir keys
     // - Otherwise: preserve the planner's dir/file decisions (already respects workspace occupancy)
     if (options.preserveExactPaths) {
-      newMapping = buildExactFileMapping(formulaFiles, platforms);
+      newMapping = buildExactFileMapping(packageFiles, platforms);
     }
 
     // Prune stale keys from previous index based on current files in .openpackage
     // This ensures keys are updated when files/directories are moved or renamed
-    const currentPaths = formulaFiles.map(f => f.path);
+    const currentPaths = packageFiles.map(f => f.path);
     const prunedPreviousFiles = pruneStaleKeysByCurrentFiles(
       previousIndex?.files || {},
       currentPaths
@@ -358,15 +358,15 @@ export async function buildMappingAndWriteIndex(
       newMapping
     );
     const indexRecord: PackageIndexRecord = {
-      path: getPackageIndexPath(cwd, formulaName),
-      formulaName,
+      path: getPackageIndexPath(cwd, packageName),
+      packageName,
       version,
       files: mergedFiles
     };
     await writePackageIndex(indexRecord);
-    logger.debug(`Updated formula.index.yml for ${formulaName}@${version}`);
+    logger.debug(`Updated package.index.yml for ${packageName}@${version}`);
   } catch (error) {
-    logger.warn(`Failed to update formula.index.yml for ${formulaName}: ${error}`);
+    logger.warn(`Failed to update package.index.yml for ${packageName}: ${error}`);
   }
 }
 

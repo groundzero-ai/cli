@@ -16,7 +16,7 @@ import type { DiscoveredFile, PackageYml, PackageFile } from '../types/index.js'
  */
 export async function splitPlatformFileFrontmatter(
   mdFile: DiscoveredFile,
-  formulaConfig: PackageYml,
+  packageConfig: PackageYml,
   rootFilenamesSet: Set<string>,
   logPrefix: string
 ): Promise<PackageFile[] | null> {

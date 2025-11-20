@@ -46,13 +46,13 @@ export function dumpYamlWithScopedQuoting(config: PackageYml, options: yaml.Dump
 }
 
 /**
- * Transform formula files for version change only (no name change)
- * Updates formula.yml version field
+ * Transform package files for version change only (no name change)
+ * Updates package.yml version field
  */
 export function transformPackageFilesForVersionChange(
   files: PackageFile[],
   newVersion: string,
-  formulaName: string
+  packageName: string
 ): PackageFile[] {
   return files.map((file) => {
     if (file.path === FILE_PATTERNS.FORMULA_YML) {
@@ -67,7 +67,7 @@ export function transformPackageFilesForVersionChange(
       } catch {
         // Fallback: minimal rewrite if parsing fails
         const fallback: PackageYml = {
-          name: formulaName,
+          name: packageName,
           version: newVersion
         };
         const dumped = dumpYamlWithScopedQuoting(fallback, { lineWidth: 120 });
@@ -79,8 +79,8 @@ export function transformPackageFilesForVersionChange(
 }
 
 /**
- * Transform formula files metadata for name and version changes
- * Updates formula.yml only
+ * Transform package files metadata for name and version changes
+ * Updates package.yml only
  */
 export function transformPackageFilesMetadata(
   files: PackageFile[],
@@ -89,7 +89,7 @@ export function transformPackageFilesMetadata(
   newVersion: string
 ): PackageFile[] {
   return files.map((file) => {
-    // Update formula.yml
+    // Update package.yml
     if (file.path === FILE_PATTERNS.FORMULA_YML) {
       try {
         const parsed = yaml.load(file.content) as PackageYml;
@@ -116,10 +116,10 @@ export function transformPackageFilesMetadata(
 }
 
 /**
- * Check if a formula version already exists
+ * Check if a package version already exists
  */
-export async function formulaVersionExists(formulaName: string, version: string): Promise<boolean> {
-  const targetPath = getPackageVersionPath(formulaName, version);
+export async function packageVersionExists(packageName: string, version: string): Promise<boolean> {
+  const targetPath = getPackageVersionPath(packageName, version);
   return await exists(targetPath);
 }
 

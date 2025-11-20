@@ -48,23 +48,23 @@ export function handleUserCancellation(error: unknown): { shouldProceed: boolean
 }
 
 /**
- * Create consistent error messages for formula operations
+ * Create consistent error messages for package operations
  */
-export function createPackageError(formulaName: string, operation: string, error: unknown): string {
-  return `${operation} failed for formula '${formulaName}': ${error}`;
+export function createPackageError(packageName: string, operation: string, error: unknown): string {
+  return `${operation} failed for package '${packageName}': ${error}`;
 }
 
 /**
- * Wrap formula installation with error handling
+ * Wrap package installation with error handling
  */
 export async function withPackageInstallationErrorHandling<T>(
   operation: () => Promise<T>,
-  formulaName: string
+  packageName: string
 ): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    const errorMessage = createPackageError(formulaName, 'Installation', error);
+    const errorMessage = createPackageError(packageName, 'Installation', error);
     logger.error(errorMessage, { error });
     throw new Error(errorMessage);
   }

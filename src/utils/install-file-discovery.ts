@@ -11,12 +11,12 @@ export interface CategorizedInstallFiles {
 
 
 function collectRootFiles(
-  formulaFiles: PackageFile[],
+  packageFiles: PackageFile[],
   platforms: Platform[]
 ): Map<string, string> {
   const rootFiles = new Map<string, string>();
   // Always consider universal AGENTS.md if present
-  const agents = formulaFiles.find(f => f.path === FILE_PATTERNS.AGENTS_MD);
+  const agents = packageFiles.find(f => f.path === FILE_PATTERNS.AGENTS_MD);
   if (agents) rootFiles.set(FILE_PATTERNS.AGENTS_MD, agents.content);
 
   // Platform-specific root files
@@ -25,7 +25,7 @@ function collectRootFiles(
     const def = getPlatformDefinition(platform);
     if (def.rootFile) platformRootNames.add(def.rootFile);
   }
-  for (const file of formulaFiles) {
+  for (const file of packageFiles) {
     if (platformRootNames.has(file.path)) {
       rootFiles.set(file.path, file.content);
     }
@@ -34,24 +34,24 @@ function collectRootFiles(
 }
 
 export async function discoverAndCategorizeFiles(
-  formulaName: string,
+  packageName: string,
   version: string,
   platforms: Platform[]
 ): Promise<CategorizedInstallFiles> {
   // Load once
-  const formula = await packageManager.loadPackage(formulaName, version);
+  const package = await packageManager.loadPackage(packageName, version);
 
-  // Priority 1: Path-based files (all files from formula)
+  // Priority 1: Path-based files (all files from package)
   const pathBasedFiles: PackageFile[] = [];
-  for (const file of formula.files) {
+  for (const file of package.files) {
     const p = file.path;
-    if (p === 'formula.yml') continue; // never install registry formula.yml
+    if (p === 'package.yml') continue; // never install registry package.yml
     // Root files handled separately
     pathBasedFiles.push(file);
   }
 
   // Priority 2: Root files (platform root + AGENTS.md)
-  const rootFiles = collectRootFiles(formula.files, platforms);
+  const rootFiles = collectRootFiles(package.files, platforms);
 
   return { pathBasedFiles, rootFiles };
 }

@@ -53,23 +53,23 @@ export async function ensureOpenPackageDirectories(): Promise<OpenPackageDirecto
 /**
  * Get the registry directories
  */
-export function getRegistryDirectories(): { formulas: string } {
+export function getRegistryDirectories(): { packages: string } {
   const openPackageDirs = getOpenPackageDirectories();
   const registryDir = path.join(openPackageDirs.data, 'registry');
   
   return {
-    formulas: path.join(registryDir, FORMULA_DIRS.FORMULAS)
+    packages: path.join(registryDir, FORMULA_DIRS.FORMULAS)
   };
 }
 
 /**
  * Ensure registry directories exist
  */
-export async function ensureRegistryDirectories(): Promise<{ formulas: string }> {
+export async function ensureRegistryDirectories(): Promise<{ packages: string }> {
   const dirs = getRegistryDirectories();
   
   try {
-    await ensureDir(dirs.formulas);
+    await ensureDir(dirs.packages);
     
     logger.debug('Registry directories ensured', { directories: dirs });
     return dirs;
@@ -96,74 +96,74 @@ export function getTempDirectory(operation: string): string {
 }
 
 /**
- * Get the base path for a formula (contains all versions)
+ * Get the base path for a package (contains all versions)
  * Package names are normalized to lowercase for consistent registry paths.
  */
-export function getPackagePath(formulaName: string): string {
+export function getPackagePath(packageName: string): string {
   const dirs = getRegistryDirectories();
-  const normalizedName = normalizePackageName(formulaName);
-  return path.join(dirs.formulas, normalizedName);
+  const normalizedName = normalizePackageName(packageName);
+  return path.join(dirs.packages, normalizedName);
 }
 
 /**
- * Get the path for a specific version of a formula
+ * Get the path for a specific version of a package
  */
-export function getPackageVersionPath(formulaName: string, version: string): string {
-  return path.join(getPackagePath(formulaName), version);
+export function getPackageVersionPath(packageName: string, version: string): string {
+  return path.join(getPackagePath(packageName), version);
 }
 
 /**
- * List all versions of a formula
+ * List all versions of a package
  */
-export async function listPackageVersions(formulaName: string): Promise<string[]> {
-  const formulaPath = getPackagePath(formulaName);
+export async function listPackageVersions(packageName: string): Promise<string[]> {
+  const packagePath = getPackagePath(packageName);
   
-  if (!(await exists(formulaPath))) {
+  if (!(await exists(packagePath))) {
     return [];
   }
   
-  const versions = await listDirectories(formulaPath);
+  const versions = await listDirectories(packagePath);
   return versions.sort((a, b) => semver.compare(b, a)); // Latest first
 }
 
 /**
- * Get the latest version of a formula
+ * Get the latest version of a package
  */
-export async function getLatestPackageVersion(formulaName: string): Promise<string | null> {
-  const versions = await listPackageVersions(formulaName);
+export async function getLatestPackageVersion(packageName: string): Promise<string | null> {
+  const versions = await listPackageVersions(packageName);
   return versions.length > 0 ? versions[0] : null;
 }
 
 /**
  * Check if a specific version exists
  */
-export async function hasPackageVersion(formulaName: string, version: string): Promise<boolean> {
-  const versionPath = getPackageVersionPath(formulaName, version);
+export async function hasPackageVersion(packageName: string, version: string): Promise<boolean> {
+  const versionPath = getPackageVersionPath(packageName, version);
   return await exists(versionPath);
 }
 
 /**
- * Find a formula by name, searching case-insensitively across registry directories.
- * Returns the normalized formula name if found, null otherwise.
- * If multiple formulas match the same normalized name, returns the first one found.
+ * Find a package by name, searching case-insensitively across registry directories.
+ * Returns the normalized package name if found, null otherwise.
+ * If multiple packages match the same normalized name, returns the first one found.
  */
-export async function findPackageByName(formulaName: string): Promise<string | null> {
-  const normalizedTarget = normalizePackageName(formulaName);
+export async function findPackageByName(packageName: string): Promise<string | null> {
+  const normalizedTarget = normalizePackageName(packageName);
   const dirs = getRegistryDirectories();
 
-  if (!(await exists(dirs.formulas))) {
+  if (!(await exists(dirs.packages))) {
     return null;
   }
 
-  const formulaDirs = await listDirectories(dirs.formulas);
+  const packageDirs = await listDirectories(dirs.packages);
 
   // First try exact normalized match
-  if (formulaDirs.includes(normalizedTarget)) {
+  if (packageDirs.includes(normalizedTarget)) {
     return normalizedTarget;
   }
 
   // Then try case-insensitive match
-  for (const dirName of formulaDirs) {
+  for (const dirName of packageDirs) {
     if (normalizePackageName(dirName) === normalizedTarget) {
       return dirName; // Return the actual directory name as it exists on disk
     }
@@ -173,31 +173,31 @@ export async function findPackageByName(formulaName: string): Promise<string | n
 }
 
 /**
- * List all formula base names in the local registry, including scoped formulas.
- * Returns names relative to the formulas root, e.g. 'name' or '@scope/name'.
+ * List all package base names in the local registry, including scoped packages.
+ * Returns names relative to the packages root, e.g. 'name' or '@scope/name'.
  */
 export async function listAllPackages(): Promise<string[]> {
-  const { formulas } = getRegistryDirectories();
+  const { packages } = getRegistryDirectories();
 
-  if (!(await exists(formulas))) {
+  if (!(await exists(packages))) {
     return [];
   }
 
   const result: string[] = [];
-  const topLevelDirs = await listDirectories(formulas);
+  const topLevelDirs = await listDirectories(packages);
 
   for (const firstLevel of topLevelDirs) {
-    const firstLevelPath = path.join(formulas, firstLevel);
+    const firstLevelPath = path.join(packages, firstLevel);
     const firstLevelChildren = await listDirectories(firstLevelPath);
 
-    // Unscoped formulas: name/<version>
+    // Unscoped packages: name/<version>
     const hasSemverChildren = firstLevelChildren.some(child => semver.valid(child));
     if (hasSemverChildren) {
       result.push(firstLevel);
       continue;
     }
 
-    // Scoped formulas: @scope/name/<version>
+    // Scoped packages: @scope/name/<version>
     for (const secondLevel of firstLevelChildren) {
       const secondLevelPath = path.join(firstLevelPath, secondLevel);
       const secondLevelChildren = await listDirectories(secondLevelPath);

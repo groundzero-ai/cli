@@ -85,7 +85,7 @@ export function parseDownloadName(downloadName: string): { name: string; version
   const atIndex = downloadName.lastIndexOf('@');
 
   if (atIndex <= 0 || atIndex === downloadName.length - 1) {
-    throw new Error(`Invalid download name '${downloadName}'. Expected format '<formula>@<version>'.`);
+    throw new Error(`Invalid download name '${downloadName}'. Expected format '<package>@<version>'.`);
   }
 
   return {
@@ -211,22 +211,22 @@ function buildPackageMetadata(
   fallbackName: string,
   fallbackVersion: string
 ): PackageYml {
-  const formulaFile = extracted.files.find(file => file.path === 'formula.yml');
+  const packageFile = extracted.files.find(file => file.path === 'package.yml');
 
-  if (formulaFile) {
+  if (packageFile) {
     try {
-      const parsed = yaml.load(formulaFile.content) as PackageYml | undefined;
+      const parsed = yaml.load(packageFile.content) as PackageYml | undefined;
 
       if (parsed && typeof parsed === 'object' && parsed.name && parsed.version) {
         return parsed;
       }
 
-      logger.debug('Parsed formula.yml missing required fields, falling back to inferred metadata', {
+      logger.debug('Parsed package.yml missing required fields, falling back to inferred metadata', {
         fallbackName,
         fallbackVersion
       });
     } catch (error) {
-      logger.debug('Failed to parse formula.yml from extracted tarball', {
+      logger.debug('Failed to parse package.yml from extracted tarball', {
         fallbackName,
         fallbackVersion,
         error
@@ -368,12 +368,12 @@ async function getRemotePackage(
 ): Promise<PullPackageResponse> {
   const encodedName = name.split('/').map(segment => encodeURIComponent(segment)).join('/');
   let endpoint = version && version !== 'latest'
-    ? `/formulas/pull/by-name/${encodedName}/v/${encodeURIComponent(version)}`
-    : `/formulas/pull/by-name/${encodedName}`;
+    ? `/packages/pull/by-name/${encodedName}/v/${encodeURIComponent(version)}`
+    : `/packages/pull/by-name/${encodedName}`;
   const finalEndpoint = recursive
     ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}recursive=true`
     : endpoint;
-  logger.debug(`Fetching remote formula metadata`, { name, version: version ?? 'latest', endpoint: finalEndpoint, recursive: !!recursive });
+  logger.debug(`Fetching remote package metadata`, { name, version: version ?? 'latest', endpoint: finalEndpoint, recursive: !!recursive });
   return await httpClient.get<PullPackageResponse>(finalEndpoint);
 }
 
@@ -398,12 +398,12 @@ async function savePackageToLocalRegistry(
   (metadata as any).created = response.version.createdAt;
   (metadata as any).updated = response.version.updatedAt;
 
-  const formula: Package = {
+  const package: Package = {
     metadata: metadata as PackageYml,
     files: extracted.files
   };
 
-  await packageManager.savePackage(formula);
+  await packageManager.savePackage(package);
 }
 
 function mapErrorToFailure(error: unknown): RemotePullFailure {

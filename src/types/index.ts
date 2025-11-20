@@ -74,8 +74,8 @@ export interface PackageYml {
   homepage?: string;
   repository?: PackageRepository;
 
-  formulas?: PackageDependency[];
-  'dev-formulas'?: PackageDependency[];
+  packages?: PackageDependency[];
+  'dev-packages'?: PackageDependency[];
 }
 
 // Command option types
@@ -84,7 +84,7 @@ export interface ListOptions {
   format: 'table' | 'json';
   filter?: string;
   all?: boolean;
-  formulaName?: string;
+  packageName?: string;
 }
 
 export interface DeleteOptions {
@@ -100,7 +100,7 @@ export interface PruneOptions {
 }
 
 export interface PrereleaseVersion {
-  formulaName: string;
+  packageName: string;
   version: string;
   baseVersion: string;
   timestamp: number;       // Extracted from base62 encoding
@@ -152,7 +152,7 @@ export interface SaveOptions {
   version?: string;        // Specify version explicitly
   setLatest?: boolean;     // Mark this version as latest (for display purposes)
   bump?: 'patch' | 'minor' | 'major';  // Auto-bump version type
-  rename?: string;         // Rename formula during save
+  rename?: string;         // Rename package during save
   skipProjectLink?: boolean;
 }
 
@@ -196,9 +196,9 @@ export class OpenPackageError extends Error {
 }
 
 export enum ErrorCodes {
-  FORMULA_NOT_FOUND = 'FORMULA_NOT_FOUND',
-  FORMULA_ALREADY_EXISTS = 'FORMULA_ALREADY_EXISTS',
-  INVALID_FORMULA = 'INVALID_FORMULA',
+  PACKAGE_NOT_FOUND = 'PACKAGE_NOT_FOUND',
+  PACKAGE_ALREADY_EXISTS = 'PACKAGE_ALREADY_EXISTS',
+  INVALID_PACKAGE = 'INVALID_PACKAGE',
   REGISTRY_ERROR = 'REGISTRY_ERROR',
   NETWORK_ERROR = 'NETWORK_ERROR',
   FILE_SYSTEM_ERROR = 'FILE_SYSTEM_ERROR',
@@ -261,7 +261,7 @@ export interface ContentAnalysisResult {
 export interface FileIdInfo {
   fullPath: string;
   id: string | null;
-  formulaName: string | null;
+  packageName: string | null;
   isValid: boolean;
   frontmatter: any | null;
 }

@@ -38,11 +38,11 @@ export function displayInstallationSummary(
   results: Array<{ name: string; success: boolean; error?: string }>
 ): void {
   console.log(`\n✓ Installation Summary:`);
-  console.log(`✓ Successfully installed: ${totalInstalled}/${totalPackages} formulas`);
+  console.log(`✓ Successfully installed: ${totalInstalled}/${totalPackages} packages`);
 
   if (totalSkipped > 0) {
-    console.log(`❌ Failed to install: ${totalSkipped} formulas`);
-    console.log('\nFailed formulas:');
+    console.log(`❌ Failed to install: ${totalSkipped} packages`);
+    console.log('\nFailed packages:');
     results.filter(r => !r.success).forEach(result => {
       console.log(`  • ${result.name}: ${result.error}`);
     });
@@ -53,7 +53,7 @@ export function displayInstallationSummary(
  * Display installation results
  */
 export function displayInstallationResults(
-  formulaName: string,
+  packageName: string,
   resolvedPackages: any[],
   platformResult: { platforms: string[]; created: string[] },
   options: any,
@@ -64,7 +64,7 @@ export function displayInstallationResults(
   missingPackages?: string[]
 ): void {
   // Build installation summary
-  let summaryText = `✓ Installed ${formulaName}`;
+  let summaryText = `✓ Installed ${packageName}`;
   if (mainPackage) {
     summaryText += `@${mainPackage.version}`;
   }
@@ -78,7 +78,7 @@ export function displayInstallationResults(
       console.log(`   ├── ${dep.name}@${dep.version}`);
     }
   }
-  console.log(`✓ Total formulas processed: ${resolvedPackages.length}`);
+  console.log(`✓ Total packages processed: ${resolvedPackages.length}`);
 
   // Show detailed file list
   if (allAddedFiles && allAddedFiles.length > 0) {
@@ -126,7 +126,7 @@ export function displayInstallationResults(
     console.log(`✓ Created platform directories: ${platformResult.created.join(', ')}`);
   }
 
-  // Report missing formulas (displayed last)
+  // Report missing packages (displayed last)
   if (missingPackages && missingPackages.length > 0) {
     console.log(`\n⚠️  Missing dependencies detected:`);
     for (const missing of missingPackages) {
@@ -135,7 +135,7 @@ export function displayInstallationResults(
     console.log(`\n💡 To resolve missing dependencies:`);
     console.log(`   • Create locally: opn init && opn save`);
     console.log(`   • Pull from remote: opn pull ${missingPackages.join(' ')}`);
-    console.log(`   • Remove from formula.yml`);
+    console.log(`   • Remove from package.yml`);
     console.log('');
   }
 

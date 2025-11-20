@@ -24,8 +24,8 @@ export interface DependencyResolutionResult {
 }
 
 export class VersionResolutionAbortError extends Error {
-  constructor(public formulaName: string) {
-    super(`Unable to resolve version for ${formulaName}`);
+  constructor(public packageName: string) {
+    super(`Unable to resolve version for ${packageName}`);
     this.name = 'VersionResolutionAbortError';
   }
 }
@@ -37,7 +37,7 @@ export interface ConflictProcessingResult {
 
 export interface InstallationPhasesParams {
   cwd: string;
-  formulas: ResolvedPackage[];
+  packages: ResolvedPackage[];
   platforms: Platform[];
   conflictResult: ConflictSummary;
   options: InstallOptions;
@@ -65,7 +65,7 @@ export interface GroundzeroPackageResult {
 type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllPackageConflicts>>;
 
 /**
- * Handle formula availability outcomes and return appropriate command results
+ * Handle package availability outcomes and return appropriate command results
  */
 /**
  * Prepare the installation environment by ensuring directories and basic files exist
@@ -91,7 +91,7 @@ export async function prepareInstallEnvironment(
  * Resolve dependencies for installation with version conflict handling
  */
 export async function resolveDependenciesForInstall(
-  formulaName: string,
+  packageName: string,
   cwd: string,
   version: string | undefined,
   options: InstallOptions
@@ -101,7 +101,7 @@ export async function resolveDependenciesForInstall(
 
   try {
     const result = await resolveDependencies(
-      formulaName,
+      packageName,
       cwd,
       true,
       new Set(),
@@ -119,7 +119,7 @@ export async function resolveDependenciesForInstall(
   } catch (error) {
     if (error instanceof VersionConflictError) {
       const conflictDetails: any = (error as any).details || {};
-      const conflictName = conflictDetails.formulaName || conflictDetails.formula || formulaName;
+      const conflictName = conflictDetails.packageName || conflictDetails.package || packageName;
       const available: string[] = conflictDetails.availableVersions || [];
 
       let chosenVersion: string | null = null;
@@ -137,7 +137,7 @@ export async function resolveDependenciesForInstall(
 
       const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
       const overrideResult = await resolveDependenciesWithOverrides(
-        formulaName,
+        packageName,
         cwd,
         [],
         updatedConstraints,
@@ -155,7 +155,7 @@ export async function resolveDependenciesForInstall(
 }
 
 /**
- * Process conflict resolution for all formulas in the dependency tree
+ * Process conflict resolution for all packages in the dependency tree
  */
 export async function processConflictResolution(
   resolvedPackages: ResolvedPackage[],
@@ -167,7 +167,7 @@ export async function processConflictResolution(
     return { cancelled: true };
   }
 
-  const finalResolvedPackages = resolvedPackages.filter(formula => !conflictResult.skippedPackages.includes(formula.name));
+  const finalResolvedPackages = resolvedPackages.filter(package => !conflictResult.skippedPackages.includes(package.name));
 
   return { finalResolvedPackages, conflictResult };
 }
@@ -177,9 +177,9 @@ export async function processConflictResolution(
  * Perform the index-based installation process
  */
 export async function performIndexBasedInstallationPhases(params: InstallationPhasesParams): Promise<InstallationPhasesResult> {
-  const { cwd, formulas, platforms, conflictResult, options, targetDir } = params;
+  const { cwd, packages, platforms, conflictResult, options, targetDir } = params;
 
-  // Install each formula using index-based installer
+  // Install each package using index-based installer
   let totalInstalled = 0;
   let totalUpdated = 0;
   let totalDeleted = 0;
@@ -188,7 +188,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
   const allUpdatedFiles: string[] = [];
   const allDeletedFiles: string[] = [];
 
-  for (const resolved of formulas) {
+  for (const resolved of packages) {
     try {
       logger.debug(`Installing ${resolved.name}@${resolved.version} using index-based installer`);
 
@@ -228,7 +228,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
     skipped: new Set<string>()
   };
 
-  for (const resolved of formulas) {
+  for (const resolved of packages) {
     try {
       const categorized = await discoverAndCategorizeFiles(resolved.name, resolved.version, platforms);
       const installResult = await installRootFilesFromMap(
@@ -264,8 +264,8 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
 }
 
 // Helper functions
-function formatPackageLabel(formulaName: string, version?: string): string {
-  return version ? `${formulaName}@${version}` : formulaName;
+function formatPackageLabel(packageName: string, version?: string): string {
+  return version ? `${packageName}@${version}` : packageName;
 }
 
 function getAIDir(cwd: string): string {

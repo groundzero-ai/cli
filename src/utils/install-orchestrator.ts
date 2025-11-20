@@ -6,8 +6,8 @@ import { packageManager } from '../core/package.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
 
 /**
- * Install formula files to ai directory
- * @param formulaName - Name of the formula to install
+ * Install package files to ai directory
+ * @param packageName - Name of the package to install
  * @param targetDir - Target directory for installation
  * @param options - Installation options including force and dry-run flags
  * @param version - Specific version to install (optional)
@@ -15,24 +15,24 @@ import { exists, ensureDir, writeTextFile } from './fs.js';
  * @returns Object containing installation results including file counts and status flags
  */
 export async function installAiFiles(
-  formulaName: string,
+  packageName: string,
   targetDir: string,
   options: InstallOptions,
   version?: string,
   forceOverwrite?: boolean
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
-  logger.debug(`Installing AI directory files for ${formulaName} to ${targetDir}`, { version, forceOverwrite });
+  logger.debug(`Installing AI directory files for ${packageName} to ${targetDir}`, { version, forceOverwrite });
 
   try {
-    // Get formula from registry
-    const formula = await packageManager.loadPackage(formulaName, version);
+    // Get package from registry
+    const package = await packageManager.loadPackage(packageName, version);
 
     // Filter to only install AI directory files (those starting with ai/) - allow all file types
     const aiPrefix = `${PLATFORM_DIRS.AI}/`;
-    const filesToInstall = formula.files.filter(file => file.path.startsWith(aiPrefix))
+    const filesToInstall = package.files.filter(file => file.path.startsWith(aiPrefix))
 
     if (filesToInstall.length === 0) {
-      logger.debug(`No AI directory files to install for ${formulaName}@${version || 'latest'}`);
+      logger.debug(`No AI directory files to install for ${packageName}@${version || 'latest'}`);
       return { installedCount: 0, files: [], overwritten: false, skipped: true };
     }
 
@@ -51,7 +51,7 @@ export async function installAiFiles(
 
     // Handle conflicts - skip if files exist and no force flag
     if (conflicts.length > 0 && options.force !== true && forceOverwrite !== true) {
-      logger.debug(`Skipping ${formulaName} - files would be overwritten: ${conflicts.map(c => c.targetPath).join(', ')}`);
+      logger.debug(`Skipping ${packageName} - files would be overwritten: ${conflicts.map(c => c.targetPath).join(', ')}`);
       return { installedCount: 0, files: [], overwritten: false, skipped: true };
     }
 
@@ -74,7 +74,7 @@ export async function installAiFiles(
 
     await Promise.all(installPromises);
 
-    logger.info(`Successfully installed ${installedFiles.length} AI directory files for ${formulaName}@${version || 'latest'}`);
+    logger.info(`Successfully installed ${installedFiles.length} AI directory files for ${packageName}@${version || 'latest'}`);
 
     return {
       installedCount: installedFiles.length,
@@ -84,7 +84,7 @@ export async function installAiFiles(
     };
 
   } catch (error) {
-    logger.error(`Failed to install AI files for formula ${formulaName}: ${error}`);
+    logger.error(`Failed to install AI files for package ${packageName}: ${error}`);
     return {
       installedCount: 0,
       files: [],
@@ -95,7 +95,7 @@ export async function installAiFiles(
 }
 
 /**
- * Install AI files from a pre-filtered list of formula files (avoids re-loading registry)
+ * Install AI files from a pre-filtered list of package files (avoids re-loading registry)
  */
 export async function installAiFilesFromList(
   cwd: string,

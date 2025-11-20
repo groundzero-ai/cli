@@ -20,34 +20,34 @@ export type PackageYmlInfo = {
 };
 
 /**
- * Create formula.yml automatically in a directory without user prompts
+ * Create package.yml automatically in a directory without user prompts
  * Reuses init command logic but makes it non-interactive
  */
-async function createPackageYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: PackageYml; isNewPackage: boolean }> {
+async function createPackageYmlInDirectory(packageDir: string, packageName: string): Promise<{ fullPath: string; config: PackageYml; isNewPackage: boolean }> {
   const cwd = process.cwd();
   
-  // Ensure the target directory exists (including formulas subdirectory)
+  // Ensure the target directory exists (including packages subdirectory)
   await ensureLocalOpenPackageStructure(cwd);
-  await ensureDir(formulaDir);
+  await ensureDir(packageDir);
   
-  // Create formula.yml in the formula directory (rTnot the main .openpackage directory)
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+  // Create package.yml in the package directory (rTnot the main .openpackage directory)
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
   
-  // Create default formula config
-  const formulaConfig: PackageYml = {
-    name: normalizePackageName(formulaName),
+  // Create default package config
+  const packageConfig: PackageYml = {
+    name: normalizePackageName(packageName),
     version: DEFAULT_VERSION
   };
   
-  // Create the formula.yml file
-  await writePackageYml(formulaYmlPath, formulaConfig);
-  console.log(`${LOG_PREFIXES.CREATED} ${formulaDir}`);
-  console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
-  console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
+  // Create the package.yml file
+  await writePackageYml(packageYmlPath, packageConfig);
+  console.log(`${LOG_PREFIXES.CREATED} ${packageDir}`);
+  console.log(`${LOG_PREFIXES.NAME} ${packageConfig.name}`);
+  console.log(`${LOG_PREFIXES.VERSION} ${packageConfig.version}`);
   
   return {
-    fullPath: formulaYmlPath,
-    config: formulaConfig,
+    fullPath: packageYmlPath,
+    config: packageConfig,
     isNewPackage: true
   };
 }
@@ -62,33 +62,33 @@ export async function getOrCreatePackageYml(
 ): Promise<PackageYmlInfo> {
   await ensureLocalOpenPackageStructure(cwd);
 
-  const formulaDir = getLocalPackageDir(cwd, name);
-  if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
-    // Create the formula directory if it doesn't exist
-    await ensureDir(formulaDir);
-    logger.debug("Created formula directory for save", { path: formulaDir });
+  const packageDir = getLocalPackageDir(cwd, name);
+  if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
+    // Create the package directory if it doesn't exist
+    await ensureDir(packageDir);
+    logger.debug("Created package directory for save", { path: packageDir });
   }
 
   const normalizedName = normalizePackageName(name);
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
 
-  let formulaConfig: PackageYml;
+  let packageConfig: PackageYml;
   let isNewPackage = false;
 
-  if (await exists(formulaYmlPath)) {
-    logger.debug("Found existing formula.yml for save", { path: formulaYmlPath });
+  if (await exists(packageYmlPath)) {
+    logger.debug("Found existing package.yml for save", { path: packageYmlPath });
     try {
-      formulaConfig = await parsePackageYml(formulaYmlPath);
-      console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
+      packageConfig = await parsePackageYml(packageYmlPath);
+      console.log(`✓ Found existing package ${packageConfig.name}@${packageConfig.version}`);
     } catch (error) {
       throw new ValidationError(
-        ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace("%s", formulaYmlPath).replace("%s", String(error))
+        ERROR_MESSAGES.PARSE_FORMULA_FAILED.replace("%s", packageYmlPath).replace("%s", String(error))
       );
     }
   } else {
-    logger.debug("No formula.yml found for save, creating", { dir: formulaDir });
-    const created = await createPackageYmlInDirectory(formulaDir, normalizedName);
-    formulaConfig = created.config;
+    logger.debug("No package.yml found for save, creating", { dir: packageDir });
+    const created = await createPackageYmlInDirectory(packageDir, normalizedName);
+    packageConfig = created.config;
     isNewPackage = true;
   }
 
@@ -96,7 +96,7 @@ export async function getOrCreatePackageYml(
     explicitVersion,
     versionType,
     bump,
-    isNewPackage ? undefined : formulaConfig.version
+    isNewPackage ? undefined : packageConfig.version
   );
 
   const allowOverwrite = force || targetVersion.endsWith(WIP_SUFFIX);
@@ -109,15 +109,15 @@ export async function getOrCreatePackageYml(
   }
 
   const updatedConfig: PackageYml = {
-    ...formulaConfig,
+    ...packageConfig,
     name: normalizedName,
     version: targetVersion
   };
 
-  await writePackageYml(formulaYmlPath, updatedConfig);
+  await writePackageYml(packageYmlPath, updatedConfig);
 
   return {
-    fullPath: formulaYmlPath,
+    fullPath: packageYmlPath,
     config: updatedConfig,
     isNewPackage,
     isRootPackage: false

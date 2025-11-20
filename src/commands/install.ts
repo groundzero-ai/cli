@@ -57,7 +57,7 @@ import { InstallScenario } from '../core/install/types.js';
 import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
 
 /**
- * Install all formulas from CWD formula.yml file
+ * Install all packages from CWD package.yml file
  * @param targetDir - Target directory for installation
  * @param options - Installation options including dev flag
  * @returns Command result with installation summary
@@ -67,61 +67,61 @@ async function installAllPackagesCommand(
   options: InstallOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  logger.info(`Installing all formulas from formula.yml to: ${getAIDir(cwd)}`, { options });
+  logger.info(`Installing all packages from package.yml to: ${getAIDir(cwd)}`, { options });
   
   await ensureRegistryDirectories();
   
-  // Auto-create basic formula.yml if it doesn't exist
+  // Auto-create basic package.yml if it doesn't exist
   await createBasicPackageYml(cwd);
   
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
   
   const cwdConfig: PackageYml = await withOperationErrorHandling(
-    () => parsePackageYml(formulaYmlPath),
-    'parse formula.yml',
-    formulaYmlPath
+    () => parsePackageYml(packageYmlPath),
+    'parse package.yml',
+    packageYmlPath
   );
   
   const allPackagesToInstall = extractPackagesFromConfig(cwdConfig);
 
-  // Filter out any formulas that match the root formula name
-  const formulasToInstall = [];
+  // Filter out any packages that match the root package name
+  const packagesToInstall = [];
   const skippedRootPackages = [];
-  for (const formula of allPackagesToInstall) {
-    if (await isRootPackage(cwd, formula.name)) {
-      skippedRootPackages.push(formula);
-      console.log(`⚠️  Skipping ${formula.name} - it matches your project's root formula name`);
+  for (const package of allPackagesToInstall) {
+    if (await isRootPackage(cwd, package.name)) {
+      skippedRootPackages.push(package);
+      console.log(`⚠️  Skipping ${package.name} - it matches your project's root package name`);
     } else {
-      formulasToInstall.push(formula);
+      packagesToInstall.push(package);
     }
   }
 
-  if (formulasToInstall.length === 0) {
+  if (packagesToInstall.length === 0) {
     if (skippedRootPackages.length > 0) {
-      console.log('✓ All formulas in formula.yml were skipped (matched root formula)');
+      console.log('✓ All packages in package.yml were skipped (matched root package)');
       console.log('\nTips:');
-      console.log('• Root formulas cannot be installed as dependencies');
-      console.log('• Use "opn install <package-name>" to install external formulas');
-      console.log('• Use "opn save" to save your root formula to the registry');
+      console.log('• Root packages cannot be installed as dependencies');
+      console.log('• Use "opn install <package-name>" to install external packages');
+      console.log('• Use "opn save" to save your root package to the registry');
     } else {
-      console.log('⚠️ No formulas found in formula.yml');
+      console.log('⚠️ No packages found in package.yml');
       console.log('\nTips:');
-      console.log('• Add formulas to the "formulas" array in formula.yml');
-      console.log('• Add development formulas to the "dev-formulas" array in formula.yml');
-      console.log('• Use "opn install <package-name>" to install a specific formula');
+      console.log('• Add packages to the "packages" array in package.yml');
+      console.log('• Add development packages to the "dev-packages" array in package.yml');
+      console.log('• Use "opn install <package-name>" to install a specific package');
     }
 
     return { success: true, data: { installed: 0, skipped: skippedRootPackages.length } };
   }
 
-  console.log(`✓ Installing ${formulasToInstall.length} formulas from formula.yml:`);
-  formulasToInstall.forEach(formula => {
-    const prefix = formula.isDev ? '[dev] ' : '';
-    const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
+  console.log(`✓ Installing ${packagesToInstall.length} packages from package.yml:`);
+  packagesToInstall.forEach(package => {
+    const prefix = package.isDev ? '[dev] ' : '';
+    const label = package.version ? `${package.name}@${package.version}` : package.name;
     console.log(`  • ${prefix}${label}`);
   });
   if (skippedRootPackages.length > 0) {
-    console.log(`  • ${skippedRootPackages.length} formulas skipped (matched root formula)`);
+    console.log(`  • ${skippedRootPackages.length} packages skipped (matched root package)`);
   }
   console.log('');
 
@@ -129,15 +129,15 @@ async function installAllPackagesCommand(
   const normalizedPlatforms = normalizePlatforms(options.platforms);
   const resolvedPlatforms = await resolvePlatforms(cwd, normalizedPlatforms, { interactive });
 
-  // Install formulas sequentially to avoid conflicts
+  // Install packages sequentially to avoid conflicts
   let totalInstalled = 0;
   let totalSkipped = 0;
   const results: Array<{ name: string; success: boolean; error?: string }> = [];
   const aggregateWarnings = new Set<string>();
   
-  for (const formula of formulasToInstall) {
+  for (const package of packagesToInstall) {
     try {
-      const label = formula.version ? `${formula.name}@${formula.version}` : formula.name;
+      const label = package.version ? `${package.name}@${package.version}` : package.name;
 
       const baseConflictDecisions = options.conflictDecisions
         ? { ...options.conflictDecisions }
@@ -145,16 +145,16 @@ async function installAllPackagesCommand(
 
       const installOptions: InstallOptions = {
         ...options,
-        dev: formula.isDev,
+        dev: package.isDev,
         resolvedPlatforms,
         conflictDecisions: baseConflictDecisions
       };
 
-      let conflictPlanningVersion = formula.version;
-      if (formula.version && !isExactVersion(formula.version)) {
+      let conflictPlanningVersion = package.version;
+      if (package.version && !isExactVersion(package.version)) {
         try {
-          const localVersions = await listPackageVersions(formula.name);
-          conflictPlanningVersion = resolveVersionRange(formula.version, localVersions) ?? undefined;
+          const localVersions = await listPackageVersions(package.name);
+          conflictPlanningVersion = resolveVersionRange(package.version, localVersions) ?? undefined;
         } catch {
           conflictPlanningVersion = undefined;
         }
@@ -164,7 +164,7 @@ async function installAllPackagesCommand(
         try {
           const conflicts = await planConflictsForPackage(
             cwd,
-            formula.name,
+            package.name,
             conflictPlanningVersion,
             resolvedPlatforms
           );
@@ -229,39 +229,39 @@ async function installAllPackagesCommand(
         }
       }
 
-      console.log(`\n🔧 Installing ${formula.isDev ? '[dev] ' : ''}${label}...`);
+      console.log(`\n🔧 Installing ${package.isDev ? '[dev] ' : ''}${label}...`);
 
       const result = await installPackageCommand(
-        formula.name,
+        package.name,
         targetDir,
         installOptions,
-        formula.version
+        package.version
       );
       
       if (result.success) {
         totalInstalled++;
-        results.push({ name: formula.name, success: true });
-        console.log(`✓ Successfully installed ${formula.name}`);
+        results.push({ name: package.name, success: true });
+        console.log(`✓ Successfully installed ${package.name}`);
 
         if (result.warnings && result.warnings.length > 0) {
           result.warnings.forEach(warning => aggregateWarnings.add(warning));
         }
       } else {
         totalSkipped++;
-        results.push({ name: formula.name, success: false, error: result.error });
-        console.log(`❌ Failed to install ${formula.name}: ${result.error}`);
+        results.push({ name: package.name, success: false, error: result.error });
+        console.log(`❌ Failed to install ${package.name}: ${result.error}`);
       }
     } catch (error) {
       if (error instanceof UserCancellationError) {
         throw error; // Re-throw to allow clean exit
       }
       totalSkipped++;
-      results.push({ name: formula.name, success: false, error: String(error) });
-      console.log(`❌ Failed to install ${formula.name}: ${error}`);
+      results.push({ name: package.name, success: false, error: String(error) });
+      console.log(`❌ Failed to install ${package.name}: ${error}`);
     }
   }
   
-  displayInstallationSummary(totalInstalled, totalSkipped, formulasToInstall.length, results);
+  displayInstallationSummary(totalInstalled, totalSkipped, packagesToInstall.length, results);
 
   if (aggregateWarnings.size > 0) {
     console.log('\n⚠️  Warnings during installation:');
@@ -279,41 +279,41 @@ async function installAllPackagesCommand(
       skipped: totalSkipped,
       results
     },
-    error: allSuccessful ? undefined : `${totalSkipped} formulas failed to install`,
-    warnings: totalSkipped > 0 ? [`${totalSkipped} formulas failed to install`] : undefined
+    error: allSuccessful ? undefined : `${totalSkipped} packages failed to install`,
+    warnings: totalSkipped > 0 ? [`${totalSkipped} packages failed to install`] : undefined
   };
 }
 
 
 /**
- * Install formula command implementation with recursive dependency resolution
- * @param formulaName - Name of the formula to install
+ * Install package command implementation with recursive dependency resolution
+ * @param packageName - Name of the package to install
  * @param targetDir - Target directory for installation
  * @param options - Installation options including force, dry-run, and dev flags
  * @param version - Specific version to install (optional)
  * @returns Command result with detailed installation information
  */
 async function installPackageCommand(
-  formulaName: string,
+  packageName: string,
   targetDir: string,
   options: InstallOptions,
   version?: string
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
-  // 1) Validate root formula and early return
-  if (await isRootPackage(cwd, formulaName)) {
-    console.log(`⚠️  Cannot install ${formulaName} - it matches your project's root formula name`);
+  // 1) Validate root package and early return
+  if (await isRootPackage(cwd, packageName)) {
+    console.log(`⚠️  Cannot install ${packageName} - it matches your project's root package name`);
     console.log(`   This would create a circular dependency.`);
-    console.log(`💡 Tip: Use 'opn install' without specifying a formula name to install all formulas`);
-    console.log(`   referenced in your .openpackage/formula.yml file.`);
+    console.log(`💡 Tip: Use 'opn install' without specifying a package name to install all packages`);
+    console.log(`   referenced in your .openpackage/package.yml file.`);
     return {
       success: true,
-      data: { skipped: true, reason: 'root formula' }
+      data: { skipped: true, reason: 'root package' }
     };
   }
 
-  logger.debug(`Installing formula '${formulaName}' with dependencies to: ${getAIDir(cwd)}`, { options });
+  logger.debug(`Installing package '${packageName}' with dependencies to: ${getAIDir(cwd)}`, { options });
 
   const dryRun = !!options.dryRun;
   const forceRemote = !!options.remote;
@@ -324,7 +324,7 @@ async function installPackageCommand(
   let downloadVersion = versionConstraint;
   if (versionConstraint && !isExactVersion(versionConstraint)) {
     try {
-      const localVersions = await listPackageVersions(formulaName);
+      const localVersions = await listPackageVersions(packageName);
       downloadVersion = resolveVersionRange(versionConstraint, localVersions) ?? undefined;
     } catch {
       downloadVersion = undefined;
@@ -332,8 +332,8 @@ async function installPackageCommand(
   }
 
   const mainPackageAvailableLocally = downloadVersion
-    ? await hasPackageVersion(formulaName, downloadVersion)
-    : await packageManager.packageExists(formulaName);
+    ? await hasPackageVersion(packageName, downloadVersion)
+    : await packageManager.packageExists(packageName);
 
   // 2) Determine install scenario
   const scenario: InstallScenario = forceRemote
@@ -353,7 +353,7 @@ async function installPackageCommand(
     | { success: false; commandResult: CommandResult }
   > => {
     try {
-      const data = await resolveDependenciesForInstall(formulaName, cwd, versionConstraint, options);
+      const data = await resolveDependenciesForInstall(packageName, cwd, versionConstraint, options);
       return { success: true, data };
     } catch (error) {
       if (error instanceof VersionResolutionAbortError) {
@@ -420,12 +420,12 @@ async function installPackageCommand(
     // 6) Else (remote-primary / force-remote)
 
     // Fetch metadata for root
-    const metadataSpinner = dryRun ? null : new Spinner('Fetching formula metadata...');
+    const metadataSpinner = dryRun ? null : new Spinner('Fetching package metadata...');
     if (metadataSpinner) metadataSpinner.start();
 
     let metadataResult;
     try {
-      metadataResult = await fetchRemotePackageMetadata(formulaName, downloadVersion, { recursive: true, profile: options.profile, apiKey: options.apiKey });
+      metadataResult = await fetchRemotePackageMetadata(packageName, downloadVersion, { recursive: true, profile: options.profile, apiKey: options.apiKey });
     } finally {
       if (metadataSpinner) metadataSpinner.stop();
     }
@@ -433,7 +433,7 @@ async function installPackageCommand(
     if (!metadataResult.success) {
       const requestedVersionLabel = downloadVersion ?? versionConstraint;
       const message = describeRemoteFailure(
-        requestedVersionLabel ? `${formulaName}@${requestedVersionLabel}` : formulaName,
+        requestedVersionLabel ? `${packageName}@${requestedVersionLabel}` : packageName,
         metadataResult
       );
       console.log(`❌ ${message}`);
@@ -445,7 +445,7 @@ async function installPackageCommand(
     warnings.push(...planWarnings);
 
     if (downloadKeys.size > 0 || dryRun) {
-      const spinner = dryRun ? null : new Spinner(`Pulling ${downloadKeys.size} formula(s) from remote registry...`);
+      const spinner = dryRun ? null : new Spinner(`Pulling ${downloadKeys.size} package(s) from remote registry...`);
       if (spinner) spinner.start();
 
       let batchResult: RemoteBatchPullResult;
@@ -487,7 +487,7 @@ async function installPackageCommand(
 
   // 7) Warn if still missing
   if (missingPackages.length > 0) {
-    const missingSummary = `Missing formulas after pull: ${Array.from(new Set(missingPackages)).join(', ')}`;
+    const missingSummary = `Missing packages after pull: ${Array.from(new Set(missingPackages)).join(', ')}`;
     console.log(`⚠️  ${missingSummary}`);
     warnings.push(missingSummary);
   }
@@ -499,7 +499,7 @@ async function installPackageCommand(
     return {
       success: true,
       data: {
-        formulaName,
+        packageName,
         targetDir: getAIDir(cwd),
         resolvedPackages: [],
         totalPackages: 0,
@@ -514,15 +514,15 @@ async function installPackageCommand(
 
   displayDependencyTree(finalResolvedPackages, true);
 
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
-  const formulaYmlExists = await exists(formulaYmlPath);
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
+  const packageYmlExists = await exists(packageYmlPath);
 
   // 9) If dryRun, delegate to handleDryRunMode and return
   if (options.dryRun) {
-    return await handleDryRunMode(finalResolvedPackages, formulaName, targetDir, options, formulaYmlExists);
+    return await handleDryRunMode(finalResolvedPackages, packageName, targetDir, options, packageYmlExists);
   }
 
-  // 10) Resolve platforms, create dirs, perform phases, write metadata, update formula.yml, display results, return
+  // 10) Resolve platforms, create dirs, perform phases, write metadata, update package.yml, display results, return
   const canPromptForPlatforms = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const finalPlatforms = options.resolvedPlatforms && options.resolvedPlatforms.length > 0
     ? options.resolvedPlatforms
@@ -533,7 +533,7 @@ async function installPackageCommand(
 
   const installationOutcome = await performIndexBasedInstallationPhases({
     cwd,
-    formulas: finalResolvedPackages,
+    packages: finalResolvedPackages,
     platforms: finalPlatforms as Platform[],
     conflictResult,
     options,
@@ -544,17 +544,17 @@ async function installPackageCommand(
     await writeLocalPackageFromRegistry(cwd, resolved.name, resolved.version);
   }
 
-  if (formulaYmlExists && mainPackage) {
+  if (packageYmlExists && mainPackage) {
     const transitivelyCovered = await isPackageTransitivelyCovered(cwd, mainPackage.name);
     if (!transitivelyCovered) {
-      await addPackageToYml(cwd, formulaName, mainPackage.version, options.dev || false, version, true);
+      await addPackageToYml(cwd, packageName, mainPackage.version, options.dev || false, version, true);
     } else {
-      logger.debug(`Skipping addition of ${mainPackage.name} to formula.yml; already covered transitively.`);
+      logger.debug(`Skipping addition of ${mainPackage.name} to package.yml; already covered transitively.`);
     }
   }
 
   displayInstallationResults(
-    formulaName,
+    packageName,
     finalResolvedPackages,
     { platforms: finalPlatforms, created: createdDirs },
     options,
@@ -568,7 +568,7 @@ async function installPackageCommand(
   return {
     success: true,
     data: {
-      formulaName,
+      packageName,
       targetDir: getAIDir(cwd),
       resolvedPackages: finalResolvedPackages,
       totalPackages: finalResolvedPackages.length,
@@ -583,25 +583,25 @@ async function installPackageCommand(
 
 /**
  * Main install command router - handles both individual and bulk install
- * @param formulaName - Name of formula to install (optional, installs all if not provided)
+ * @param packageName - Name of package to install (optional, installs all if not provided)
  * @param targetDir - Target directory for installation
  * @param options - Installation options
  * @returns Command result with installation status and data
  */
 async function installCommand(
-  formulaName: string | undefined,
+  packageName: string | undefined,
   targetDir: string,
   options: InstallOptions
 ): Promise<CommandResult> {
-  // If no formula name provided, install all from formula.yml
-  if (!formulaName) {
+  // If no package name provided, install all from package.yml
+  if (!packageName) {
     return await installAllPackagesCommand(targetDir, options);
   }
 
-  // Parse formula name and version from input
-  const { name, version: inputVersion } = parsePackageInput(formulaName);
+  // Parse package name and version from input
+  const { name, version: inputVersion } = parsePackageInput(packageName);
 
-  // Install the specific formula with version
+  // Install the specific package with version
   return await installPackageCommand(name, targetDir, options, inputVersion);
 }
 
@@ -613,18 +613,18 @@ export function setupInstallCommand(program: Command): void {
   program
     .command('install')
     .alias('i')
-    .description('Install formulas from local registry to codebase at cwd. Supports versioning with formula@version syntax.')
-    .argument('[package-name]', 'name of the formula to install (optional - installs all from formula.yml if not specified). Supports formula@version syntax.')
+    .description('Install packages from local registry to codebase at cwd. Supports versioning with package@version syntax.')
+    .argument('[package-name]', 'name of the package to install (optional - installs all from package.yml if not specified). Supports package@version syntax.')
     .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--force', 'overwrite existing files')
     .option('--conflicts <strategy>', 'conflict handling strategy: keep-both, overwrite, skip, or ask')
-    .option('--dev', 'add formula to dev-formulas instead of formulas')
+    .option('--dev', 'add package to dev-packages instead of packages')
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .option('--remote', 'pull and install from remote registry, ignoring local versions')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
-    .action(withErrorHandling(async (formulaName: string | undefined, targetDir: string, options: InstallOptions) => {
+    .action(withErrorHandling(async (packageName: string | undefined, targetDir: string, options: InstallOptions) => {
       // Normalize platforms option early for downstream logic
       options.platforms = normalizePlatforms(options.platforms);
 
@@ -639,7 +639,7 @@ export function setupInstallCommand(program: Command): void {
         options.conflictStrategy = normalizedStrategy as InstallOptions['conflictStrategy'];
       }
 
-      const result = await installCommand(formulaName, targetDir, options);
+      const result = await installCommand(packageName, targetDir, options);
       if (!result.success) {
         if (result.error === 'Package not found') {
           // Handled case: already printed minimal message, do not bubble to global handler

@@ -11,21 +11,21 @@ import { SaveCandidate } from './save-candidate-types.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 
 export async function loadLocalRootSaveCandidates(
-  formulaDir: string,
-  formulaName: string
+  packageDir: string,
+  packageName: string
 ): Promise<SaveCandidate[]> {
   const candidates: SaveCandidate[] = [];
   const rootFileNames = getCandidateRootFileNames();
 
   for (const fileName of rootFileNames) {
-    const fullPath = join(formulaDir, fileName);
+    const fullPath = join(packageDir, fileName);
     if (!(await exists(fullPath))) {
       continue;
     }
 
     try {
       const content = await readTextFile(fullPath);
-      const extracted = extractPackageSection(content, formulaName);
+      const extracted = extractPackageSection(content, packageName);
       const sectionBody = extracted?.sectionBody?.trim() ?? content.trim();
       const contentHash = await calculateFileHash(sectionBody);
       const mtime = await getFileMtime(fullPath);
@@ -54,15 +54,15 @@ export async function loadLocalRootSaveCandidates(
 
 export async function discoverWorkspaceRootSaveCandidates(
   cwd: string,
-  formulaName: string
+  packageName: string
 ): Promise<SaveCandidate[]> {
-  const discovered = await discoverAllRootFiles(cwd, formulaName);
+  const discovered = await discoverAllRootFiles(cwd, packageName);
   const candidates: SaveCandidate[] = [];
 
   for (const file of discovered) {
     try {
       const content = await readTextFile(file.fullPath);
-      const extracted = extractPackageSection(content, formulaName);
+      const extracted = extractPackageSection(content, packageName);
       const sectionBody = extracted?.sectionBody?.trim();
 
       if (!sectionBody) {

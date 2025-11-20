@@ -5,20 +5,20 @@ export const VERSION_TYPE_STABLE = 'stable';
 export const WIP_SUFFIX = '-wip';
 
 export const ERROR_MESSAGES = {
-  INVALID_FORMULA_SYNTAX: 'Invalid formula syntax: %s. Use format: formula@version',
+  INVALID_FORMULA_SYNTAX: 'Invalid package syntax: %s. Use format: package@version',
   VERSION_EXISTS: 'Version %s already exists. Use --force to overwrite.',
-  SAVE_FAILED: 'Failed to save formula',
+  SAVE_FAILED: 'Failed to save package',
   OPERATION_CANCELLED: 'Operation cancelled by user',
   INVALID_VERSION_FORMAT: 'Invalid version format: %s',
   INVALID_BUMP_TYPE: 'Invalid bump type: %s. Must be \'patch\', \'minor\', or \'major\'.',
   INVALID_VERSION_TYPE: 'Invalid version type: %s. Only \'%s\' is supported.',
-  PARSE_FORMULA_FAILED: 'Failed to parse existing formula.yml at %s: %s',
+  PARSE_FORMULA_FAILED: 'Failed to parse existing package.yml at %s: %s',
   FORMULA_DIR_NOT_FOUND: 'Package directory not found at %s'
 } as const;
 
 export const LOG_PREFIXES = {
-  CREATED: '✓ Created formula.yml in',
-  FOUND: '✓ Found existing formula.yml',
+  CREATED: '✓ Created package.yml in',
+  FOUND: '✓ Found existing package.yml',
   NAME: '✓ Name:',
   VERSION: '✓ Version:',
   FILES: '✓ Found',
@@ -27,7 +27,7 @@ export const LOG_PREFIXES = {
   SAVED: '✓ Saved',
   UPDATED: '✓ Updated frontmatter in',
   EXPLICIT_VERSION: '✓ Using explicit version:',
-  PRERELEASE: '✓ New formula, setting to prerelease:',
+  PRERELEASE: '✓ New package, setting to prerelease:',
   BUMP_STABLE: '✓ Bumping to stable version:',
   BUMP_PRERELEASE: '✓ Bumping to prerelease version:',
   CONVERT_STABLE: '✓ Converting to stable version:',

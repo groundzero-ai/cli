@@ -18,15 +18,15 @@ import { Spinner } from '../utils/spinner.js';
 import { 
   computeStableVersion, 
   transformPackageFilesForVersionChange,
-  formulaVersionExists 
+  packageVersionExists 
 } from '../utils/package-versioning.js';
 
 /**
- * Push formula command implementation
+ * Push package command implementation
  */
 async function createStablePackageVersion(pkg: any, stableVersion: string): Promise<any> {
   // Abort if target stable version already exists
-  if (await formulaVersionExists(pkg.metadata.name, stableVersion)) {
+  if (await packageVersionExists(pkg.metadata.name, stableVersion)) {
     throw new Error(`Stable version already exists: ${pkg.metadata.name}@${stableVersion}`);
   }
 
@@ -49,11 +49,11 @@ async function createStablePackageVersion(pkg: any, stableVersion: string): Prom
 }
 
 async function pushPackageCommand(
-  formulaInput: string,
+  packageInput: string,
   options: PushOptions
 ): Promise<CommandResult> {
-  logger.info(`Pushing formula '${formulaInput}' to remote registry`, { options });
-  const { name: parsedName, version: parsedVersion } = parsePackageInput(formulaInput);
+  logger.info(`Pushing package '${packageInput}' to remote registry`, { options });
+  const { name: parsedName, version: parsedVersion } = parsePackageInput(packageInput);
   let attemptedVersion: string | undefined;
 
   showBetaRegistryMessage();
@@ -62,16 +62,16 @@ async function pushPackageCommand(
     // Ensure registry directories exist
     await ensureRegistryDirectories();
     
-    // Verify formula exists locally
+    // Verify package exists locally
     const exists = await packageManager.packageExists(parsedName);
     if (!exists) {
       console.error(`❌ Package '${parsedName}' not found in local registry`);
       return { success: false, error: 'Package not found' };
     }
     
-    // Load formula and determine version
-    let formula = await packageManager.loadPackage(parsedName, parsedVersion);
-    let versionToPush = parsedVersion || formula.metadata.version;
+    // Load package and determine version
+    let package = await packageManager.loadPackage(parsedName, parsedVersion);
+    let versionToPush = parsedVersion || package.metadata.version;
     attemptedVersion = versionToPush;
 
     // Reject or handle prerelease versions
@@ -81,7 +81,7 @@ async function pushPackageCommand(
         console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
         console.log('');
         console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
-        console.log('💡 Please create a stable formula using the command "opn save <formula> stable".');
+        console.log('💡 Please create a stable package using the command "opn save <package> stable".');
         return { success: false, error: 'Only stable versions can be pushed' };
       } else {
         // Latest is prerelease and no version was specified -> prompt to convert
@@ -95,7 +95,7 @@ async function pushPackageCommand(
 
         const stableVersion = computeStableVersion(versionToPush);
         console.log(`Converting to stable '${stableVersion}' and pushing...`);
-        formula = await createStablePackageVersion(formula, stableVersion);
+        package = await createStablePackageVersion(package, stableVersion);
         versionToPush = stableVersion;
         attemptedVersion = versionToPush;
       }
@@ -115,22 +115,22 @@ async function pushPackageCommand(
     const registryUrl = authManager.getRegistryUrl();
     const profile = authManager.getCurrentProfile(authOptions);
     
-    console.log(`✓ Pushing formula '${parsedName}' to remote registry...`);
+    console.log(`✓ Pushing package '${parsedName}' to remote registry...`);
     console.log(`✓ Version: ${versionToPush}`);
     console.log(`✓ Profile: ${profile}`);
     console.log('');
     
-    // Step 1: Validate formula completeness
+    // Step 1: Validate package completeness
     console.log('✓ Package validation complete');
-    console.log(`  • Name: ${formula.metadata.name}`);
+    console.log(`  • Name: ${package.metadata.name}`);
     console.log(`  • Version: ${versionToPush}`);
-    console.log(`  • Description: ${formula.metadata.description || '(no description)'}`);
-    console.log(`  • Files: ${formula.files.length}`);
+    console.log(`  • Description: ${package.metadata.description || '(no description)'}`);
+    console.log(`  • Files: ${package.files.length}`);
     
     // Step 2: Create tarball
     console.log('✓ Creating tarball...');
-    const tarballInfo = await createTarballFromPackage(formula);
-    console.log(`✓ Created tarball (${formula.files.length} files, ${formatFileSize(tarballInfo.size)})`);
+    const tarballInfo = await createTarballFromPackage(package);
+    console.log(`✓ Created tarball (${package.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
     // Step 3: Prepare upload data
     const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);
@@ -142,7 +142,7 @@ async function pushPackageCommand(
     let response: PushPackageResponse;
     try {
       response = await httpClient.uploadFormData<PushPackageResponse>(
-        '/formulas/push',
+        '/packages/push',
         formData
       );
       uploadSpinner.stop();
@@ -168,7 +168,7 @@ async function pushPackageCommand(
     return {
       success: true,
       data: {
-        formulaName: response.package.name,
+        packageName: response.package.name,
         version: response.version.version,
         size: tarballInfo.size,
         checksum: tarballInfo.checksum,
@@ -179,19 +179,19 @@ async function pushPackageCommand(
     };
     
   } catch (error) {
-    logger.debug('Push command failed', { error, formulaName: parsedName });
+    logger.debug('Push command failed', { error, packageName: parsedName });
     
     // Handle specific error cases
     if (error instanceof Error) {
       const apiError = (error as any).apiError;
       
       if (apiError?.statusCode === 409) {
-        console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for formula '${parsedName}'`);
+        console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for package '${parsedName}'`);
         console.log('');
         console.log('💡 Try one of these options:');
-        console.log('  • Increment version with command "opn save <formula> stable"');
-        console.log('  • Update version with command "opn save <formula>@<version>"');
-        console.log('  • Specify a version explicitly using <formula>@<version>');
+        console.log('  • Increment version with command "opn save <package> stable"');
+        console.log('  • Update version with command "opn save <package>@<version>"');
+        console.log('  • Specify a version explicitly using <package>@<version>');
         return { success: false, error: 'Version already exists' };
       }
       
@@ -252,12 +252,12 @@ async function pushPackageCommand(
 export function setupPushCommand(program: Command): void {
   program
     .command('push')
-    .description('Push a formula to remote registry. Supports formula@version syntax.')
-    .argument('<package-name>', 'name of the formula to push. Supports formula@version syntax.')
+    .description('Push a package to remote registry. Supports package@version syntax.')
+    .argument('<package-name>', 'name of the package to push. Supports package@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
-    .action(withErrorHandling(async (formulaName: string, options: PushOptions) => {
-      const result = await pushPackageCommand(formulaName, options);
+    .action(withErrorHandling(async (packageName: string, options: PushOptions) => {
+      const result = await pushPackageCommand(packageName, options);
       if (!result.success) {
         throw new Error(result.error || 'Push operation failed');
       }

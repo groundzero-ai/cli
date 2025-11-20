@@ -9,7 +9,7 @@ import { ValidationError } from './errors.js';
 import { writeTextFile, readTextFile, ensureDir, exists } from './fs.js';
 
 /**
- * Tarball utilities for formula packaging and extraction
+ * Tarball utilities for package packaging and extraction
  */
 
 export interface TarballInfo {
@@ -24,20 +24,20 @@ export interface ExtractedPackage {
 }
 
 /**
- * Create a tarball from formula files
+ * Create a tarball from package files
  */
-export async function createTarballFromPackage(formula: Package): Promise<TarballInfo> {
-  logger.debug(`Creating tarball for formula: ${formula.metadata.name}@${formula.metadata.version}`);
+export async function createTarballFromPackage(pkg: Package): Promise<TarballInfo> {
+  logger.debug(`Creating tarball for package: ${package.metadata.name}@${package.metadata.version}`);
   
   const tempDir = join(tmpdir(), `openpackage-tarball-${Date.now()}`);
-  const tarballPath = join(tempDir, 'formula.tar.gz');
+  const tarballPath = join(tempDir, 'package.tar.gz');
   
   try {
     // Create temp directory
     await ensureDir(tempDir);
     
-    // Write formula files to temp directory
-    for (const file of formula.files) {
+    // Write package files to temp directory
+    for (const file of package.files) {
       const filePath = join(tempDir, file.path);
       await ensureDir(join(filePath, '..'));
       await writeTextFile(filePath, file.content, (file.encoding as BufferEncoding) || 'utf8');
@@ -50,7 +50,7 @@ export async function createTarballFromPackage(formula: Package): Promise<Tarbal
         file: tarballPath,
         cwd: tempDir
       },
-      formula.files.map(f => f.path)
+      package.files.map(f => f.path)
     );
     
     // Read tarball into buffer
@@ -67,7 +67,7 @@ export async function createTarballFromPackage(formula: Package): Promise<Tarbal
       checksum
     };
   } catch (error) {
-    logger.error('Failed to create tarball', { error, formulaName: formula.metadata.name });
+    logger.error('Failed to create tarball', { error, packageName: package.metadata.name });
     throw new ValidationError(`Failed to create tarball: ${error}`);
   } finally {
     // Clean up temp directory
@@ -84,16 +84,16 @@ export async function createTarballFromPackage(formula: Package): Promise<Tarbal
 }
 
 /**
- * Extract formula files from tarball buffer
+ * Extract package files from tarball buffer
  */
 export async function extractPackageFromTarball(
   tarballBuffer: Buffer, 
   expectedChecksum?: string
 ): Promise<ExtractedPackage> {
-  logger.debug(`Extracting formula from tarball (${tarballBuffer.length} bytes)`);
+  logger.debug(`Extracting package from tarball (${tarballBuffer.length} bytes)`);
   
   const tempDir = join(tmpdir(), `openpackage-extract-${Date.now()}`);
-  const tarballPath = join(tempDir, 'formula.tar.gz');
+  const tarballPath = join(tempDir, 'package.tar.gz');
   
   try {
     // Verify checksum if provided
@@ -141,7 +141,7 @@ export async function extractPackageFromTarball(
     await extractFiles(tempDir);
     
     // Remove the tarball file itself from the list
-    const filteredFiles = files.filter(f => f.path !== 'formula.tar.gz');
+    const filteredFiles = files.filter(f => f.path !== 'package.tar.gz');
     
     logger.debug(`Extracted ${filteredFiles.length} files from tarball`);
     
@@ -168,19 +168,19 @@ export async function extractPackageFromTarball(
  * Create FormData for multipart upload
  */
 export function createFormDataForUpload(
-  formulaName: string,
+  packageName: string,
   version: string,
   tarballInfo: TarballInfo
 ): FormData {
   const formData = new FormData();
   
   // Add form fields
-  formData.append('name', formulaName);
+  formData.append('name', packageName);
   formData.append('version', version);
   
   // Add tarball file
   const blob = new Blob([tarballInfo.buffer], { type: 'application/gzip' });
-  formData.append('file', blob, `${formulaName}-${version}.tgz`);
+  formData.append('file', blob, `${packageName}-${version}.tgz`);
   
   return formData;
 }

@@ -10,16 +10,16 @@ import { parsePackageYml } from './package-yml.js';
  */
 
 /**
- * Get the path to the local formula.yml file
+ * Get the path to the local package.yml file
  */
 export function getLocalPackageYmlPath(cwd: string): string {
   return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FILE_PATTERNS.FORMULA_YML);
 }
 
 /**
- * Check if a formula name matches the root formula in .openpackage/formula.yml
+ * Check if a package name matches the root package in .openpackage/package.yml
  */
-export async function isRootPackage(cwd: string, formulaName: string): Promise<boolean> {
+export async function isRootPackage(cwd: string, packageName: string): Promise<boolean> {
   const rootPackageYmlPath = getLocalPackageYmlPath(cwd);
   if (!(await exists(rootPackageYmlPath))) {
     return false;
@@ -27,7 +27,7 @@ export async function isRootPackage(cwd: string, formulaName: string): Promise<b
   
   try {
     const config = await parsePackageYml(rootPackageYmlPath);
-    return arePackageNamesEquivalent(config.name, formulaName);
+    return arePackageNamesEquivalent(config.name, packageName);
   } catch (error) {
     return false;
   }
@@ -41,23 +41,23 @@ export function getLocalOpenPackageDir(cwd: string): string {
 }
 
 /**
- * Get the local formulas directory path
+ * Get the local packages directory path
  */
 export function getLocalPackagesDir(cwd: string): string {
   return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS);
 }
 
 /**
- * Get the local formula directory path for a specific formula
- * Handles scoped formulas with nested directory structure (@scope/name -> @scope/name/)
+ * Get the local package directory path for a specific package
+ * Handles scoped packages with nested directory structure (@scope/name -> @scope/name/)
  */
-export function getLocalPackageDir(cwd: string, formulaName: string): string {
-  const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
+export function getLocalPackageDir(cwd: string, packageName: string): string {
+  const scopedMatch = packageName.match(SCOPED_FORMULA_REGEX);
   if (scopedMatch) {
     const [, scope, localName] = scopedMatch;
     return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS, '@' + scope, localName);
   }
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS, formulaName);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS, packageName);
 }
 
 /**

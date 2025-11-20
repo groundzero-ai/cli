@@ -1,6 +1,6 @@
 /**
  * Root File Sync Module
- * Utility functions for syncing saved root formula files across detected platforms
+ * Utility functions for syncing saved root package files across detected platforms
  */
 
 import { relative } from 'path';
@@ -24,18 +24,18 @@ export interface RootFileSyncResult {
 }
 
 /**
- * Sync saved root formula files across all detected platforms
+ * Sync saved root package files across all detected platforms
  * Converts between platform-specific root files (e.g., CLAUDE.md ↔ AGENTS.md)
  * @param cwd - Current working directory
- * @param formulaFiles - Array of formula files that were saved to registry
- * @param formulaName - Name of the formula being synced
+ * @param packageFiles - Array of package files that were saved to registry
+ * @param packageName - Name of the package being synced
  * @param platforms - Array of platforms to sync files to
  * @returns Promise resolving to sync result with created, updated, and skipped files
  */
 export async function syncRootFiles(
   cwd: string,
-  formulaFiles: PackageFile[],
-  formulaName: string,
+  packageFiles: PackageFile[],
+  packageName: string,
   platforms: Platform[]
 ): Promise<RootFileSyncResult> {
   const result: RootFileSyncResult = {
@@ -49,11 +49,11 @@ export async function syncRootFiles(
     return result;
   }
 
-  // Filter formula files to only root files
-  const rootFiles = formulaFiles.filter(file => isRootFile(file.path));
+  // Filter package files to only root files
+  const rootFiles = packageFiles.filter(file => isRootFile(file.path));
 
   if (rootFiles.length === 0) {
-    logger.debug('No root files found in formula, skipping root file sync');
+    logger.debug('No root files found in package, skipping root file sync');
     return result;
   }
 
@@ -62,7 +62,7 @@ export async function syncRootFiles(
   // Process each root file
   for (const rootFile of rootFiles) {
     try {
-      const syncResults = await syncSingleRootFile(cwd, rootFile, formulaName, platforms);
+      const syncResults = await syncSingleRootFile(cwd, rootFile, packageName, platforms);
       result.created.push(...syncResults.created);
       result.updated.push(...syncResults.updated);
       result.skipped.push(...syncResults.skipped);
@@ -105,7 +105,7 @@ export function isRootFile(filePath: string): boolean {
 async function syncSingleRootFile(
   cwd: string,
   rootFile: PackageFile,
-  formulaName: string,
+  packageName: string,
   detectedPlatforms: Platform[]
 ): Promise<RootFileSyncResult> {
   const result: RootFileSyncResult = {
@@ -152,21 +152,21 @@ async function syncSingleRootFile(
         }
       }
 
-      // Extract existing section content to compare (only the formula section, not entire file)
+      // Extract existing section content to compare (only the package section, not entire file)
       const existingSectionContent = fileExists
-        ? extractPackageContentFromRootFile(existingContent, formulaName)?.trim() ?? null
+        ? extractPackageContentFromRootFile(existingContent, packageName)?.trim() ?? null
         : null;
 
       // Compare section content - only update if it differs
       if (existingSectionContent !== null && existingSectionContent === sectionBody) {
-        logger.debug(`Root file section unchanged: ${targetPath} (formula: ${formulaName})`);
+        logger.debug(`Root file section unchanged: ${targetPath} (pkg: ${packageName})`);
         continue; // Skip writing - section content is identical
       }
 
-      // Merge the formula content into the target file
+      // Merge the package content into the target file
       const mergedContent = mergePackageContentIntoRootFile(
         existingContent,
-        formulaName,
+        packageName,
         sectionBody
       );
 

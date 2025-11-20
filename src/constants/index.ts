@@ -59,7 +59,7 @@ export const FILE_PATTERNS = {
   MD_FILES: '.md',
   MDC_FILES: '.mdc',
   TOML_FILES: '.toml',
-  FORMULA_YML: 'formula.yml',
+  FORMULA_YML: 'package.yml',
   README_MD: 'README.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',
@@ -80,15 +80,15 @@ export const UNIVERSAL_SUBDIRS = {
   SKILLS: 'skills'
 } as const;
 
-export const FORMULA_DIRS = {
-  FORMULAS: 'formulas',
+export const PACKAGE_DIRS = {
+  PACKAGES: 'packages',
   CACHE: 'cache',
   RUNTIME: 'runtime'
 } as const;
 
 export const DEPENDENCY_ARRAYS = {
-  FORMULAS: 'formulas',
-  DEV_FORMULAS: 'dev-formulas'
+  PACKAGES: 'packages',
+  DEV_PACKAGES: 'dev-packages'
 } as const;
 
 export const CONFLICT_RESOLUTION = {
@@ -102,6 +102,6 @@ export type Platform = typeof PLATFORMS[keyof typeof PLATFORMS];
 export type PlatformDir = typeof PLATFORM_DIRS[keyof typeof PLATFORM_DIRS];
 export type FilePattern = typeof FILE_PATTERNS[keyof typeof FILE_PATTERNS];
 export type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
-export type PackageDir = typeof FORMULA_DIRS[keyof typeof FORMULA_DIRS];
+export type PackageDir = typeof PACKAGE_DIRS[keyof typeof PACKAGE_DIRS];
 export type DependencyArray = typeof DEPENDENCY_ARRAYS[keyof typeof DEPENDENCY_ARRAYS];
 export type ConflictResolution = typeof CONFLICT_RESOLUTION[keyof typeof CONFLICT_RESOLUTION];

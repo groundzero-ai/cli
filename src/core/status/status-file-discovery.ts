@@ -6,11 +6,11 @@ import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
 import { extractPackageContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
- * Discover installed formulas using same methods as uninstall but optimized for status command
- * Returns detailed file information for formulas in the config
+ * Discover installed packages using same methods as uninstall but optimized for status command
+ * Returns detailed file information for packages in the config
  */
 export async function discoverPackagesForStatus(
-  formulaNames: string[]
+  packageNames: string[]
 ): Promise<Map<string, {
   aiFiles: string[];
   platforms: Record<string, {
@@ -35,9 +35,9 @@ export async function discoverPackagesForStatus(
     anyPath?: string
   }>();
 
-  // Initialize result entries for all requested formulas
-  for (const formulaName of formulaNames) {
-    result.set(formulaName, { aiFiles: [], platforms: {}, rootFiles: [] });
+  // Initialize result entries for all requested packages
+  for (const packageName of packageNames) {
+    result.set(packageName, { aiFiles: [], platforms: {}, rootFiles: [] });
   }
 
   // Use same platform detection as uninstall
@@ -46,14 +46,14 @@ export async function discoverPackagesForStatus(
   // Process each platform configuration
   for (const cfg of configs) {
     if (cfg.platform === PLATFORM_AI) {
-      await discoverAIForPackages(cwd, result, formulaNames);
+      await discoverAIForPackages(cwd, result, packageNames);
     } else {
-      await discoverPlatformForPackages(cwd, cfg.platform, result, formulaNames);
+      await discoverPlatformForPackages(cwd, cfg.platform, result, packageNames);
     }
   }
 
-  // Check root files for all formulas
-  await discoverRootFilesForPackages(cwd, result, formulaNames);
+  // Check root files for all packages
+  await discoverRootFilesForPackages(cwd, result, packageNames);
 
   // Only return entries that have actual files discovered
     const filteredResult = new Map<string, typeof result extends Map<infer K, infer V> ? V : never>();
@@ -70,12 +70,12 @@ export async function discoverPackagesForStatus(
 }
 
 /**
- * Discover AI files for requested formulas using same logic as uninstall
+ * Discover AI files for requested packages using same logic as uninstall
  */
 async function discoverAIForPackages(
   cwd: string,
   result: Map<string, any>,
-  formulaNames: string[]
+  packageNames: string[]
 ): Promise<void> {
   const aiDir = PLATFORM_DIRS.AI;
   const fullAIDir = join(cwd, aiDir);
@@ -88,20 +88,20 @@ async function discoverAIForPackages(
       continue;
     }
 
-    // Frontmatter support removed - cannot determine formula ownership
+    // Frontmatter support removed - cannot determine package ownership
   }
 
   // Index.yml support removed
 }
 
 /**
- * Discover platform files for requested formulas using same logic as uninstall
+ * Discover platform files for requested packages using same logic as uninstall
  */
 async function discoverPlatformForPackages(
   cwd: string,
   platform: string,
   result: Map<string, any>,
-  formulaNames: string[]
+  packageNames: string[]
 ): Promise<void> {
   const def = getPlatformDefinition(platform as any);
   const platformRoot = join(cwd, def.rootDir);
@@ -115,7 +115,7 @@ async function discoverPlatformForPackages(
       // If readExts is empty, include all files (don't filter by extension)
       if (allowedExts.length > 0 && !allowedExts.some((ext) => fp.endsWith(ext))) continue;
 
-      // Frontmatter support removed - cannot determine formula ownership
+      // Frontmatter support removed - cannot determine package ownership
     }
   }
 
@@ -123,15 +123,15 @@ async function discoverPlatformForPackages(
 }
 
 /**
- * Discover root files for requested formulas using same logic as uninstall
+ * Discover root files for requested packages using same logic as uninstall
  */
 async function discoverRootFilesForPackages(
   cwd: string,
   result: Map<string, any>,
-  formulaNames: string[]
+  packageNames: string[]
 ): Promise<void> {
 
-  console.log('formulaNames', formulaNames);
+  console.log('packageNames', packageNames);
   const seen = new Set<string>();
 
   for (const platform of getAllPlatforms()) {
@@ -148,11 +148,11 @@ async function discoverRootFilesForPackages(
 
     try {
       const content = await readTextFile(absPath);
-      for (const formulaName of formulaNames) {
-        console.log('formulaName', formulaName);
-        const extracted = extractPackageContentFromRootFile(content, formulaName);
+      for (const packageName of packageNames) {
+        console.log('packageName', packageName);
+        const extracted = extractPackageContentFromRootFile(content, packageName);
         if (extracted) {
-          const entry = result.get(formulaName)!;
+          const entry = result.get(packageName)!;
           // console.log('entry', entry);
           if (!entry.anyPath) entry.anyPath = absPath;
           // Track root file paths

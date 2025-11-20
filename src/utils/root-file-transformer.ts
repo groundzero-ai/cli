@@ -1,28 +1,28 @@
 /**
  * Root File Transformer Utility
- * Handles transformation of root file content for formula operations
+ * Handles transformation of root file content for package operations
  */
 
 import { extractPackageSection, buildOpenMarker, CLOSE_MARKER } from './root-file-extractor.js';
 
 /**
- * Transform root file content for formula renaming
- * Updates formula name in markers
+ * Transform root file content for package renaming
+ * Updates package name in markers
  *
  * @param content - The root file content
- * @param oldPackageName - The original formula name in the marker
- * @param newPackageName - The new formula name to use in the marker
- * @returns Updated content with new formula name
+ * @param oldPackageName - The original package name in the marker
+ * @param newPackageName - The new package name to use in the marker
+ * @returns Updated content with new package name
  */
 export function transformRootFileContent(
   content: string,
   oldPackageName: string,
   newPackageName: string
 ): string {
-  // Extract the current formula section
+  // Extract the current package section
   const extracted = extractPackageSection(content, oldPackageName);
   if (!extracted) {
-    // No valid marker found for the old formula name, return unchanged
+    // No valid marker found for the old package name, return unchanged
     return content;
   }
 

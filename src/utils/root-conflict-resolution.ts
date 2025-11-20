@@ -1,6 +1,6 @@
 /**
  * Root Conflict Resolution Module
- * Utility functions for resolving root file conflicts during formula saving
+ * Utility functions for resolving root file conflicts during package saving
  */
 
 import { isLocalVersion } from '../utils/version-generator.js';

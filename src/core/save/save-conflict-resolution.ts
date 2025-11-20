@@ -38,13 +38,13 @@ export interface SaveConflictResolutionOptions {
 }
 
 export async function resolvePackageFilesWithConflicts(
-  formulaInfo: PackageYmlInfo,
+  packageInfo: PackageYmlInfo,
   options: SaveConflictResolutionOptions = {}
 ): Promise<PackageFile[]> {
   const cwd = process.cwd();
-  const formulaDir = getLocalPackageDir(cwd, formulaInfo.config.name);
+  const packageDir = getLocalPackageDir(cwd, packageInfo.config.name);
 
-  if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
+  if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
     return [];
   }
 
@@ -54,22 +54,22 @@ export async function resolvePackageFilesWithConflicts(
     localRootCandidates,
     workspaceRootCandidates
   ] = await Promise.all([
-    loadLocalCandidates(formulaDir),
-    discoverWorkspaceCandidates(cwd, formulaInfo.config.name),
-    loadLocalRootSaveCandidates(formulaDir, formulaInfo.config.name),
-    discoverWorkspaceRootSaveCandidates(cwd, formulaInfo.config.name)
+    loadLocalCandidates(packageDir),
+    discoverWorkspaceCandidates(cwd, packageInfo.config.name),
+    loadLocalRootSaveCandidates(packageDir, packageInfo.config.name),
+    discoverWorkspaceRootSaveCandidates(cwd, packageInfo.config.name)
   ]);
 
   const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
 
-  const indexRecord = await readPackageIndex(cwd, formulaInfo.config.name);
+  const indexRecord = await readPackageIndex(cwd, packageInfo.config.name);
 
   if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
     // No index yet (first save) – run root-only conflict resolution so prompts are shown for CLAUDE.md, WARP.md, etc.
     const rootGroups = buildCandidateGroups(localRootCandidates, workspaceRootCandidates);
 
     // Prune platform-specific root candidates that already exist locally (e.g., CLAUDE.md present)
-    await pruneWorkspaceCandidatesWithLocalPlatformVariants(formulaDir, rootGroups);
+    await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageDir, rootGroups);
 
     for (const group of rootGroups) {
       const hasLocal = !!group.local;
@@ -94,7 +94,7 @@ export async function resolvePackageFilesWithConflicts(
       const { selection, platformSpecific } = resolution;
 
       // Always write universal AGENTS.md from the selected root section
-      await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
+      await writeRootSelection(packageDir, packageInfo.config.name, group.local, selection);
 
       // Persist platform-specific root selections (e.g., CLAUDE.md, WARP.md)
       for (const candidate of platformSpecific) {
@@ -104,7 +104,7 @@ export async function resolvePackageFilesWithConflicts(
         const platformRegistryPath = createPlatformSpecificRegistryPath(group.registryPath, platform);
         if (!platformRegistryPath) continue;
 
-        const targetPath = join(formulaDir, platformRegistryPath);
+        const targetPath = join(packageDir, platformRegistryPath);
         try {
           await ensureDir(dirname(targetPath));
 
@@ -128,7 +128,7 @@ export async function resolvePackageFilesWithConflicts(
     }
 
     // After resolving root conflicts, return filtered files from local dir
-    return await readFilteredLocalPackageFiles(formulaDir);
+    return await readFilteredLocalPackageFiles(packageDir);
   }
 
   const fileKeys = new Set<string>();
@@ -169,7 +169,7 @@ export async function resolvePackageFilesWithConflicts(
   const frontmatterPlans = buildFrontmatterMergePlans(groups);
 
   // Prune platform-specific workspace candidates that already have local platform-specific files
-  await pruneWorkspaceCandidatesWithLocalPlatformVariants(formulaDir, groups);
+  await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageDir, groups);
 
   // Resolve conflicts and write chosen content back to local files
   for (const group of groups) {
@@ -198,12 +198,12 @@ export async function resolvePackageFilesWithConflicts(
     const { selection, platformSpecific } = resolution;
 
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
-      await writeRootSelection(formulaDir, formulaInfo.config.name, group.local, selection);
+      await writeRootSelection(packageDir, packageInfo.config.name, group.local, selection);
       // Continue to platform-specific persistence below (don't skip it)
     } else {
       if (group.local && selection.contentHash !== group.local.contentHash) {
         // Overwrite local file content with selected content
-        const targetPath = join(formulaDir, group.registryPath);
+        const targetPath = join(packageDir, group.registryPath);
         try {
           await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
           logger.debug(`Updated local file with selected content: ${group.registryPath}`);
@@ -212,7 +212,7 @@ export async function resolvePackageFilesWithConflicts(
         }
       } else if (!group.local) {
         // No local file existed; write the selected content to create it
-        const targetPath = join(formulaDir, group.registryPath);
+        const targetPath = join(packageDir, group.registryPath);
         try {
           await ensureDir(dirname(targetPath));
           await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
@@ -236,12 +236,12 @@ export async function resolvePackageFilesWithConflicts(
         continue;
       }
 
-      const targetPath = join(formulaDir, platformRegistryPath);
+      const targetPath = join(packageDir, platformRegistryPath);
 
       try {
         await ensureDir(dirname(targetPath));
 
-        // For root files, use sectionBody (extracted formula content) instead of full content
+        // For root files, use sectionBody (extracted package content) instead of full content
         const contentToWrite = candidate.isRootFile
           ? (candidate.sectionBody ?? candidate.content).trim()
           : candidate.content;
@@ -262,12 +262,12 @@ export async function resolvePackageFilesWithConflicts(
   }
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
-  await applyFrontmatterMergePlans(formulaDir, frontmatterPlans);
-  return await readFilteredLocalPackageFiles(formulaDir);
+  await applyFrontmatterMergePlans(packageDir, frontmatterPlans);
+  return await readFilteredLocalPackageFiles(packageDir);
 }
 
-async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]> {
-  const entries = await findFilesByExtension(formulaDir, [], formulaDir);
+async function loadLocalCandidates(packageDir: string): Promise<SaveCandidate[]> {
+  const entries = await findFilesByExtension(packageDir, [], packageDir);
 
   const candidates: SaveCandidate[] = [];
 
@@ -314,8 +314,8 @@ async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]>
   return candidates;
 }
 
-async function discoverWorkspaceCandidates(cwd: string, formulaName: string): Promise<SaveCandidate[]> {
-  const discovered = await discoverPlatformFilesUnified(cwd, formulaName);
+async function discoverWorkspaceCandidates(cwd: string, packageName: string): Promise<SaveCandidate[]> {
+  const discovered = await discoverPlatformFilesUnified(cwd, packageName);
 
   const candidates: SaveCandidate[] = [];
 
@@ -397,10 +397,10 @@ function ensureGroup(map: Map<string, SaveCandidateGroup>, registryPath: string)
 /**
  * Prune platform-specific workspace candidates that already have local platform-specific files.
  * This prevents false conflicts when platform-specific workspace files are mapped to universal
- * registry paths but corresponding platform-specific files already exist in the formula.
+ * registry paths but corresponding platform-specific files already exist in the package.
  */
 async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
-  formulaDir: string,
+  packageDir: string,
   groups: SaveCandidateGroup[]
 ): Promise<void> {
   for (const group of groups) {
@@ -424,7 +424,7 @@ async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
         continue;
       }
 
-      const platformFullPath = join(formulaDir, platformRegistryPath);
+      const platformFullPath = join(packageDir, platformRegistryPath);
       if (await exists(platformFullPath)) {
         // Local platform-specific file already exists; skip this workspace candidate
         // to avoid false conflict detection
@@ -711,12 +711,12 @@ function formatCandidateLabel(candidate: SaveCandidate): string {
 }
 
 async function writeRootSelection(
-  formulaDir: string,
-  formulaName: string,
+  packageDir: string,
+  packageName: string,
   localCandidate: SaveCandidate | undefined,
   selection: SaveCandidate
 ): Promise<void> {
-  const targetPath = `${formulaDir}/${FILE_PATTERNS.AGENTS_MD}`;
+  const targetPath = `${packageDir}/${FILE_PATTERNS.AGENTS_MD}`;
   const sectionBody = (selection.sectionBody ?? selection.content).trim();
   const finalContent = sectionBody;
 
@@ -730,7 +730,7 @@ async function writeRootSelection(
     }
 
     await writeTextFile(targetPath, finalContent, UTF8_ENCODING);
-    logger.debug(`Updated root file content for ${formulaName}`);
+    logger.debug(`Updated root file content for ${packageName}`);
   } catch (error) {
     logger.warn(`Failed to write root file ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
   }
@@ -741,12 +741,12 @@ async function writeRootSelection(
  * YAML override files are files like "rules/agent.claude.yml" that contain platform-specific frontmatter.
  */
 function isYamlOverrideFileForSave(normalizedPath: string): boolean {
-  // Must be skippable (which includes YAML override check) but not formula.yml
+  // Must be skippable (which includes YAML override check) but not package.yml
   return normalizedPath !== FILE_PATTERNS.FORMULA_YML && isSkippableRegistryPath(normalizedPath);
 }
 
-async function readFilteredLocalPackageFiles(formulaDir: string): Promise<PackageFile[]> {
-  const entries = await findFilesByExtension(formulaDir, [], formulaDir);
+async function readFilteredLocalPackageFiles(packageDir: string): Promise<PackageFile[]> {
+  const entries = await findFilesByExtension(packageDir, [], packageDir);
   const files: PackageFile[] = [];
 
   for (const entry of entries) {
@@ -754,7 +754,7 @@ async function readFilteredLocalPackageFiles(formulaDir: string): Promise<Packag
     if (normalizedPath === FORMULA_INDEX_FILENAME) continue;
 
     // Allow files that are either allowed by normal rules, root files, YAML override files,
-    // or any root-level files adjacent to formula.yml (including formula.yml itself)
+    // or any root-level files adjacent to package.yml (including package.yml itself)
     const isAllowed = isAllowedRegistryPath(normalizedPath);
     const isRoot = isRootRegistryPath(normalizedPath);
     const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);

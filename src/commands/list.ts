@@ -8,35 +8,35 @@ import { displayPackageTable, PackageTableEntry } from '../utils/formatters.js';
 import { arePackageNamesEquivalent } from '../utils/package-name.js';
 
 /**
- * List formulas command implementation
+ * List packages command implementation
  */
 async function listPackagesCommand(options: ListOptions): Promise<CommandResult> {
-  logger.info('Listing local formulas');
+  logger.info('Listing local packages');
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
   try {
-    // If formula name is provided, use exact matching; otherwise use filter
-    const filter = options.formulaName || options.filter;
-    // When formula name is specified, show all versions automatically
-    const showAllVersions = options.formulaName ? true : options.all;
+    // If package name is provided, use exact matching; otherwise use filter
+    const filter = options.packageName || options.filter;
+    // When package name is specified, show all versions automatically
+    const showAllVersions = options.packageName ? true : options.all;
     const entries = await registryManager.listPackages(filter, showAllVersions);
     
-    // If a specific formula name was provided, filter for exact matches only
+    // If a specific package name was provided, filter for exact matches only
     let filteredEntries = entries;
-    if (options.formulaName) {
-      const target =options.formulaName;
+    if (options.packageName) {
+      const target =options.packageName;
       filteredEntries = entries.filter(entry => arePackageNamesEquivalent(entry.name, target));
     }
     
     if (filteredEntries.length === 0) {
-      if (options.formulaName) {
-        console.log(`Package not found: ${options.formulaName}`);
+      if (options.packageName) {
+        console.log(`Package not found: ${options.packageName}`);
       } else if (options.filter) {
-        console.log(`No formulas found matching filter: ${options.filter}`);
+        console.log(`No packages found matching filter: ${options.filter}`);
       } else {
-        console.log('No formulas found. Use "opn init" to create your first formula.');
+        console.log('No packages found. Use "opn init" to create your first package.');
       }
       return { success: true, data: [] };
     }
@@ -53,10 +53,10 @@ async function listPackagesCommand(options: ListOptions): Promise<CommandResult>
       }));
       
       let title: string;
-      if (options.formulaName) {
-        title = `Package '${options.formulaName}' (all versions):`;
+      if (options.packageName) {
+        title = `Package '${options.packageName}' (all versions):`;
       } else {
-        title = options.all ? 'Local formulas (all versions):' : 'Local formulas (latest versions):';
+        title = options.all ? 'Local packages (all versions):' : 'Local packages (latest versions):';
       }
       
       displayPackageTable(tableEntries, title, showAllVersions);
@@ -67,8 +67,8 @@ async function listPackagesCommand(options: ListOptions): Promise<CommandResult>
       data: filteredEntries
     };
   } catch (error) {
-    logger.error('Failed to list formulas', { error });
-    throw new Error(`Failed to list formulas: ${error}`);
+    logger.error('Failed to list packages', { error });
+    throw new Error(`Failed to list packages: ${error}`);
   }
 }
 
@@ -80,12 +80,12 @@ export function setupListCommand(program: Command): void {
   program
     .command('list [package-name]')
     .alias('ls')
-    .description('List local formulas or show all versions of specific formula if name provided')
+    .description('List local packages or show all versions of specific package if name provided')
     .option('--format <format>', 'output format (table|json)', 'table')
-    .option('--filter <pattern>', 'filter formulas by name pattern')
+    .option('--filter <pattern>', 'filter packages by name pattern')
     .option('--all', 'show all versions (default shows only latest)')
-    .action(withErrorHandling(async (formulaName: string | undefined, options: ListOptions) => {
-      options.formulaName = formulaName;
+    .action(withErrorHandling(async (packageName: string | undefined, options: ListOptions) => {
+      options.packageName = packageName;
       await listPackagesCommand(options);
     }));
 }

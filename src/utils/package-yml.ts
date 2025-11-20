@@ -3,28 +3,28 @@ import { PackageYml } from '../types/index.js';
 import { readTextFile, writeTextFile } from './fs.js';
 
 /**
- * Parse formula.yml file with validation
+ * Parse package.yml file with validation
  */
-export async function parsePackageYml(formulaYmlPath: string): Promise<PackageYml> {
+export async function parsePackageYml(packageYmlPath: string): Promise<PackageYml> {
   try {
-    const content = await readTextFile(formulaYmlPath);
+    const content = await readTextFile(packageYmlPath);
     const parsed = yaml.load(content) as PackageYml;
     
     // Validate required fields
     if (!parsed.name || !parsed.version) {
-      throw new Error('formula.yml must contain name and version fields');
+      throw new Error('package.yml must contain name and version fields');
     }
     
     return parsed;
   } catch (error) {
-    throw new Error(`Failed to parse formula.yml: ${error}`);
+    throw new Error(`Failed to parse package.yml: ${error}`);
   }
 }
 
 /**
- * Write formula.yml file with consistent formatting
+ * Write package.yml file with consistent formatting
  */
-export async function writePackageYml(formulaYmlPath: string, config: PackageYml): Promise<void> {
+export async function writePackageYml(packageYmlPath: string, config: PackageYml): Promise<void> {
   // First generate YAML with default block style
   let content = yaml.dump(config, {
     indent: 2,
@@ -90,6 +90,6 @@ export async function writePackageYml(formulaYmlPath: string, config: PackageYml
     }
   }
   
-  await writeTextFile(formulaYmlPath, content);
+  await writeTextFile(packageYmlPath, content);
 }
 

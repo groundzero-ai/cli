@@ -58,7 +58,7 @@ export async function detectPlatformsWithDetails(cwd: string): Promise<{
 export async function findPlatformFiles(
   cwd: string,
   platform: Platform,
-  formulaName?: string
+  packageName?: string
 ): Promise<Array<{ fullPath: string; relativePath: string; mtime: number }>> {
   const paths = getPlatformDirectoryPaths(cwd);
   const platformPaths = paths[platform];
@@ -82,7 +82,7 @@ export async function findPlatformFiles(
         const stats = await getStats(fullPath);
         const mtime = stats.mtime.getTime();
         
-        // Frontmatter support removed - no formula name filtering
+        // Frontmatter support removed - no package name filtering
         
         return { fullPath, relativePath: file, mtime };
       } catch (error) {
@@ -101,7 +101,7 @@ export async function findPlatformFiles(
 export async function cleanupPlatformFiles(
   targetDir: string,
   platform: Platform,
-  formulaName: string,
+  packageName: string,
   options: { force?: boolean; dryRun?: boolean } = {}
 ): Promise<{ removedCount: number; files: string[]; errors: string[] }> {
   const paths = getPlatformDirectoryPaths(targetDir);
@@ -125,7 +125,7 @@ export async function cleanupPlatformFiles(
 
       const discovered = await discoverFiles(
         dir,
-        formulaName,
+        packageName,
         platform,
         label,
       );

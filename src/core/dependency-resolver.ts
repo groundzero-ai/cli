@@ -11,16 +11,16 @@ import { listPackageVersions } from './directory.js';
 import { registryManager } from './registry.js';
 
 /**
- * Resolved formula interface for dependency resolution
+ * Resolved package interface for dependency resolution
  */
 export interface ResolvedPackage {
   name: string;
   version: string;
-  formula: Package;
+  package: Package;
   isRoot: boolean;
   conflictResolution?: 'kept' | 'overwritten' | 'skipped';
-  requiredVersion?: string; // The version required by the parent formula
-  requiredRange?: string; // The version range required by the parent formula
+  requiredVersion?: string; // The version required by the parent package
+  requiredRange?: string; // The version range required by the parent package
 }
 
 /**
@@ -31,17 +31,17 @@ export interface DependencyNode {
   version: string;
   dependencies: Set<string>;
   dependents: Set<string>;
-  isProtected: boolean; // Listed in cwd formula.yml
+  isProtected: boolean; // Listed in cwd package.yml
 }
 
 /**
  * Prompt user for overwrite confirmation
  */
-export async function promptOverwrite(formulaName: string, existingVersion: string, newVersion: string): Promise<boolean> {
+export async function promptOverwrite(packageName: string, existingVersion: string, newVersion: string): Promise<boolean> {
   const response = await safePrompts({
     type: 'confirm',
     name: 'shouldOverwrite',
-    message: `Package '${formulaName}' conflict: existing v${existingVersion} vs required v${newVersion}. Overwrite with v${newVersion}?`,
+    message: `Package '${packageName}' conflict: existing v${existingVersion} vs required v${newVersion}. Overwrite with v${newVersion}?`,
     initial: true
   });
   
@@ -49,10 +49,10 @@ export async function promptOverwrite(formulaName: string, existingVersion: stri
 }
 
 /**
- * Recursively resolve formula dependencies for installation
+ * Recursively resolve package dependencies for installation
  */
 export async function resolveDependencies(
-  formulaName: string,
+  packageName: string,
   targetDir: string,
   isRoot: boolean = true,
   visitedStack: Set<string> = new Set(),
@@ -66,33 +66,33 @@ export async function resolveDependencies(
   const missing = new Set<string>();
 
   // 1. Cycle detection
-  if (visitedStack.has(formulaName)) {
+  if (visitedStack.has(packageName)) {
     const cycle = Array.from(visitedStack);
-    const cycleStart = cycle.indexOf(formulaName);
-    const actualCycle = cycle.slice(cycleStart).concat([formulaName]);
-    throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your formula dependencies to break the cycle.`);
+    const cycleStart = cycle.indexOf(packageName);
+    const actualCycle = cycle.slice(cycleStart).concat([packageName]);
+    throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your package dependencies to break the cycle.`);
   }
   
   // 2. Resolve version range(s) to specific version if needed
   let resolvedVersion: string | undefined;
   let versionRange: string | undefined;
 
-  // Precedence: root overrides (from root formula.yml) > combined constraints
+  // Precedence: root overrides (from root package.yml) > combined constraints
   let allRanges: string[] = [];
 
-  if (rootOverrides?.has(formulaName)) {
-    // Root formula.yml versions act as authoritative overrides
-    allRanges = [...(rootOverrides.get(formulaName)!)];
+  if (rootOverrides?.has(packageName)) {
+    // Root package.yml versions act as authoritative overrides
+    allRanges = [...(rootOverrides.get(packageName)!)];
   } else {
     // No root override - combine all constraints
     if (version) {
       allRanges.push(version);
     }
-    const globalRanges = globalConstraints?.get(formulaName);
+    const globalRanges = globalConstraints?.get(packageName);
     if (globalRanges) {
       allRanges.push(...globalRanges);
     }
-    const priorRanges = requiredVersions.get(formulaName) || [];
+    const priorRanges = requiredVersions.get(packageName) || [];
     if (priorRanges.length > 0) {
       allRanges.push(...priorRanges);
     }
@@ -105,10 +105,10 @@ export async function resolveDependencies(
     versionRange = allRanges[0];
   } else {
     // Intersect ranges by filtering available versions
-    const availableVersions = await listPackageVersions(formulaName);
+    const availableVersions = await listPackageVersions(packageName);
     if (availableVersions.length === 0) {
       // Treat as missing dependency rather than hard error
-      missing.add(formulaName);
+      missing.add(packageName);
       return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
     }
 
@@ -118,14 +118,14 @@ export async function resolveDependencies(
           // Always include prerelease versions when evaluating satisfaction
           return semver.satisfies(versionCandidate, range, { includePrerelease: true });
         } catch (error) {
-          logger.debug(`Failed to evaluate semver for ${formulaName}@${versionCandidate} against range '${range}': ${error}`);
+          logger.debug(`Failed to evaluate semver for ${packageName}@${versionCandidate} against range '${range}': ${error}`);
           return false;
         }
       });
     }).sort((a, b) => semver.rcompare(a, b));
 
     if (satisfying.length === 0) {
-      throw new VersionConflictError(formulaName, {
+      throw new VersionConflictError(packageName, {
         ranges: allRanges,
         availableVersions
       });
@@ -134,39 +134,39 @@ export async function resolveDependencies(
     resolvedVersion = satisfying[0];
     const deduped = Array.from(new Set(allRanges));
     versionRange = deduped.join(' & ');
-    logger.debug(`Resolved constraints [${deduped.join(', ')}] to '${resolvedVersion}' for formula '${formulaName}'`);
+    logger.debug(`Resolved constraints [${deduped.join(', ')}] to '${resolvedVersion}' for package '${packageName}'`);
   }
 
   // 3. Attempt to repair dependency from local registry
-  let formula: Package;
+  let package: Package;
   try {
-    // Load formula with resolved version
-    logger.debug(`Attempting to load formula '${formulaName}' from local registry`, { 
+    // Load package with resolved version
+    logger.debug(`Attempting to load package '${packageName}' from local registry`, { 
       version: resolvedVersion, 
       originalRange: versionRange 
     });
-    formula = await packageManager.loadPackage(formulaName, resolvedVersion);
-    logger.debug(`Successfully loaded formula '${formulaName}' from local registry`, { version: formula.metadata.version });
+    package = await packageManager.loadPackage(packageName, resolvedVersion);
+    logger.debug(`Successfully loaded package '${packageName}' from local registry`, { version: package.metadata.version });
   } catch (error) {
     if (error instanceof PackageNotFoundError) {
-      // Auto-repair attempt: Check if formula exists in registry but needs to be loaded
-      logger.debug(`Package '${formulaName}' not found in local registry, attempting repair`);
+      // Auto-repair attempt: Check if package exists in registry but needs to be loaded
+      logger.debug(`Package '${packageName}' not found in local registry, attempting repair`);
       
       try {
-        // Check if formula exists in registry metadata (but files might be missing)
-        const hasPackage = await registryManager.hasPackage(formulaName);
-        logger.debug(`Registry check for '${formulaName}': hasPackage=${hasPackage}, requiredVersion=${version}`);
+        // Check if package exists in registry metadata (but files might be missing)
+        const hasPackage = await registryManager.hasPackage(packageName);
+        logger.debug(`Registry check for '${packageName}': hasPackage=${hasPackage}, requiredVersion=${version}`);
         
         if (hasPackage) {
           // Check if the resolved version exists (use resolvedVersion if available, otherwise fall back to version)
           const versionToCheck = resolvedVersion || version;
           if (versionToCheck) {
-            const hasSpecificVersion = await registryManager.hasPackageVersion(formulaName, versionToCheck);
+            const hasSpecificVersion = await registryManager.hasPackageVersion(packageName, versionToCheck);
             if (!hasSpecificVersion) {
               // Package exists but not in the required/resolved version - this is not a repairable error
               const dependencyChain = Array.from(visitedStack);
               const versionDisplay = versionRange || version || resolvedVersion;
-              let errorMessage = `Package '${formulaName}' exists in registry but version '${versionDisplay}' is not available\n\n`;
+              let errorMessage = `Package '${packageName}' exists in registry but version '${versionDisplay}' is not available\n\n`;
               
               if (dependencyChain.length > 0) {
                 errorMessage += `📋 Dependency chain:\n`;
@@ -174,11 +174,11 @@ export async function resolveDependencies(
                   const indent = '  '.repeat(i);
                   errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
                 }
-                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${formulaName}@${versionDisplay} ❌ (version not available)\n\n`;
+                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${packageName}@${versionDisplay} ❌ (version not available)\n\n`;
               }
               
               errorMessage += `💡 To resolve this issue:\n`;
-              errorMessage += `   • Install the available version: opn install ${formulaName}@latest\n`;
+              errorMessage += `   • Install the available version: opn install ${packageName}@latest\n`;
               errorMessage += `   • Update the dependency to use an available version\n`;
               errorMessage += `   • Create the required version locally: opn init && opn save\n`;
               
@@ -186,15 +186,15 @@ export async function resolveDependencies(
             }
           }
           
-          logger.info(`Found formula '${formulaName}' in registry metadata, attempting repair`);
-          // Try to reload the formula metadata using resolved version (or original version if not resolved)
-          const metadata = await registryManager.getPackageMetadata(formulaName, resolvedVersion || version);
+          logger.info(`Found package '${packageName}' in registry metadata, attempting repair`);
+          // Try to reload the package metadata using resolved version (or original version if not resolved)
+          const metadata = await registryManager.getPackageMetadata(packageName, resolvedVersion || version);
           // Attempt to load again with the resolved version - this might succeed if it was a temporary issue
-          formula = await packageManager.loadPackage(formulaName, resolvedVersion || version);
-          logger.info(`Successfully repaired and loaded formula '${formulaName}'`);
+          package = await packageManager.loadPackage(packageName, resolvedVersion || version);
+          logger.info(`Successfully repaired and loaded package '${packageName}'`);
         } else {
           // Package truly doesn't exist - treat as missing dependency
-          missing.add(formulaName);
+          missing.add(packageName);
           return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
         }
       } catch (repairError) {
@@ -204,7 +204,7 @@ export async function resolveDependencies(
         }
         
         // Repair failed - treat as missing dependency
-        missing.add(formulaName);
+        missing.add(packageName);
         return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
       }
     } else {
@@ -213,19 +213,19 @@ export async function resolveDependencies(
     }
   }
   
-  const currentVersion = formula.metadata.version;
+  const currentVersion = package.metadata.version;
   
   // 3. Check for existing resolution
-  const existing = resolvedPackages.get(formulaName);
+  const existing = resolvedPackages.get(packageName);
   if (existing) {
     const comparison = semver.compare(currentVersion, existing.version);
     
     if (comparison > 0) {
       // Current version is newer - prompt to overwrite
-      const shouldOverwrite = await promptOverwrite(formulaName, existing.version, currentVersion);
+      const shouldOverwrite = await promptOverwrite(packageName, existing.version, currentVersion);
       if (shouldOverwrite) {
         existing.version = currentVersion;
-        existing.formula = formula;
+        existing.package = package;
         existing.conflictResolution = 'overwritten';
       } else {
         existing.conflictResolution = 'skipped';
@@ -238,31 +238,31 @@ export async function resolveDependencies(
   }
   
   // 3.1. Check for already installed version in openpackage
-  const installedVersion = await getInstalledPackageVersion(formulaName, targetDir);
+  const installedVersion = await getInstalledPackageVersion(packageName, targetDir);
   if (installedVersion) {
     const comparison = semver.compare(currentVersion, installedVersion);
     
     if (comparison > 0) {
       // New version is greater than installed - allow installation but will prompt later
-      logger.debug(`Package '${formulaName}' will be upgraded from v${installedVersion} to v${currentVersion}`);
+      logger.debug(`Package '${packageName}' will be upgraded from v${installedVersion} to v${currentVersion}`);
     } else if (comparison === 0) {
       // Same version - skip installation
-      logger.debug(`Package '${formulaName}' v${currentVersion} already installed, skipping`);
-      resolvedPackages.set(formulaName, {
-        name: formulaName,
+      logger.debug(`Package '${packageName}' v${currentVersion} already installed, skipping`);
+      resolvedPackages.set(packageName, {
+        name: packageName,
         version: installedVersion,
-        formula,
+        package,
         isRoot,
         conflictResolution: 'kept'
       });
       return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
     } else {
       // New version is older than installed - skip installation
-      logger.debug(`Package '${formulaName}' has newer version installed (v${installedVersion} > v${currentVersion}), skipping`);
-      resolvedPackages.set(formulaName, {
-        name: formulaName,
+      logger.debug(`Package '${packageName}' has newer version installed (v${installedVersion} > v${currentVersion}), skipping`);
+      resolvedPackages.set(packageName, {
+        name: packageName,
         version: installedVersion,
-        formula,
+        package,
         isRoot,
         conflictResolution: 'kept'
       });
@@ -272,32 +272,32 @@ export async function resolveDependencies(
   
   // 4. Track required version if specified
   if (version) {
-    if (!requiredVersions.has(formulaName)) {
-      requiredVersions.set(formulaName, []);
+    if (!requiredVersions.has(packageName)) {
+      requiredVersions.set(packageName, []);
     }
-    requiredVersions.get(formulaName)!.push(version);
+    requiredVersions.get(packageName)!.push(version);
   }
 
   // 5. Add to resolved map
-  resolvedPackages.set(formulaName, {
-    name: formulaName,
+  resolvedPackages.set(packageName, {
+    name: packageName,
     version: currentVersion,
-    formula,
+    package,
     isRoot,
     requiredVersion: resolvedVersion, // Track the resolved version
     requiredRange: versionRange // Track the original range
   });
   
-  // 5. Parse dependencies from formula's formula.yml
-  const formulaYmlFile = formula.files.find(f => f.path === 'formula.yml');
-  if (formulaYmlFile) {
-    const config = yaml.load(formulaYmlFile.content) as PackageYml;
+  // 5. Parse dependencies from package's package.yml
+  const packageYmlFile = package.files.find(f => f.path === 'package.yml');
+  if (packageYmlFile) {
+    const config = yaml.load(packageYmlFile.content) as PackageYml;
     
     // 6. Recursively resolve dependencies
-    visitedStack.add(formulaName);
+    visitedStack.add(packageName);
     
-    // Only process 'formulas' array (NOT 'dev-formulas' for transitive dependencies)
-    const dependencies = config.formulas || [];
+    // Only process 'packages' array (NOT 'dev-packages' for transitive dependencies)
+    const dependencies = config.packages || [];
     
     for (const dep of dependencies) {
       // Pass the required version from the dependency specification
@@ -305,9 +305,9 @@ export async function resolveDependencies(
       for (const m of child.missingPackages) missing.add(m);
     }
     
-    // For root formula, also process dev-formulas
+    // For root package, also process dev-packages
     if (isRoot) {
-      const devDependencies = config['dev-formulas'] || [];
+      const devDependencies = config['dev-packages'] || [];
       for (const dep of devDependencies) {
         // Pass the required version from the dev dependency specification
         const child = await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedPackages, dep.version, requiredVersions, globalConstraints, rootOverrides);
@@ -315,10 +315,10 @@ export async function resolveDependencies(
       }
     }
     
-    visitedStack.delete(formulaName);
+    visitedStack.delete(packageName);
   }
   
-  // Attach the requiredVersions map to each resolved formula for later use
+  // Attach the requiredVersions map to each resolved package for later use
   const resolvedArray = Array.from(resolvedPackages.values());
   for (const resolved of resolvedArray) {
     (resolved as any).requiredVersions = requiredVersions;
@@ -355,47 +355,47 @@ export function displayDependencyTree(resolvedPackages: ResolvedPackage[], silen
     console.log(`├── ${dep.name}@${dep.version}${rangeInfo}${status}`);
   }
   
-  console.log(`\n🔍 Total: ${resolvedPackages.length} formulas\n`);
+  console.log(`\n🔍 Total: ${resolvedPackages.length} packages\n`);
 }
 
 /**
- * Build dependency tree for all formulas in openpackage (used by uninstall)
+ * Build dependency tree for all packages in openpackage (used by uninstall)
  */
 export async function buildDependencyTree(openpackagePath: string, protectedPackages: Set<string>): Promise<Map<string, DependencyNode>> {
   const dependencyTree = new Map<string, DependencyNode>();
   
   // Use the shared scanGroundzeroPackages function
-  const formulas = await scanGroundzeroPackages(openpackagePath);
+  const packages = await scanGroundzeroPackages(openpackagePath);
   
-  // First pass: collect all formulas and their dependencies
-  for (const [formulaName, formula] of formulas) {
+  // First pass: collect all packages and their dependencies
+  for (const [packageName, package] of packages) {
     const dependencies = new Set<string>();
     
-    // Collect dependencies from both formulas and dev-formulas
+    // Collect dependencies from both packages and dev-packages
     const allDeps = [
-      ...(formula.formulas || []),
-      ...(formula['dev-formulas'] || [])
+      ...(package.packages || []),
+      ...(package['dev-packages'] || [])
     ];
     
     for (const dep of allDeps) {
       dependencies.add(dep.name);
     }
     
-    dependencyTree.set(formulaName, {
-      name: formulaName,
-      version: formula.version,
+    dependencyTree.set(packageName, {
+      name: packageName,
+      version: package.version,
       dependencies,
       dependents: new Set(),
-      isProtected: protectedPackages.has(formulaName)
+      isProtected: protectedPackages.has(packageName)
     });
   }
   
   // Second pass: build dependents relationships
-  for (const [formulaName, node] of dependencyTree) {
+  for (const [packageName, node] of dependencyTree) {
     for (const depName of node.dependencies) {
       const depNode = dependencyTree.get(depName);
       if (depNode) {
-        depNode.dependents.add(formulaName);
+        depNode.dependents.add(packageName);
       }
     }
   }
@@ -404,17 +404,17 @@ export async function buildDependencyTree(openpackagePath: string, protectedPack
 }
 
 /**
- * Get all dependencies of a formula recursively
+ * Get all dependencies of a package recursively
  */
-export async function getAllDependencies(formulaName: string, dependencyTree: Map<string, DependencyNode>, visited: Set<string> = new Set()): Promise<Set<string>> {
+export async function getAllDependencies(packageName: string, dependencyTree: Map<string, DependencyNode>, visited: Set<string> = new Set()): Promise<Set<string>> {
   const allDeps = new Set<string>();
   
-  if (visited.has(formulaName)) {
+  if (visited.has(packageName)) {
     return allDeps; // Prevent infinite recursion
   }
   
-  visited.add(formulaName);
-  const node = dependencyTree.get(formulaName);
+  visited.add(packageName);
+  const node = dependencyTree.get(packageName);
   
   if (node) {
     for (const dep of node.dependencies) {
@@ -426,7 +426,7 @@ export async function getAllDependencies(formulaName: string, dependencyTree: Ma
     }
   }
   
-  visited.delete(formulaName);
+  visited.delete(packageName);
   return allDeps;
 }
 
@@ -439,7 +439,7 @@ export async function findDanglingDependencies(
 ): Promise<Set<string>> {
   const danglingDeps = new Set<string>();
   
-  // Get all dependencies of the target formula
+  // Get all dependencies of the target package
   const allDependencies = await getAllDependencies(targetPackage, dependencyTree);
   
   // Check each dependency to see if it's dangling
@@ -447,16 +447,16 @@ export async function findDanglingDependencies(
     const depNode = dependencyTree.get(depName);
     if (!depNode) continue;
     
-    // Skip if protected (listed in cwd formula.yml)
+    // Skip if protected (listed in cwd package.yml)
     if (depNode.isProtected) {
-      logger.debug(`Skipping protected formula: ${depName}`);
+      logger.debug(`Skipping protected package: ${depName}`);
       continue;
     }
     
     // Check if this dependency has any dependents outside the dependency tree being removed
     let hasExternalDependents = false;
     for (const dependent of depNode.dependents) {
-      // If the dependent is not the target formula and not in the dependency tree, it's external
+      // If the dependent is not the target package and not in the dependency tree, it's external
       if (dependent !== targetPackage && !allDependencies.has(dependent)) {
         hasExternalDependents = true;
         break;

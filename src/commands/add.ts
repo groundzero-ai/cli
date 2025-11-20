@@ -73,8 +73,8 @@ interface SourceEntry {
 
 interface EnsurePackageResult {
   normalizedName: string;
-  formulaDir: string;
-  formulaConfig: PackageYml;
+  packageDir: string;
+  packageConfig: PackageYml;
 }
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
@@ -86,24 +86,24 @@ interface AddCommandOptions {
 export function setupAddCommand(program: Command): void {
   program
     .command('add')
-    .argument('<package-name>', 'formula to add workspace files into')
+    .argument('<package-name>', 'package to add workspace files into')
     .argument('<path>', 'file or directory to add (relative to current directory)')
     .description(
-      'Copy supported workspace files or directories into a local formula directory.\n' +
+      'Copy supported workspace files or directories into a local package directory.\n' +
       'Usage examples:\n' +
-      '  opn add my-formula .cursor/rules/example.md\n' +
-      '  opn add my-formula ai/helpers/\n'
+      '  opn add my-package .cursor/rules/example.md\n' +
+      '  opn add my-package ai/helpers/\n'
     )
     .option('--platform-specific', 'Save platform-specific variants for platform subdir inputs')
-    .action(withErrorHandling(async (formulaName: string, inputPath: string, options: AddCommandOptions) => {
-      await runAddCommand(formulaName, inputPath, options);
+    .action(withErrorHandling(async (packageName: string, inputPath: string, options: AddCommandOptions) => {
+      await runAddCommand(packageName, inputPath, options);
     }));
 }
 
-async function runAddCommand(formulaName: string, inputPath: string, options: AddCommandOptions = {}): Promise<CommandResult<void>> {
+async function runAddCommand(packageName: string, inputPath: string, options: AddCommandOptions = {}): Promise<CommandResult<void>> {
   const cwd = process.cwd();
 
-  const ensuredPackage = await ensurePackageExists(cwd, formulaName);
+  const ensuredPackage = await ensurePackageExists(cwd, packageName);
 
   const resolvedInputPath = resolve(cwd, inputPath);
   await validateSourcePath(resolvedInputPath, cwd);
@@ -138,7 +138,7 @@ async function runAddCommand(formulaName: string, inputPath: string, options: Ad
   await updatePackageIndex(cwd, ensuredPackage);
 
   if (changedFiles.length > 0) {
-    logger.info(`Added ${changedFiles.length} file(s) to formula '${ensuredPackage.normalizedName}'.`);
+    logger.info(`Added ${changedFiles.length} file(s) to package '${ensuredPackage.normalizedName}'.`);
   } else {
     logger.info('No files were added or modified.');
   }
@@ -146,28 +146,28 @@ async function runAddCommand(formulaName: string, inputPath: string, options: Ad
   return { success: true };
 }
 
-async function ensurePackageExists(cwd: string, formulaName: string): Promise<EnsurePackageResult> {
-  validatePackageName(formulaName);
-  const normalizedName = normalizePackageName(formulaName);
+async function ensurePackageExists(cwd: string, packageName: string): Promise<EnsurePackageResult> {
+  validatePackageName(packageName);
+  const normalizedName = normalizePackageName(packageName);
 
-  const formulaDir = getLocalPackageDir(cwd, normalizedName);
-  const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
+  const packageDir = getLocalPackageDir(cwd, normalizedName);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.FORMULA_YML);
 
-  await ensureDir(formulaDir);
+  await ensureDir(packageDir);
 
-  let formulaConfig: PackageYml;
-  if (await exists(formulaYmlPath)) {
-    formulaConfig = await parsePackageYml(formulaYmlPath);
+  let packageConfig: PackageYml;
+  if (await exists(packageYmlPath)) {
+    packageConfig = await parsePackageYml(packageYmlPath);
   } else {
-    formulaConfig = await promptPackageDetailsForNamed(normalizedName);
-    await writePackageYml(formulaYmlPath, formulaConfig);
-    logger.info(`Created new formula '${formulaConfig.name}@${formulaConfig.version}' at ${relative(cwd, formulaDir)}`);
+    packageConfig = await promptPackageDetailsForNamed(normalizedName);
+    await writePackageYml(packageYmlPath, packageConfig);
+    logger.info(`Created new package '${packageConfig.name}@${packageConfig.version}' at ${relative(cwd, packageDir)}`);
   }
 
   return {
     normalizedName,
-    formulaDir,
-    formulaConfig
+    packageDir,
+    packageConfig
   };
 }
 
@@ -346,11 +346,11 @@ async function copyWithConflictResolution(
   entries: SourceEntry[]
 ): Promise<PackageFile[]> {
   const changedFiles: PackageFile[] = [];
-  const { formulaDir, normalizedName } = ensuredPackage;
+  const { packageDir, normalizedName } = ensuredPackage;
 
   for (const entry of entries) {
     const registryPath = entry.registryPath;
-    const destination = join(formulaDir, ...registryPath.split('/'));
+    const destination = join(packageDir, ...registryPath.split('/'));
 
     const sourceContent = await readTextFile(entry.sourcePath);
     const destExists = await exists(destination);
@@ -388,11 +388,11 @@ async function copyWithConflictResolution(
   return changedFiles;
 }
 
-async function promptConflictDecision(formulaName: string, registryPath: string): Promise<ConflictDecision> {
+async function promptConflictDecision(packageName: string, registryPath: string): Promise<ConflictDecision> {
   const response = await safePrompts({
     type: 'select',
     name: 'decision',
-    message: `File '${registryPath}' already exists in formula '${formulaName}'. Choose how to proceed:`,
+    message: `File '${registryPath}' already exists in package '${packageName}'. Choose how to proceed:`,
     choices: [
       {
         title: 'Keep existing file (skip)',
@@ -420,13 +420,13 @@ async function updatePackageIndex(
   cwd: string,
   ensuredPackage: EnsurePackageResult
 ): Promise<void> {
-  const { normalizedName, formulaDir } = ensuredPackage;
-  const formulaFiles = await readLocalPackageFilesForIndex(formulaDir);
+  const { normalizedName, packageDir } = ensuredPackage;
+  const packageFiles = await readLocalPackageFilesForIndex(packageDir);
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
   await buildMappingAndWriteIndex(
     cwd,
     normalizedName,
-    formulaFiles,
+    packageFiles,
     detectedPlatforms,
     { preserveExactPaths: true }
   );

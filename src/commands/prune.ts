@@ -25,29 +25,29 @@ function extractTimestamp(version: string): number {
 /**
  * Find all prerelease versions in the registry
  */
-async function findPrereleaseVersions(formulaFilter?: string): Promise<PrereleaseVersion[]> {
-  logger.debug('Finding prerelease versions', { formulaFilter });
+async function findPrereleaseVersions(packageFilter?: string): Promise<PrereleaseVersion[]> {
+  logger.debug('Finding prerelease versions', { packageFilter });
   
-  const formulas = await registryManager.listPackages(undefined, true); // Get all versions, no filter yet
+  const packages = await registryManager.listPackages(undefined, true); // Get all versions, no filter yet
   const prereleaseVersions: PrereleaseVersion[] = [];
   
-  for (const formula of formulas) {
-    // Apply exact formula name filtering if provided
-    if (formulaFilter && formula.name !== formulaFilter) {
+  for (const package of packages) {
+    // Apply exact package name filtering if provided
+    if (packageFilter && package.name !== packageFilter) {
       continue;
     }
     
-    if (isLocalVersion(formula.version)) {
-      const baseVersion = extractBaseVersion(formula.version);
-      const timestamp = extractTimestamp(formula.version);
-      const formulaPath = getPackageVersionPath(formula.name, formula.version);
+    if (isLocalVersion(package.version)) {
+      const baseVersion = extractBaseVersion(package.version);
+      const timestamp = extractTimestamp(package.version);
+      const packagePath = getPackageVersionPath(package.name, package.version);
       
       prereleaseVersions.push({
-        formulaName: formula.name,
-        version: formula.version,
+        packageName: package.name,
+        version: package.version,
         baseVersion,
         timestamp,
-        path: formulaPath
+        path: packagePath
       });
     }
   }
@@ -57,11 +57,11 @@ async function findPrereleaseVersions(formulaFilter?: string): Promise<Prereleas
 }
 
 /**
- * Get the latest base version for a formula (highest semver)
+ * Get the latest base version for a package (highest semver)
  * Considers both stable versions and base versions from prereleases
  */
-async function getLatestBaseVersion(formulaName: string): Promise<string | null> {
-  const allVersions = await listPackageVersions(formulaName);
+async function getLatestBaseVersion(packageName: string): Promise<string | null> {
+  const allVersions = await listPackageVersions(packageName);
   const baseVersions = new Set<string>();
   
   for (const version of allVersions) {
@@ -83,16 +83,16 @@ async function getLatestBaseVersion(formulaName: string): Promise<string | null>
 }
 
 /**
- * Group prerelease versions by formula
+ * Group prerelease versions by package
  */
 function groupByPackage(versions: PrereleaseVersion[]): Map<string, PrereleaseVersion[]> {
   const groups = new Map<string, PrereleaseVersion[]>();
   
   for (const version of versions) {
-    if (!groups.has(version.formulaName)) {
-      groups.set(version.formulaName, []);
+    if (!groups.has(version.packageName)) {
+      groups.set(version.packageName, []);
     }
-    groups.get(version.formulaName)!.push(version);
+    groups.get(version.packageName)!.push(version);
   }
   
   return groups;
@@ -117,22 +117,22 @@ async function analyzeDeletionSafety(
     return { toDelete: versions, toPreserve: [] };
   }
   
-  const formulaGroups = groupByPackage(versions);
+  const packageGroups = groupByPackage(versions);
   const toDelete: PrereleaseVersion[] = [];
   const toPreserve: PrereleaseVersion[] = [];
   
-  for (const [formulaName, formulaVersions] of formulaGroups) {
+  for (const [packageName, packageVersions] of packageGroups) {
     // 1. Find the latest base version (highest semver)
-    const latestBaseVersion = await getLatestBaseVersion(formulaName);
+    const latestBaseVersion = await getLatestBaseVersion(packageName);
     
     if (!latestBaseVersion) {
       // No stable versions exist, delete all prereleases
-      toDelete.push(...formulaVersions);
+      toDelete.push(...packageVersions);
       continue;
     }
     
     // 2. Get prerelease versions ONLY for the latest base version
-    const latestBasePrereleases = formulaVersions.filter(v => 
+    const latestBasePrereleases = packageVersions.filter(v => 
       v.baseVersion === latestBaseVersion
     );
     
@@ -147,7 +147,7 @@ async function analyzeDeletionSafety(
     }
     
     // 5. Delete ALL prerelease versions of older base versions
-    const olderBasePrereleases = formulaVersions.filter(v => 
+    const olderBasePrereleases = packageVersions.filter(v => 
       v.baseVersion !== latestBaseVersion
     );
     toDelete.push(...olderBasePrereleases);
@@ -203,26 +203,26 @@ async function confirmPruneOperation(
   if (toPreserve.length > 0) {
     console.log('✅ Versions to PRESERVE (latest prerelease of latest base version):');
     const preserveGroups = groupByPackage(toPreserve);
-    for (const [formulaName, versions] of preserveGroups) {
+    for (const [packageName, versions] of preserveGroups) {
       for (const version of versions) {
-        console.log(`   📦 ${formulaName}@${version.version} (latest prerelease of v${version.baseVersion})`);
+        console.log(`   📦 ${packageName}@${version.version} (latest prerelease of v${version.baseVersion})`);
       }
     }
     console.log();
   }
   
-  // Show formulas with no prereleases for latest base version
+  // Show packages with no prereleases for latest base version
   const deleteGroups = groupByPackage(toDelete);
   const preserveGroups = groupByPackage(toPreserve);
-  const formulasWithoutLatestPrereleases = [...deleteGroups.keys()].filter(name => 
+  const packagesWithoutLatestPrereleases = [...deleteGroups.keys()].filter(name => 
     !preserveGroups.has(name)
   );
   
-  if (formulasWithoutLatestPrereleases.length > 0) {
+  if (packagesWithoutLatestPrereleases.length > 0) {
     console.log('ℹ️  No prerelease versions found for latest base versions:');
-    for (const formulaName of formulasWithoutLatestPrereleases) {
-      const latestBase = await getLatestBaseVersion(formulaName);
-      console.log(`   📦 ${formulaName} (latest: v${latestBase} - no prereleases)`);
+    for (const packageName of packagesWithoutLatestPrereleases) {
+      const latestBase = await getLatestBaseVersion(packageName);
+      console.log(`   📦 ${packageName} (latest: v${latestBase} - no prereleases)`);
     }
     console.log();
   }
@@ -231,8 +231,8 @@ async function confirmPruneOperation(
   if (toDelete.length > 0) {
     console.log('🗑️  Versions to DELETE:');
     
-    for (const [formulaName, versions] of deleteGroups) {
-      console.log(`   📦 ${formulaName} (${versions.length} versions):`);
+    for (const [packageName, versions] of deleteGroups) {
+      console.log(`   📦 ${packageName} (${versions.length} versions):`);
       
       // Group by base version for better display
       const versionsByBase = new Map<string, PrereleaseVersion[]>();
@@ -248,7 +248,7 @@ async function confirmPruneOperation(
       
       for (const baseVersion of sortedBases) {
         const baseVersions = versionsByBase.get(baseVersion)!;
-        const latestBase = await getLatestBaseVersion(formulaName);
+        const latestBase = await getLatestBaseVersion(packageName);
         const isOlderBase = baseVersion !== latestBase;
         
         for (const version of baseVersions) {
@@ -291,11 +291,11 @@ async function executePruneOperation(versions: PrereleaseVersion[]): Promise<Pru
   
   for (const version of versions) {
     try {
-      await packageManager.deletePackageVersion(version.formulaName, version.version);
+      await packageManager.deletePackageVersion(version.packageName, version.version);
       deletedVersions.push(version);
-      console.log(`✓ Deleted ${version.formulaName}@${version.version}`);
+      console.log(`✓ Deleted ${version.packageName}@${version.version}`);
     } catch (error) {
-      const errorMsg = `Failed to delete ${version.formulaName}@${version.version}: ${error}`;
+      const errorMsg = `Failed to delete ${version.packageName}@${version.version}: ${error}`;
       errors.push(errorMsg);
       logger.error(errorMsg, { error, version });
       console.log(`✗ ${errorMsg}`);
@@ -317,20 +317,20 @@ async function executePruneOperation(versions: PrereleaseVersion[]): Promise<Pru
  * Main prune command implementation
  */
 async function pruneCommand(
-  formulaName?: string,
+  packageName?: string,
   options: PruneOptions = {}
 ): Promise<CommandResult<PruneResult>> {
-  logger.info(`Pruning prerelease versions${formulaName ? ` for formula: ${formulaName}` : ''}`);
+  logger.info(`Pruning prerelease versions${packageName ? ` for package: ${packageName}` : ''}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
   try {
     // 1. Discovery phase
-    const allPrereleaseVersions = await findPrereleaseVersions(formulaName);
+    const allPrereleaseVersions = await findPrereleaseVersions(packageName);
     
     if (allPrereleaseVersions.length === 0) {
-      const scope = formulaName ? `for formula '${formulaName}'` : 'in local registry';
+      const scope = packageName ? `for package '${packageName}'` : 'in local registry';
       console.log(`No prerelease versions found ${scope}.`);
       
       const emptyResult: PruneResult = {
@@ -413,7 +413,7 @@ async function pruneCommand(
       throw error; // Re-throw to be handled by withErrorHandling
     }
     
-    logger.error('Failed to prune prerelease versions', { error, formulaName, options });
+    logger.error('Failed to prune prerelease versions', { error, packageName, options });
     throw error instanceof Error ? error : new Error(`Prune operation failed: ${error}`);
   }
 }
@@ -425,13 +425,13 @@ export function setupPruneCommand(program: Command): void {
   program
     .command('prune')
     .description('Remove old prerelease versions from local registry. Preserves latest prerelease of latest version unless --all is specified.')
-    .argument('[package-name]', 'specific formula to prune (optional)')
+    .argument('[package-name]', 'specific package to prune (optional)')
     .option('--all', 'delete ALL prerelease versions including latest ones')
     .option('--dry-run', 'show what would be deleted without doing it')
     .option('-f, --force', 'skip confirmation prompts')
     .option('-i, --interactive', 'interactively select versions to delete')
-    .action(withErrorHandling(async (formulaName?: string, options?: PruneOptions) => {
-      const result = await pruneCommand(formulaName, options);
+    .action(withErrorHandling(async (packageName?: string, options?: PruneOptions) => {
+      const result = await pruneCommand(packageName, options);
       if (!result.success) {
         throw new Error(result.error || 'Prune operation failed');
       }

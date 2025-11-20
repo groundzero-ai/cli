@@ -5,41 +5,41 @@ import { gatherRootVersionConstraints } from '../core/openpackage.js';
 import { arePackageNamesEquivalent } from './package-name.js';
 
 /**
- * Extract formulas from formula.yml configuration
+ * Extract packages from package.yml configuration
  */
 export function extractPackagesFromConfig(config: PackageYml): Array<{ name: string; version?: string; isDev: boolean }> {
-  const formulas: Array<{ name: string; version?: string; isDev: boolean }> = [];
+  const packages: Array<{ name: string; version?: string; isDev: boolean }> = [];
   
-  // Extract regular formulas
-  if (config.formulas) {
-    for (const formula of config.formulas) {
-      formulas.push({
-        name: formula.name,
-        version: formula.version,
+  // Extract regular packages
+  if (config.packages) {
+    for (const package of config.packages) {
+      packages.push({
+        name: package.name,
+        version: package.version,
         isDev: false
       });
     }
   }
   
-  // Extract dev formulas
-  if (config['dev-formulas']) {
-    for (const formula of config['dev-formulas']) {
-      formulas.push({
-        name: formula.name,
-        version: formula.version,
+  // Extract dev packages
+  if (config['dev-packages']) {
+    for (const package of config['dev-packages']) {
+      packages.push({
+        name: package.name,
+        version: package.version,
         isDev: true
       });
     }
   }
   
-  return formulas;
+  return packages;
 }
 
 /**
  * Re-resolve dependencies with version overrides to ensure correct child dependencies
  */
 export async function resolveDependenciesWithOverrides(
-  formulaName: string,
+  packageName: string,
   targetDir: string,
   skippedPackages: string[],
   globalConstraints?: Map<string, string[]>,
@@ -48,7 +48,7 @@ export async function resolveDependenciesWithOverrides(
   // Re-gather root constraints (which now includes any newly persisted versions)
   const rootConstraints = await gatherRootVersionConstraints(targetDir);
   
-  // Filter out skipped formulas by creating a wrapper
+  // Filter out skipped packages by creating a wrapper
   const customResolveDependencies = async (
     name: string,
     dir: string,
@@ -60,7 +60,7 @@ export async function resolveDependenciesWithOverrides(
     globalConst?: Map<string, string[]>,
     rootOver?: Map<string, string[]>
   ): Promise<{ resolvedPackages: ResolvedPackage[]; missingPackages: string[] }> => {
-    // Skip if this formula is in the skipped list
+    // Skip if this package is in the skipped list
     if (skippedPackages.includes(name)) {
       return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: [] };
     }
@@ -80,7 +80,7 @@ export async function resolveDependenciesWithOverrides(
   
   // Re-resolve the entire dependency tree with updated root constraints
   return await customResolveDependencies(
-    formulaName,
+    packageName,
     targetDir,
     true,
     new Set(),
@@ -93,29 +93,29 @@ export async function resolveDependenciesWithOverrides(
 }
 
 /**
- * Get the highest version and required version of a formula from the dependency tree
+ * Get the highest version and required version of a package from the dependency tree
  */
 export async function getVersionInfoFromDependencyTree(
-  formulaName: string,
+  packageName: string,
   resolvedPackages: ResolvedPackage[]
 ): Promise<{ highestVersion: string; requiredVersion?: string }> {
   let highestVersion = '0.0.0';
   let highestRequiredVersion: string | undefined;
   
-  // Get the requiredVersions map from the first resolved formula
+  // Get the requiredVersions map from the first resolved package
   const requiredVersions = (resolvedPackages[0] as any)?.requiredVersions as Map<string, string[]> | undefined;
   
   for (const resolved of resolvedPackages) {
-    if (arePackageNamesEquivalent(resolved.name, formulaName)) {
+    if (arePackageNamesEquivalent(resolved.name, packageName)) {
       if (semver.gt(resolved.version, highestVersion)) {
         highestVersion = resolved.version;
       }
     }
   }
   
-  // Get the highest required version from all specified versions for this formula
-  if (requiredVersions && requiredVersions.has(formulaName)) {
-    const versions = requiredVersions.get(formulaName)!;
+  // Get the highest required version from all specified versions for this package
+  if (requiredVersions && requiredVersions.has(packageName)) {
+    const versions = requiredVersions.get(packageName)!;
     for (const version of versions) {
       if (!highestRequiredVersion || semver.gt(version, highestRequiredVersion)) {
         highestRequiredVersion = version;

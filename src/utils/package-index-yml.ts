@@ -5,7 +5,7 @@ import { getLocalPackageDir } from './paths.js';
 import { normalizePathForProcessing } from './path-normalization.js';
 import { logger } from './logger.js';
 
-export const FORMULA_INDEX_FILENAME = 'formula.index.yml';
+export const FORMULA_INDEX_FILENAME = 'package.index.yml';
 const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
 export interface PackageIndexData {
@@ -15,12 +15,12 @@ export interface PackageIndexData {
 
 export interface PackageIndexRecord extends PackageIndexData {
   path: string;
-  formulaName: string;
+  packageName: string;
 }
 
-export function getPackageIndexPath(cwd: string, formulaName: string): string {
-  const formulaDir = getLocalPackageDir(cwd, formulaName);
-  return join(formulaDir, FORMULA_INDEX_FILENAME);
+export function getPackageIndexPath(cwd: string, packageName: string): string {
+  const packageDir = getLocalPackageDir(cwd, packageName);
+  return join(packageDir, FORMULA_INDEX_FILENAME);
 }
 
 export function ensureTrailingSlash(value: string): string {
@@ -62,8 +62,8 @@ export function sanitizeIndexData(data: any): PackageIndexData | null {
   };
 }
 
-export async function readPackageIndex(cwd: string, formulaName: string): Promise<PackageIndexRecord | null> {
-  const indexPath = getPackageIndexPath(cwd, formulaName);
+export async function readPackageIndex(cwd: string, packageName: string): Promise<PackageIndexRecord | null> {
+  const indexPath = getPackageIndexPath(cwd, packageName);
   if (!(await exists(indexPath))) {
     return null;
   }
@@ -73,25 +73,25 @@ export async function readPackageIndex(cwd: string, formulaName: string): Promis
     const parsed = yaml.load(content) as any;
     const sanitized = sanitizeIndexData(parsed);
     if (!sanitized) {
-      logger.warn(`Invalid formula index detected at ${indexPath}, will repair on write.`);
+      logger.warn(`Invalid package index detected at ${indexPath}, will repair on write.`);
       return {
         path: indexPath,
-        formulaName,
+        packageName,
         version: '',
         files: {}
       };
     }
     return {
       path: indexPath,
-      formulaName,
+      packageName,
       version: sanitized.version,
       files: sanitized.files
     };
   } catch (error) {
-    logger.warn(`Failed to read formula index at ${indexPath}: ${error}`);
+    logger.warn(`Failed to read package index at ${indexPath}: ${error}`);
     return {
       path: indexPath,
-      formulaName,
+      packageName,
       version: '',
       files: {}
     };

@@ -11,7 +11,7 @@ import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization
 /**
  * Parse a registry or universal path to extract subdir and relative path info
  * Platform suffix detection is always enabled and supports both file-level and directory-level suffixes.
- * @param path - The registry path from formula files or universal path
+ * @param path - The registry path from package files or universal path
  * @param options - Parsing options (allowPlatformSuffix is always true, kept for backward compatibility)
  * @returns Parsed information or null if not a universal subdir path
  */

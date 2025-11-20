@@ -21,14 +21,14 @@ function getPrereleaseVersionsForBase(versions: string[], baseVersion: string): 
  * Determine what should be deleted based on options and input
  */
 async function determineDeletionScope(
-  formulaName: string,
+  packageName: string,
   version: string | undefined,
   options: DeleteOptions
 ): Promise<{ type: 'all' | 'specific' | 'prerelease'; version?: string; baseVersion?: string; versions?: string[] }> {
   // Get versions once and reuse
-  const versions = await listPackageVersions(formulaName);
+  const versions = await listPackageVersions(packageName);
   if (versions.length === 0) {
-    throw new PackageNotFoundError(formulaName);
+    throw new PackageNotFoundError(packageName);
   }
   
   // If version is specified in input
@@ -36,7 +36,7 @@ async function determineDeletionScope(
     // Check if it's a specific prerelease version
     if (isLocalVersion(version)) {
       if (!versions.includes(version)) {
-        throw new PackageNotFoundError(`${formulaName}@${version}`);
+        throw new PackageNotFoundError(`${packageName}@${version}`);
       }
       return { type: 'specific', version, versions };
     }
@@ -49,7 +49,7 @@ async function determineDeletionScope(
     
     // Regular version - delete specific version
     if (!versions.includes(version)) {
-      throw new PackageNotFoundError(`${formulaName}@${version}`);
+      throw new PackageNotFoundError(`${packageName}@${version}`);
     }
     return { type: 'specific', version, versions };
   }
@@ -60,7 +60,7 @@ async function determineDeletionScope(
       return { type: 'specific', version: versions[0], versions };
     }
     
-    const selectedVersion = await promptVersionSelection(formulaName, versions, 'to delete');
+    const selectedVersion = await promptVersionSelection(packageName, versions, 'to delete');
     return { type: 'specific', version: selectedVersion, versions };
   }
   
@@ -72,60 +72,60 @@ async function determineDeletionScope(
  * Validate that the deletion target exists
  */
 async function validateDeletionTarget(
-  formulaName: string,
+  packageName: string,
   deletionScope: { type: 'all' | 'specific' | 'prerelease'; version?: string; baseVersion?: string; versions?: string[] }
 ): Promise<void> {
   if (deletionScope.type === 'specific') {
     // Check if specific version exists
-    if (!(await hasPackageVersion(formulaName, deletionScope.version!))) {
-      throw new PackageNotFoundError(`${formulaName}@${deletionScope.version}`);
+    if (!(await hasPackageVersion(packageName, deletionScope.version!))) {
+      throw new PackageNotFoundError(`${packageName}@${deletionScope.version}`);
     }
   } else if (deletionScope.type === 'prerelease') {
     // Check if any prerelease versions exist for the base version
     const prereleaseVersions = getPrereleaseVersionsForBase(deletionScope.versions!, deletionScope.baseVersion!);
     if (prereleaseVersions.length === 0) {
-      throw new PackageNotFoundError(`${formulaName}@${deletionScope.baseVersion} (no prerelease versions found)`);
+      throw new PackageNotFoundError(`${packageName}@${deletionScope.baseVersion} (no prerelease versions found)`);
     }
   } else {
-    // Check if formula exists (any version)
-    if (!(await packageManager.packageExists(formulaName))) {
-      throw new PackageNotFoundError(formulaName);
+    // Check if package exists (any version)
+    if (!(await packageManager.packageExists(packageName))) {
+      throw new PackageNotFoundError(packageName);
     }
   }
 }
 
 /**
- * Delete formula command implementation
+ * Delete package command implementation
  */
 async function deletePackageCommand(
-  formulaInput: string, 
+  packageInput: string, 
   options: DeleteOptions
 ): Promise<CommandResult> {
-  logger.info(`Deleting formula: ${formulaInput}`);
+  logger.info(`Deleting package: ${packageInput}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
-  // Parse formula input
-  const { name: formulaName, version: inputVersion } = parsePackageInput(formulaInput);
+  // Parse package input
+  const { name: packageName, version: inputVersion } = parsePackageInput(packageInput);
   
   // Determine what to delete
-  const deletionScope = await determineDeletionScope(formulaName, inputVersion, options);
+  const deletionScope = await determineDeletionScope(packageName, inputVersion, options);
   
   // Validate deletion target exists
-  await validateDeletionTarget(formulaName, deletionScope);
+  await validateDeletionTarget(packageName, deletionScope);
   
   // Confirmation prompt (if not forced)
   if (!options.force) {
     let shouldDelete: boolean;
     
     if (deletionScope.type === 'specific') {
-      shouldDelete = await promptVersionDelete(formulaName, deletionScope.version!);
+      shouldDelete = await promptVersionDelete(packageName, deletionScope.version!);
     } else if (deletionScope.type === 'prerelease') {
       const prereleaseVersions = getPrereleaseVersionsForBase(deletionScope.versions!, deletionScope.baseVersion!);
-      shouldDelete = await promptPrereleaseVersionsDelete(formulaName, deletionScope.baseVersion!, prereleaseVersions);
+      shouldDelete = await promptPrereleaseVersionsDelete(packageName, deletionScope.baseVersion!, prereleaseVersions);
     } else {
-      shouldDelete = await promptAllVersionsDelete(formulaName, deletionScope.versions!.length);
+      shouldDelete = await promptAllVersionsDelete(packageName, deletionScope.versions!.length);
     }
     
     // Handle user cancellation (Ctrl+C or 'n')
@@ -137,27 +137,27 @@ async function deletePackageCommand(
   // Execute deletion
   try {
     if (deletionScope.type === 'specific') {
-      await packageManager.deletePackageVersion(formulaName, deletionScope.version!);
-      console.log(`✓ Version '${deletionScope.version}' of formula '${formulaName}' deleted successfully`);
+      await packageManager.deletePackageVersion(packageName, deletionScope.version!);
+      console.log(`✓ Version '${deletionScope.version}' of package '${packageName}' deleted successfully`);
     } else if (deletionScope.type === 'prerelease') {
       const prereleaseVersions = getPrereleaseVersionsForBase(deletionScope.versions!, deletionScope.baseVersion!);
       
       // Delete all prerelease versions
       for (const version of prereleaseVersions) {
-        await packageManager.deletePackageVersion(formulaName, version);
+        await packageManager.deletePackageVersion(packageName, version);
       }
       
       const versionText = prereleaseVersions.length === 1 ? 'version' : 'versions';
-      console.log(`✓ ${prereleaseVersions.length} prerelease ${versionText} of '${formulaName}@${deletionScope.baseVersion}' deleted successfully`);
+      console.log(`✓ ${prereleaseVersions.length} prerelease ${versionText} of '${packageName}@${deletionScope.baseVersion}' deleted successfully`);
     } else {
-      await packageManager.deletePackage(formulaName);
-      console.log(`✓ All versions of formula '${formulaName}' deleted successfully`);
+      await packageManager.deletePackage(packageName);
+      console.log(`✓ All versions of package '${packageName}' deleted successfully`);
     }
     
     return {
       success: true,
       data: { 
-        formulaName, 
+        packageName, 
         version: deletionScope.version,
         baseVersion: deletionScope.baseVersion,
         type: deletionScope.type 
@@ -167,8 +167,8 @@ async function deletePackageCommand(
     if (error instanceof UserCancellationError) {
       throw error; // Re-throw to be handled by withErrorHandling
     }
-    logger.error(`Failed to delete formula: ${formulaName}`, { error, deletionScope });
-    throw error instanceof Error ? error : new Error(`Failed to delete formula: ${error}`);
+    logger.error(`Failed to delete package: ${packageName}`, { error, deletionScope });
+    throw error instanceof Error ? error : new Error(`Failed to delete package: ${error}`);
   }
 }
 
@@ -179,12 +179,12 @@ export function setupDeleteCommand(program: Command): void {
   program
     .command('delete')
     .alias('del')
-    .description('Delete a formula from local registry. Supports versioning with formula@version syntax and prerelease version deletion.')
-    .argument('<formula>', 'formula name or formula@version to delete. Use formula@baseVersion to delete all prerelease versions of that base version.')
+    .description('Delete a package from local registry. Supports versioning with package@version syntax and prerelease version deletion.')
+    .argument('<package>', 'package name or package@version to delete. Use package@baseVersion to delete all prerelease versions of that base version.')
     .option('-f, --force', 'skip confirmation prompt')
     .option('-i, --interactive', 'interactively select version to delete')
-    .action(withErrorHandling(async (formula: string, options: DeleteOptions) => {
-      const result = await deletePackageCommand(formula, options);
+    .action(withErrorHandling(async (pkg: string, options: DeleteOptions) => {
+      const result = await deletePackageCommand(package, options);
       if (!result.success) {
         throw new Error(result.error || 'Delete operation failed');
       }

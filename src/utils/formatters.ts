@@ -5,7 +5,7 @@ import { PackageYml } from '../types/index.js';
  */
 
 /**
- * Interface for formula table entries
+ * Interface for package table entries
  */
 export interface PackageTableEntry {
   name: string;
@@ -17,22 +17,22 @@ export interface PackageTableEntry {
 }
 
 /**
- * Format and display a simple formula table (used by list and search commands)
+ * Format and display a simple package table (used by list and search commands)
  */
-export function displayPackageTable(formulas: PackageTableEntry[], title?: string, showAllVersions: boolean = false): void {
+export function displayPackageTable(packages: PackageTableEntry[], title?: string, showAllVersions: boolean = false): void {
   if (title) {
     console.log(title);
     console.log('');
   }
   
-  if (formulas.length === 0) {
-    console.log('No formulas found.');
+  if (packages.length === 0) {
+    console.log('No packages found.');
     return;
   }
   
   // Calculate column widths dynamically
-  const maxNameLength = Math.max(4, ...formulas.map(f => f.name.length));
-  const maxVersionLength = Math.max(7, ...formulas.map(f => f.version.length));
+  const maxNameLength = Math.max(4, ...packages.map(f => f.name.length));
+  const maxVersionLength = Math.max(7, ...packages.map(f => f.version.length));
   const nameWidth = Math.min(maxNameLength + 2, 30); // Cap at 30 chars
   const versionWidth = Math.min(maxVersionLength + 6, 20); // Cap at 20 chars, more spacing
   
@@ -40,24 +40,24 @@ export function displayPackageTable(formulas: PackageTableEntry[], title?: strin
   console.log('REPOSITORY'.padEnd(nameWidth) + 'VERSION'.padEnd(versionWidth) + 'DESCRIPTION');
   console.log('-'.repeat(nameWidth) + '-'.repeat(versionWidth) + '-----------');
   
-  // Display each formula
-  for (const formula of formulas) {
-    const name = formula.name.padEnd(nameWidth);
-    const version = formula.version.padEnd(versionWidth);
-    const description = formula.description || '(no description)';
+  // Display each package
+  for (const package of packages) {
+    const name = package.name.padEnd(nameWidth);
+    const version = package.version.padEnd(versionWidth);
+    const description = package.description || '(no description)';
     console.log(`${name}${version}${description}`);
   }
   
   console.log('');
-  console.log(`Total: ${formulas.length} formula${showAllVersions ? ' versions' : 's'}`);
+  console.log(`Total: ${packages.length} package${showAllVersions ? ' versions' : 's'}`);
 }
 
 /**
- * Format and display an extended formula table with status information (used by status command)
+ * Format and display an extended package table with status information (used by status command)
  */
-export function displayExtendedPackageTable(formulas: PackageTableEntry[]): void {
-  if (formulas.length === 0) {
-    console.log('No formulas found.');
+export function displayExtendedPackageTable(packages: PackageTableEntry[]): void {
+  if (packages.length === 0) {
+    console.log('No packages found.');
     return;
   }
   
@@ -65,19 +65,19 @@ export function displayExtendedPackageTable(formulas: PackageTableEntry[]): void
   console.log('FORMULA'.padEnd(20) + 'INSTALLED'.padEnd(12) + 'STATUS'.padEnd(15) + 'TYPE'.padEnd(15) + 'AVAILABLE');
   console.log('-------'.padEnd(20) + '---------'.padEnd(12) + '------'.padEnd(15) + '----'.padEnd(15) + '---------');
   
-  // Display each formula
-  for (const formula of formulas) {
-    const name = formula.name.padEnd(20);
-    const version = formula.version.padEnd(12);
-    const status = (formula.status || '').padEnd(15);
-    const type = (formula.type || '').padEnd(15);
-    const available = (formula.available || '-').padEnd(9);
+  // Display each package
+  for (const package of packages) {
+    const name = package.name.padEnd(20);
+    const version = package.version.padEnd(12);
+    const status = (package.status || '').padEnd(15);
+    const type = (package.type || '').padEnd(15);
+    const available = (package.available || '-').padEnd(9);
     
     console.log(`${name}${version}${status}${type}${available}`);
   }
   
   console.log('');
-  console.log(`Total: ${formulas.length} formulas`);
+  console.log(`Total: ${packages.length} packages`);
 }
 
 /**
@@ -185,21 +185,21 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Display formula configuration details in a consistent format
+ * Display package configuration details in a consistent format
  */
-export function displayPackageConfig(formulaConfig: PackageYml, path: string, isExisting: boolean = false): void {
+export function displayPackageConfig(packageConfig: PackageYml, path: string, isExisting: boolean = false): void {
   const action = isExisting ? 'already exists' : 'created';
   console.log(`✓ ${path} ${action}`);
 
-  console.log(`  - Name: ${formulaConfig.name}`);
-  console.log(`  - Version: ${formulaConfig.version}`);
-  if (formulaConfig.description) {
-    console.log(`  - Description: ${formulaConfig.description}`);
+  console.log(`  - Name: ${packageConfig.name}`);
+  console.log(`  - Version: ${packageConfig.version}`);
+  if (packageConfig.description) {
+    console.log(`  - Description: ${packageConfig.description}`);
   }
-  if (formulaConfig.keywords && formulaConfig.keywords.length > 0) {
-    console.log(`  - Keywords: ${formulaConfig.keywords.join(', ')}`);
+  if (packageConfig.keywords && packageConfig.keywords.length > 0) {
+    console.log(`  - Keywords: ${packageConfig.keywords.join(', ')}`);
   }
-  if (formulaConfig.private) {
+  if (packageConfig.private) {
     console.log(`  - Private: Yes`);
   }
 }

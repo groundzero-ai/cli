@@ -6,26 +6,26 @@ import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platf
 import { getPackageVersionPath } from "../directory.js";
 import { UTF8_ENCODING } from "./constants.js";
 import { PackageYmlInfo } from "./package-yml-generator.js";
-import { formulaVersionExists } from "../../utils/package-versioning.js";
+import { packageVersionExists } from "../../utils/package-versioning.js";
 
 /**
- * Save formula to local registry
+ * Save package to local registry
  */
 export async function savePackageToRegistry(
-  formulaInfo: PackageYmlInfo,
+  packageInfo: PackageYmlInfo,
   files: PackageFile[],
   silent: boolean = true
 ): Promise<{ success: boolean; error?: string; updatedConfig?: PackageYml }> {
 
-  const config = formulaInfo.config;
+  const config = packageInfo.config;
 
   try {
-    // Ensure formula name is normalized for consistent registry paths
+    // Ensure package name is normalized for consistent registry paths
     const normalizedConfig = { ...config, name: normalizePackageName(config.name) };
     const targetPath = getPackageVersionPath(normalizedConfig.name, normalizedConfig.version);
 
     // If version already exists, clear the directory first to remove old files
-    if (await formulaVersionExists(normalizedConfig.name, normalizedConfig.version)) {
+    if (await packageVersionExists(normalizedConfig.name, normalizedConfig.version)) {
       await remove(targetPath);
       logger.debug(`Cleared existing version directory: ${targetPath}`);
     }
@@ -62,7 +62,7 @@ export async function savePackageToRegistry(
     }
     return { success: true, updatedConfig: normalizedConfig };
   } catch (error) {
-    logger.error(`Failed to save formula: ${error}`);
-    return { success: false, error: `Failed to save formula: ${error}` };
+    logger.error(`Failed to save package: ${error}`);
+    return { success: false, error: `Failed to save package: ${error}` };
   }
 }

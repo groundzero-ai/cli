@@ -172,7 +172,7 @@ export function findSubpathIndex(fullPath: string, subpath: string): number {
 
 /**
  * Auto-normalize potential directory paths by prepending './' to relative paths with separators
- * This helps distinguish between formula names and directory paths in user input
+ * This helps distinguish between package names and directory paths in user input
  *
  * Examples:
  * - '.cursor/rules' -> './.cursor/rules'

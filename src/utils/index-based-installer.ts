@@ -81,7 +81,7 @@ interface GroupPlan {
 }
 
 interface ConflictOwner {
-  formulaName: string;
+  packageName: string;
   key: string;
   type: 'file' | 'dir';
   indexPath: string;
@@ -113,17 +113,17 @@ interface PlannedTargetDetail {
 
 export async function planConflictsForPackage(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   version: string,
   platforms: Platform[]
 ): Promise<PlannedConflict[]> {
-  const registryEntries = await loadRegistryFileEntries(formulaName, version);
+  const registryEntries = await loadRegistryFileEntries(packageName, version);
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
-  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
-  const previousIndex = await readPackageIndex(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, packageName);
   const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
 
   const conflicts: PlannedConflict[] = [];
@@ -141,7 +141,7 @@ export async function planConflictsForPackage(
         conflicts.push({
           relPath: normalizedRel,
           reason: 'owned-by-other',
-          ownerPackage: owner.formulaName
+          ownerPackage: owner.packageName
         });
         seen.add(normalizedRel);
         continue;
@@ -230,7 +230,7 @@ async function updateOwnerIndexAfterRename(
 ): Promise<void> {
   const normalizedOld = normalizePathForProcessing(oldRelPath);
   const normalizedNew = normalizePathForProcessing(newRelPath);
-  const record = indexByPackage.get(owner.formulaName);
+  const record = indexByPackage.get(owner.packageName);
   if (!record) return;
 
   if (owner.type === 'file') {
@@ -265,7 +265,7 @@ async function resolveConflictsForPlannedFiles(
   }
   const indexByPackage = new Map<string, PackageIndexRecord>();
   for (const record of otherIndexes) {
-    indexByPackage.set(record.formulaName, record);
+    indexByPackage.set(record.packageName, record);
   }
 
   for (const planned of plannedFiles) {
@@ -285,14 +285,14 @@ async function resolveConflictsForPlannedFiles(
           } else if (defaultStrategy && defaultStrategy !== 'ask') {
             decision = defaultStrategy as ConflictResolution;
             if (decision === 'skip') {
-              warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to configured conflict strategy.`);
+              warnings.push(`Skipping ${normalizedRel} (owned by ${owner.packageName}) due to configured conflict strategy.`);
             }
           } else if (!interactive) {
-            warnings.push(`Skipping ${normalizedRel} (owned by ${owner.formulaName}) due to non-interactive conflict.`);
+            warnings.push(`Skipping ${normalizedRel} (owned by ${owner.packageName}) due to non-interactive conflict.`);
             decision = 'skip';
           } else {
             decision = await promptConflictResolution(
-              `File ${normalizedRel} is managed by formula ${owner.formulaName}. How would you like to proceed?`
+              `File ${normalizedRel} is managed by package ${owner.packageName}. How would you like to proceed?`
             );
           }
         }
@@ -304,7 +304,7 @@ async function resolveConflictsForPlannedFiles(
         if (decision === 'keep-both') {
           if (isDryRun) {
             const localPath = await generateLocalPath(cwd, normalizedRel);
-            warnings.push(`Would rename existing ${normalizedRel} from ${owner.formulaName} to ${localPath} and install new file at ${normalizedRel}.`);
+            warnings.push(`Would rename existing ${normalizedRel} from ${owner.packageName} to ${localPath} and install new file at ${normalizedRel}.`);
             filteredTargets.push(target);
             continue;
           }
@@ -317,7 +317,7 @@ async function resolveConflictsForPlannedFiles(
             await updateOwnerIndexAfterRename(owner, normalizedRel, localRelPath, indexByPackage);
             context.installedPathOwners.delete(normalizedRel);
             context.installedPathOwners.set(normalizePathForProcessing(localRelPath), owner);
-            warnings.push(`Renamed existing ${normalizedRel} from ${owner.formulaName} to ${localRelPath}.`);
+            warnings.push(`Renamed existing ${normalizedRel} from ${owner.packageName} to ${localRelPath}.`);
             filteredTargets.push(target);
           } catch (error) {
             warnings.push(`Failed to rename ${normalizedRel}: ${error}`);
@@ -327,7 +327,7 @@ async function resolveConflictsForPlannedFiles(
 
         // overwrite
         if (isDryRun) {
-          warnings.push(`Would overwrite ${normalizedRel} (currently from ${owner.formulaName}).`);
+          warnings.push(`Would overwrite ${normalizedRel} (currently from ${owner.packageName}).`);
           filteredTargets.push(target);
           continue;
         }
@@ -428,19 +428,19 @@ function normalizeRelativePath(cwd: string, absPath: string): string {
 
 async function collectPackageDirectories(
   cwd: string
-): Promise<Array<{ formulaName: string; dir: string }>> {
-  const formulasRoot = getLocalPackagesDir(cwd);
-  if (!(await exists(formulasRoot))) {
+): Promise<Array<{ packageName: string; dir: string }>> {
+  const packagesRoot = getLocalPackagesDir(cwd);
+  if (!(await exists(packagesRoot))) {
     return [];
   }
 
-  const results: Array<{ formulaName: string; dir: string }> = [];
+  const results: Array<{ packageName: string; dir: string }> = [];
 
   async function recurse(currentDir: string, relativeBase: string): Promise<void> {
-    const formulaYmlPath = join(currentDir, FILE_PATTERNS.FORMULA_YML);
-    if (await exists(formulaYmlPath)) {
-      const formulaName = relativeBase.replace(new RegExp(`\\${sep}`, 'g'), '/');
-      results.push({ formulaName, dir: currentDir });
+    const packageYmlPath = join(currentDir, FILE_PATTERNS.FORMULA_YML);
+    if (await exists(packageYmlPath)) {
+      const packageName = relativeBase.replace(new RegExp(`\\${sep}`, 'g'), '/');
+      results.push({ packageName, dir: currentDir });
       return;
     }
 
@@ -452,9 +452,9 @@ async function collectPackageDirectories(
     }
   }
 
-  const topLevelDirs = await listDirectories(formulasRoot).catch(() => [] as string[]);
+  const topLevelDirs = await listDirectories(packagesRoot).catch(() => [] as string[]);
   for (const dir of topLevelDirs) {
-    const absolute = join(formulasRoot, dir);
+    const absolute = join(packagesRoot, dir);
     await recurse(absolute, dir);
   }
 
@@ -469,11 +469,11 @@ export async function loadOtherPackageIndexes(
   const results: PackageIndexRecord[] = [];
 
   for (const entry of directories) {
-    if (entry.formulaName === excludePackage) continue;
+    if (entry.packageName === excludePackage) continue;
     const indexPath = join(entry.dir, FORMULA_INDEX_FILENAME);
     if (!(await exists(indexPath))) continue;
 
-    const record = await readPackageIndex(cwd, entry.formulaName);
+    const record = await readPackageIndex(cwd, entry.packageName);
     if (record) {
       record.path = indexPath;
       results.push(record);
@@ -513,7 +513,7 @@ async function buildExpandedIndexesContext(
     for (const [rawKey, values] of Object.entries(record.files)) {
       const key = normalizePathForProcessing(rawKey);
       const owner: ConflictOwner = {
-        formulaName: record.formulaName,
+        packageName: record.packageName,
         key,
         type: key.endsWith('/') ? 'dir' : 'file',
         indexPath: record.path
@@ -552,13 +552,13 @@ async function buildExpandedIndexesContext(
 // ============================================================================
 
 async function loadRegistryFileEntries(
-  formulaName: string,
+  packageName: string,
   version: string
 ): Promise<RegistryFileEntry[]> {
-  const formula = await packageManager.loadPackage(formulaName, version);
+  const package = await packageManager.loadPackage(packageName, version);
   const entries: RegistryFileEntry[] = [];
 
-  for (const file of formula.files) {
+  for (const file of package.files) {
     const normalized = normalizeRegistryPath(file.path);
 
     // Skip root files - these are handled by installRootFilesFromMap
@@ -902,19 +902,19 @@ function buildIndexMappingFromPlans(plans: GroupPlan[]): Record<string, string[]
 
 export async function installPackageByIndex(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   version: string,
   platforms: Platform[],
   options: InstallOptions
 ): Promise<IndexInstallResult> {
-  const registryEntries = await loadRegistryFileEntries(formulaName, version);
+  const registryEntries = await loadRegistryFileEntries(packageName, version);
 
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
   const groups = groupPlannedFiles(plannedFiles);
-  const previousIndex = await readPackageIndex(cwd, formulaName);
-  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, packageName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
   const groupPlans = await decideGroupPlans(cwd, groups, previousIndex, context);
   const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
@@ -932,7 +932,7 @@ export async function installPackageByIndex(
   }
 
   // Load platform YAML overrides once per install
-  const yamlOverrides = await loadRegistryYamlOverrides(formulaName, version);
+  const yamlOverrides = await loadRegistryYamlOverrides(packageName, version);
 
   const plannedTargetMap = buildPlannedTargetMap(plannedFiles, yamlOverrides);
   const { planned, deletions } = computeDiff(plannedTargetMap, previousOwnedPaths);
@@ -942,8 +942,8 @@ export async function installPackageByIndex(
   if (!options.dryRun) {
     const mapping = buildIndexMappingFromPlans(groupPlans);
     const indexRecord: PackageIndexRecord = {
-      path: getPackageIndexPath(cwd, formulaName),
-      formulaName,
+      path: getPackageIndexPath(cwd, packageName),
+      packageName,
       version,
       files: mapping
     };
@@ -1278,26 +1278,26 @@ async function decideGroupPlans(
 // ============================================================================
 
 /**
- * Build index mapping for formula files using the same logic flow as installPackageByIndex
+ * Build index mapping for package files using the same logic flow as installPackageByIndex
  * This function reuses the planning, grouping, and decision logic to ensure consistency
  * between installation and sync operations.
  * 
  * @param cwd - Current working directory
- * @param formulaFiles - Array of formula files to build mapping for
+ * @param packageFiles - Array of package files to build mapping for
  * @param platforms - Platforms to map files to
  * @param previousIndex - Previous index record (if any)
- * @param otherIndexes - Other formula indexes for conflict detection
+ * @param otherIndexes - Other package indexes for conflict detection
  * @returns Record mapping registry paths to installed paths
  */
 export async function buildIndexMappingForPackageFiles(
   cwd: string,
-  formulaFiles: PackageFile[],
+  packageFiles: PackageFile[],
   platforms: Platform[],
   previousIndex: PackageIndexRecord | null,
   otherIndexes: PackageIndexRecord[]
 ): Promise<Record<string, string[]>> {
   // Convert PackageFile[] to RegistryFileEntry[] format
-  const registryEntries: RegistryFileEntry[] = formulaFiles
+  const registryEntries: RegistryFileEntry[] = packageFiles
     .filter(file => {
       const normalized = normalizeRegistryPath(file.path);
       // Skip root files and skippable paths (same logic as loadRegistryFileEntries)
@@ -1327,8 +1327,8 @@ export async function buildIndexMappingForPackageFiles(
   return buildIndexMappingFromPlans(groupPlans);
 }
 
-function filterRegistryEntriesForPackageFiles(formulaFiles: PackageFile[]): RegistryFileEntry[] {
-  return formulaFiles
+function filterRegistryEntriesForPackageFiles(packageFiles: PackageFile[]): RegistryFileEntry[] {
+  return packageFiles
     .filter(file => {
       const normalized = normalizeRegistryPath(file.path);
       if (isRootRegistryPath(normalized)) return false;
@@ -1349,19 +1349,19 @@ export interface PlannedSyncOutcome {
 
 export async function applyPlannedSyncForPackageFiles(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   version: string,
-  formulaFiles: PackageFile[],
+  packageFiles: PackageFile[],
   platforms: Platform[],
   options: InstallOptions
 ): Promise<PlannedSyncOutcome> {
-  const registryEntries = filterRegistryEntriesForPackageFiles(formulaFiles);
+  const registryEntries = filterRegistryEntriesForPackageFiles(packageFiles);
 
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
-  const previousIndex = await readPackageIndex(cwd, formulaName);
-  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, packageName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
 
   const groups = groupPlannedFiles(plannedFiles);
@@ -1380,7 +1380,7 @@ export async function applyPlannedSyncForPackageFiles(
     logger.warn(warning);
   }
 
-  const plannedTargetMap = buildPlannedTargetMap(plannedFiles, formulaFiles);
+  const plannedTargetMap = buildPlannedTargetMap(plannedFiles, packageFiles);
   const { planned, deletions } = computeDiff(plannedTargetMap, previousOwnedPaths);
 
   const operationResult = await applyFileOperations(cwd, planned, deletions, options);
@@ -1389,8 +1389,8 @@ export async function applyPlannedSyncForPackageFiles(
   if (!options.dryRun) {
     mapping = buildIndexMappingFromPlans(groupPlans);
     const indexRecord: PackageIndexRecord = {
-      path: getPackageIndexPath(cwd, formulaName),
-      formulaName,
+      path: getPackageIndexPath(cwd, packageName),
+      packageName,
       version,
       files: mapping
     };

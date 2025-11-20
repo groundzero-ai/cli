@@ -2,20 +2,20 @@ import { ValidationError } from './errors.js';
 import { PackageDependency } from '../types/index.js';
 
 /**
- * Regex pattern for scoped formula names (@scope/name)
+ * Regex pattern for scoped package names (@scope/name)
  */
 export const SCOPED_FORMULA_REGEX = /^@([^\/]+)\/(.+)$/;
 
 /**
- * Error messages for formula name validation
+ * Error messages for package name validation
  */
 const ERROR_MESSAGES = {
-  INVALID_FORMULA_NAME: 'Invalid formula name: %s. Package names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Package names are case-insensitive and will be normalized to lowercase.'
+  INVALID_FORMULA_NAME: 'Invalid package name: %s. Package names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Package names are case-insensitive and will be normalized to lowercase.'
 } as const;
 
 /**
- * Validate formula name according to naming rules
- * @param name - The formula name to validate
+ * Validate package name according to naming rules
+ * @param name - The package name to validate
  * @throws ValidationError if the name is invalid
  */
 export function validatePackageName(name: string): void {
@@ -48,7 +48,7 @@ export function validatePackageName(name: string): void {
 }
 
 /**
- * Validate a formula name part (scope or local name)
+ * Validate a package name part (scope or local name)
  * @param part - The part to validate
  * @param fullName - The full original name for error messages
  * @throws ValidationError if the part is invalid
@@ -71,25 +71,25 @@ function validatePackageNamePart(part: string, fullName: string): void {
 }
 
 /**
- * Parse formula input supporting both scoped names (@scope/name) and version specifications (name@version)
+ * Parse package input supporting both scoped names (@scope/name) and version specifications (name@version)
  * Returns normalized name and optional version
  */
-export function parsePackageInput(formulaInput: string): { name: string; version?: string } {
+export function parsePackageInput(packageInput: string): { name: string; version?: string } {
   // Package name with optional version
-  const atIndex = formulaInput.lastIndexOf('@');
+  const atIndex = packageInput.lastIndexOf('@');
 
   if (atIndex === -1 || atIndex === 0) {
-    validatePackageName(formulaInput);
+    validatePackageName(packageInput);
     return {
-      name: normalizePackageName(formulaInput)
+      name: normalizePackageName(packageInput)
     };
   }
 
-  const name = formulaInput.substring(0, atIndex);
-  const version = formulaInput.substring(atIndex + 1);
+  const name = packageInput.substring(0, atIndex);
+  const version = packageInput.substring(atIndex + 1);
 
   if (!name || !version) {
-    throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use 'formula' or 'formula@version'`);
+    throw new ValidationError(`Invalid package syntax: ${packageInput}. Use 'package' or 'package@version'`);
   }
 
   validatePackageName(name);
@@ -101,9 +101,9 @@ export function parsePackageInput(formulaInput: string): { name: string; version
 }
 
 /**
- * Normalize a formula name to lowercase, handling scoped names properly.
+ * Normalize a package name to lowercase, handling scoped names properly.
  * Scoped names like @Scope/Name become @scope/name.
- * Regular names like MyPackage become myformula.
+ * Regular names like MyPackage become mypackage.
  */
 export function normalizePackageName(name: string): string {
   return name.toLowerCase();
@@ -111,7 +111,7 @@ export function normalizePackageName(name: string): string {
 
 
 /**
- * Check if two formula names are equivalent (case-insensitive).
+ * Check if two package names are equivalent (case-insensitive).
  */
 export function arePackageNamesEquivalent(name1: string, name2: string): boolean {
   return normalizePackageName(name1) === normalizePackageName(name2);

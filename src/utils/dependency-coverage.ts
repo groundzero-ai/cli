@@ -16,17 +16,17 @@ export interface DependencyCoverage {
 export async function getDependencyCoverage(cwd: string): Promise<DependencyCoverage> {
   const direct = new Set<string>();
   const transitive = new Set<string>();
-  const formulaYmlPath = getLocalPackageYmlPath(cwd);
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
 
-  if (!(await exists(formulaYmlPath))) {
+  if (!(await exists(packageYmlPath))) {
     return { direct, transitive };
   }
 
   let config: PackageYml;
   try {
-    config = await parsePackageYml(formulaYmlPath);
+    config = await parsePackageYml(packageYmlPath);
   } catch (error) {
-    logger.warn(`Failed to parse main formula.yml while computing dependency coverage: ${error}`);
+    logger.warn(`Failed to parse main package.yml while computing dependency coverage: ${error}`);
     return { direct, transitive };
   }
 
@@ -73,18 +73,18 @@ export async function getDependencyCoverage(cwd: string): Promise<DependencyCove
   return { direct, transitive };
 }
 
-export async function isPackageTransitivelyCovered(cwd: string, formulaName: string): Promise<boolean> {
+export async function isPackageTransitivelyCovered(cwd: string, packageName: string): Promise<boolean> {
   const { transitive } = await getDependencyCoverage(cwd);
-  return transitive.has(normalizePackageName(formulaName));
+  return transitive.has(normalizePackageName(packageName));
 }
 
 export async function isPackageCovered(
   cwd: string,
-  formulaName: string,
+  packageName: string,
   options?: { includeDirect?: boolean }
 ): Promise<boolean> {
   const coverage = await getDependencyCoverage(cwd);
-  const normalized = normalizePackageName(formulaName);
+  const normalized = normalizePackageName(packageName);
 
   if (options?.includeDirect !== false && coverage.direct.has(normalized)) {
     return true;

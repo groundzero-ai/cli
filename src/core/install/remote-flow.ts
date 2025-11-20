@@ -21,7 +21,7 @@ export async function fetchMissingDependencyMetadata(
   const uniqueMissing = Array.from(new Set(missing));
   const metadataResults: RemotePackageMetadataSuccess[] = [];
 
-  const metadataSpinner = dryRun ? null : new Spinner(`Fetching metadata for ${uniqueMissing.length} missing formula(s)...`);
+  const metadataSpinner = dryRun ? null : new Spinner(`Fetching metadata for ${uniqueMissing.length} missing package(s)...`);
   if (metadataSpinner) metadataSpinner.start();
 
   try {
@@ -63,7 +63,7 @@ export async function pullMissingDependencies(
   const warnings: string[] = [];
 
   if (keysToDownload.size > 0 || dryRun) {
-    const spinner = dryRun ? null : new Spinner(`Pulling ${keysToDownload.size} missing dependency formula(s) from remote...`);
+    const spinner = dryRun ? null : new Spinner(`Pulling ${keysToDownload.size} missing dependency package(s) from remote...`);
     if (spinner) spinner.start();
 
     try {
@@ -109,7 +109,7 @@ export async function pullMissingDependencies(
 }
 
 /**
- * Plan which downloads to pull for a formula based on remote metadata
+ * Plan which downloads to pull for a package based on remote metadata
  */
 export async function planRemoteDownloadsForPackage(
   metadata: RemotePackageMetadataSuccess,

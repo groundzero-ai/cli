@@ -10,24 +10,24 @@ import { parsePackageInput } from '../utils/package-name.js';
 import { packageManager } from '../core/package.js';
 
 /**
- * Show formula details command implementation (supports formula@version)
+ * Show package details command implementation (supports package@version)
  */
-async function showPackageCommand(formulaInput: string): Promise<CommandResult> {
-  logger.debug(`Showing details for formula input: ${formulaInput}`);
+async function showPackageCommand(packageInput: string): Promise<CommandResult> {
+  logger.debug(`Showing details for package input: ${packageInput}`);
   
   // Ensure registry directories exist
   await ensureRegistryDirectories();
   
   try {
     // Parse input (supports name@version or name@range)
-    const { name, version } = parsePackageInput(formulaInput);
+    const { name, version } = parsePackageInput(packageInput);
     
-    // Load formula (resolves ranges to a specific version)
-    const formula = await packageManager.loadPackage(name, version);
-    const metadata = formula.metadata;
-    const files = formula.files;
+    // Load package (resolves ranges to a specific version)
+    const package = await packageManager.loadPackage(name, version);
+    const metadata = package.metadata;
+    const files = package.files;
     
-    // Display formula details
+    // Display package details
     console.log(`✓ Package: ${metadata.name}`);
     
     console.log(`✓ Version: ${metadata.version}`);
@@ -53,9 +53,9 @@ async function showPackageCommand(formulaInput: string): Promise<CommandResult> 
     console.log(`✓ Private: ${metadata.private ? 'Yes' : 'No'}`);
 
     // Dependencies section
-    if (metadata.formulas && metadata.formulas.length > 0) {
-      console.log(`✓ Imported Packages (${metadata.formulas.length}):`);
-      for (const dep of metadata.formulas) {
+    if (metadata.packages && metadata.packages.length > 0) {
+      console.log(`✓ Imported Packages (${metadata.packages.length}):`);
+      for (const dep of metadata.packages) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
           : '';
@@ -63,9 +63,9 @@ async function showPackageCommand(formulaInput: string): Promise<CommandResult> 
       }
     }
     
-    if (metadata['dev-formulas'] && metadata['dev-formulas'].length > 0) {
-      console.log(`✓ Imported Dev Packages (${metadata['dev-formulas'].length}):`);
-      for (const dep of metadata['dev-formulas']) {
+    if (metadata['dev-packages'] && metadata['dev-packages'].length > 0) {
+      console.log(`✓ Imported Dev Packages (${metadata['dev-packages'].length}):`);
+      for (const dep of metadata['dev-packages']) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
           : '';
@@ -89,9 +89,9 @@ async function showPackageCommand(formulaInput: string): Promise<CommandResult> 
   } catch (error) {
     // Align with other commands' UX for not found
     if (error instanceof PackageNotFoundError) {
-      return { success: false, error: `Package '${formulaInput}' not found` };
+      return { success: false, error: `Package '${packageInput}' not found` };
     }
-    throw new Error(`Failed to show formula: ${error}`);
+    throw new Error(`Failed to show package: ${error}`);
   }
 }
 
@@ -102,9 +102,9 @@ async function showPackageCommand(formulaInput: string): Promise<CommandResult> 
 export function setupShowCommand(program: Command): void {
   program
     .command('show')
-    .description('Show details of a formula. Supports versioning with formula@version syntax.')
-    .argument('<package-name>', 'name of the formula to show. Supports formula@version syntax.')
-    .action(withErrorHandling(async (formulaInput: string) => {
-      await showPackageCommand(formulaInput);
+    .description('Show details of a package. Supports versioning with package@version syntax.')
+    .argument('<package-name>', 'name of the package to show. Supports package@version syntax.')
+    .action(withErrorHandling(async (packageInput: string) => {
+      await showPackageCommand(packageInput);
     }));
 }

@@ -4,7 +4,7 @@
  * for root files (AGENTS.md, CLAUDE.md, etc.).
  *
  * Marker format:
- *   <!-- formula: <package-name> --> ... <!-- -->
+ *   <!-- package: <package-name> --> ... <!-- -->
  */
 
 /**
@@ -14,58 +14,58 @@ export function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Build the literal open marker string for a formula */
-export function buildOpenMarker(formulaName: string): string {
-  return `<!-- formula: ${formulaName} -->`;
+/** Build the literal open marker string for a package */
+export function buildOpenMarker(packageName: string): string {
+  return `<!-- package: ${packageName} -->`;
 }
 
 /** Constant close marker string */
 export const CLOSE_MARKER = '<!-- -->';
 
-/** Build a case-insensitive regex to match the open marker for a formula */
-export function buildOpenMarkerRegex(formulaName: string): RegExp {
-  const namePattern = escapeRegExp(formulaName);
-  return new RegExp(`<!--\\s*formula:\\s*${namePattern}\\s*-->`, 'i');
+/** Build a case-insensitive regex to match the open marker for a package */
+export function buildOpenMarkerRegex(packageName: string): RegExp {
+  const namePattern = escapeRegExp(packageName);
+  return new RegExp(`<!--\\s*package:\\s*${namePattern}\\s*-->`, 'i');
 }
 
-/** Case-insensitive regex to match any formula open marker */
-export const OPEN_MARKER_ANY_REGEX = /<!--\s*formula:\s*[^\s>]+?\s*-->/i;
+/** Case-insensitive regex to match any package open marker */
+export const OPEN_MARKER_ANY_REGEX = /<!--\s*package:\s*[^\s>]+?\s*-->/i;
 
 /** Case-insensitive regex to match the close marker */
 export const CLOSE_MARKER_REGEX = /<!--\s*-->/i;
 
 /**
- * Global, non-greedy match between open/close markers, capturing formula name and body
- * Example: <!-- formula: name --> ... <!-- -->
+ * Global, non-greedy match between open/close markers, capturing package name and body
+ * Example: <!-- package: name --> ... <!-- -->
  */
-export const FORMULA_SECTION_GLOBAL_REGEX = /<!--\s*formula:\s*([^\s]+)\s*-->([\s\S]*?)<!--\s*-->/gi;
+export const FORMULA_SECTION_GLOBAL_REGEX = /<!--\s*package:\s*([^\s]+)\s*-->([\s\S]*?)<!--\s*-->/gi;
 
 /**
  * Detect whether content includes a marker-wrapped section.
- * If formulaName is provided, ensures the open marker matches it.
+ * If packageName is provided, ensures the open marker matches it.
  */
-export function isMarkerWrappedContent(content: string, formulaName?: string): boolean {
+export function isMarkerWrappedContent(content: string, packageName?: string): boolean {
   if (!content) return false;
   const hasClose = CLOSE_MARKER_REGEX.test(content);
   if (!hasClose) return false;
-  if (formulaName) {
-    return buildOpenMarkerRegex(formulaName).test(content);
+  if (packageName) {
+    return buildOpenMarkerRegex(packageName).test(content);
   }
   return OPEN_MARKER_ANY_REGEX.test(content);
 }
 
 /**
- * Extract content for a specific formula from AGENTS.md content.
+ * Extract content for a specific package from AGENTS.md content.
  *
- * - Opening marker: <!-- formula: <formulaName> -->
+ * - Opening marker: <!-- package: <packageName> -->
  * - Closing marker: <!-- --> (optionally allowing internal whitespace)
  *
  * Returns null if no matching section is found.
  */
-export function extractPackageContentFromRootFile(content: string, formulaName: string): string | null {
-  if (!content || !formulaName) return null;
+export function extractPackageContentFromRootFile(content: string, packageName: string): string | null {
+  if (!content || !packageName) return null;
 
-  const openRe = buildOpenMarkerRegex(formulaName);
+  const openRe = buildOpenMarkerRegex(packageName);
   const closeRe = CLOSE_MARKER_REGEX;
 
   const openMatch = openRe.exec(content);
@@ -82,18 +82,18 @@ export function extractPackageContentFromRootFile(content: string, formulaName: 
 }
 
 /**
- * Extract the section body for a specific formula from marker-wrapped content.
+ * Extract the section body for a specific package from marker-wrapped content.
  * Supports markers in the format:
- *   <!-- formula: <name> --> ... <!-- -->
+ *   <!-- package: <name> --> ... <!-- -->
  * Returns null if no section is found.
  */
 export function extractPackageSection(
   content: string,
-  formulaName: string
+  packageName: string
 ): { sectionBody: string } | null {
-  if (!content || !formulaName) return null;
+  if (!content || !packageName) return null;
 
-  const openRe = buildOpenMarkerRegex(formulaName);
+  const openRe = buildOpenMarkerRegex(packageName);
   const closeRe = CLOSE_MARKER_REGEX;
 
   const openMatch = openRe.exec(content);
@@ -110,8 +110,8 @@ export function extractPackageSection(
 }
 
 /**
- * Extract all formula sections from a root file content.
- * Returns a map of formulaName → content.
+ * Extract all package sections from a root file content.
+ * Returns a map of packageName → content.
  */
 export function extractAllPackageSections(content: string): Map<string, string> {
   const sections = new Map<string, string>();
@@ -121,13 +121,13 @@ export function extractAllPackageSections(content: string): Map<string, string> 
   }
   
   // Clone the global regex to avoid cross-call lastIndex interference
-  const formulaPattern = new RegExp(FORMULA_SECTION_GLOBAL_REGEX);
+  const packagePattern = new RegExp(FORMULA_SECTION_GLOBAL_REGEX);
   
   let match: RegExpExecArray | null;
-  while ((match = formulaPattern.exec(content)) !== null) {
-    const formulaName = match[1].trim();
+  while ((match = packagePattern.exec(content)) !== null) {
+    const packageName = match[1].trim();
     const sectionContent = match[2].trim();
-    sections.set(formulaName, sectionContent);
+    sections.set(packageName, sectionContent);
   }
   
   return sections;

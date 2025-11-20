@@ -1,6 +1,6 @@
 /**
  * Root File Registry Reader
- * Utility for reading root files from the local formula registry
+ * Utility for reading root files from the local package registry
  */
 
 import { join } from 'path';
@@ -11,19 +11,19 @@ import { logger } from './logger.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 
 /**
- * Get all root files from a formula version in the local registry.
+ * Get all root files from a package version in the local registry.
  * Returns a map of filename → content for all root files found.
  * 
- * @param formulaName - Name of the formula
- * @param version - Version of the formula
+ * @param packageName - Name of the package
+ * @param version - Version of the package
  * @returns Map of root filename to file content
  */
 export async function getRootFilesFromRegistry(
-  formulaName: string,
+  packageName: string,
   version: string
 ): Promise<Map<string, string>> {
   const rootFiles = new Map<string, string>();
-  const versionPath = getPackageVersionPath(formulaName, version);
+  const versionPath = getPackageVersionPath(packageName, version);
 
   if (!(await exists(versionPath))) {
     logger.debug(`Package version path does not exist: ${versionPath}`);
@@ -51,7 +51,7 @@ export async function getRootFilesFromRegistry(
         const content = await readTextFile(rootFilePath);
         if (content.trim()) {
           rootFiles.set(rootFileName, content);
-          logger.debug(`Found root file in registry: ${rootFileName} for ${formulaName}@${version}`);
+          logger.debug(`Found root file in registry: ${rootFileName} for ${packageName}@${version}`);
         }
       } catch (error) {
         logger.warn(`Failed to read root file ${rootFileName} from registry: ${error}`);

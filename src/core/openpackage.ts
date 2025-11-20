@@ -16,39 +16,39 @@ export interface GroundzeroPackage {
   name: string;
   version: string;
   description?: string;
-  formulas?: PackageDependency[];
-  'dev-formulas'?: PackageDependency[];
+  packages?: PackageDependency[];
+  'dev-packages'?: PackageDependency[];
   path: string;
 }
 
 /**
- * Find formula config file (.openpackage/formula.yml or formula.yml) in a directory
+ * Find package config file (.openpackage/package.yml or package.yml) in a directory
  */
 async function findPackageConfigFile(directoryPath: string): Promise<string | null> {
   const openpackagePackageYmlPath = getLocalPackageYmlPath(directoryPath);
-  const formulaYmlPath = join(directoryPath, FILE_PATTERNS.FORMULA_YML);
+  const packageYmlPath = join(directoryPath, FILE_PATTERNS.FORMULA_YML);
   
   if (await exists(openpackagePackageYmlPath)) {
     return openpackagePackageYmlPath;
-  } else if (await exists(formulaYmlPath)) {
-    return formulaYmlPath;
+  } else if (await exists(packageYmlPath)) {
+    return packageYmlPath;
   }
   
   return null;
 }
 
 /**
- * Get the version of an installed formula by formula name
+ * Get the version of an installed package by package name
  */
-export async function getInstalledPackageVersion(formulaName: string, targetDir: string): Promise<string | null> {
+export async function getInstalledPackageVersion(packageName: string, targetDir: string): Promise<string | null> {
   const openpackagePath = join(targetDir, PLATFORM_DIRS.AI);
-  const formulaGroundzeroPath = join(openpackagePath, formulaName);
+  const packageGroundzeroPath = join(openpackagePath, packageName);
   
-  if (!(await exists(formulaGroundzeroPath))) {
+  if (!(await exists(packageGroundzeroPath))) {
     return null;
   }
   
-  const configPath = await findPackageConfigFile(formulaGroundzeroPath);
+  const configPath = await findPackageConfigFile(packageGroundzeroPath);
   if (!configPath) {
     return null;
   }
@@ -57,15 +57,15 @@ export async function getInstalledPackageVersion(formulaName: string, targetDir:
     const config = await parsePackageYml(configPath);
     return config.version;
   } catch (error) {
-    logger.warn(`Failed to parse formula config for ${formulaName}: ${error}`);
+    logger.warn(`Failed to parse package config for ${packageName}: ${error}`);
     return null;
   }
 }
 
 /**
- * Find formula directory in ai by matching formula name
+ * Find package directory in ai by matching package name
  */
-export async function findPackageDirectory(openpackagePath: string, formulaName: string): Promise<string | null> {
+export async function findPackageDirectory(openpackagePath: string, packageName: string): Promise<string | null> {
   if (!(await exists(openpackagePath)) || !(await isDirectory(openpackagePath))) {
     return null;
   }
@@ -79,12 +79,12 @@ export async function findPackageDirectory(openpackagePath: string, formulaName:
       
       if (configPath) {
         try {
-          const formulaConfig = await parsePackageYml(configPath);
-          if (arePackageNamesEquivalent(formulaConfig.name, formulaName)) {
+          const packageConfig = await parsePackageYml(configPath);
+          if (arePackageNamesEquivalent(packageConfig.name, packageName)) {
             return subdirPath;
           }
         } catch (error) {
-          logger.warn(`Failed to parse formula file ${configPath}: ${error}`);
+          logger.warn(`Failed to parse package file ${configPath}: ${error}`);
         }
       }
     }
@@ -97,45 +97,45 @@ export async function findPackageDirectory(openpackagePath: string, formulaName:
 }
 
 /**
- * Scan openpackage directory for all available formulas
+ * Scan openpackage directory for all available packages
  */
 export async function scanGroundzeroPackages(openpackagePath: string): Promise<Map<string, GroundzeroPackage>> {
-  const formulas = new Map<string, GroundzeroPackage>();
+  const packages = new Map<string, GroundzeroPackage>();
 
   if (!(await exists(openpackagePath)) || !(await isDirectory(openpackagePath))) {
     logger.debug('AI directory not found or not a directory', { openpackagePath });
-    return formulas;
+    return packages;
   }
 
   try {
-    // Find all formula.yml files recursively under the formulas directory
-    const formulasDir = getLocalPackagesDir(openpackagePath);
-    if (!(await exists(formulasDir))) {
-      return formulas;
+    // Find all package.yml files recursively under the packages directory
+    const packagesDir = getLocalPackagesDir(openpackagePath);
+    if (!(await exists(packagesDir))) {
+      return packages;
     }
 
-    const formulaDirs = await findDirectoriesContainingFile(
-      formulasDir,
+    const packageDirs = await findDirectoriesContainingFile(
+      packagesDir,
       FILE_PATTERNS.FORMULA_YML,
       async (filePath) => {
         try {
           return await parsePackageYml(filePath);
         } catch (error) {
-          logger.warn(`Failed to parse formula file ${filePath}: ${error}`);
+          logger.warn(`Failed to parse package file ${filePath}: ${error}`);
           return null;
         }
       }
     );
 
-    for (const { dirPath, parsedContent } of formulaDirs) {
+    for (const { dirPath, parsedContent } of packageDirs) {
       if (parsedContent) {
-        const formulaConfig = parsedContent;
-        formulas.set(formulaConfig.name, {
-          name: formulaConfig.name,
-          version: formulaConfig.version,
-          description: formulaConfig.description,
-          formulas: formulaConfig.formulas || [],
-          'dev-formulas': formulaConfig['dev-formulas'] || [],
+        const packageConfig = parsedContent;
+        packages.set(packageConfig.name, {
+          name: packageConfig.name,
+          version: packageConfig.version,
+          description: packageConfig.description,
+          packages: packageConfig.packages || [],
+          'dev-packages': packageConfig['dev-packages'] || [],
           path: dirPath
         });
       }
@@ -144,11 +144,11 @@ export async function scanGroundzeroPackages(openpackagePath: string): Promise<M
     logger.error(`Failed to scan ai directory: ${error}`);
   }
 
-  return formulas;
+  return packages;
 }
 
 /**
- * Gather version constraints from the main and nested formula.yml files
+ * Gather version constraints from the main and nested package.yml files
  */
 export async function gatherGlobalVersionConstraints(cwd: string, includeResolutions: boolean = true): Promise<Map<string, string[]>> {
   const constraints = new Map<string, Set<string>>();
@@ -177,43 +177,43 @@ export async function gatherGlobalVersionConstraints(cwd: string, includeResolut
       return;
     }
 
-    config.formulas?.forEach(dep => addConstraint(dep.name, dep.version));
-    config['dev-formulas']?.forEach(dep => addConstraint(dep.name, dep.version));
+    config.packages?.forEach(dep => addConstraint(dep.name, dep.version));
+    config['dev-packages']?.forEach(dep => addConstraint(dep.name, dep.version));
   };
 
-  // Collect from main .openpackage/formula.yml if present
+  // Collect from main .openpackage/package.yml if present
   const mainPackagePath = getLocalPackageYmlPath(cwd);
   if (await exists(mainPackagePath)) {
     try {
       const mainConfig = await parsePackageYml(mainPackagePath);
       collectFromConfig(mainConfig);
     } catch (error) {
-      logger.debug(`Failed to parse main formula.yml for constraints: ${error}`);
+      logger.debug(`Failed to parse main package.yml for constraints: ${error}`);
     }
   }
 
-  // Collect from each formula under .openpackage/formulas
-  const formulasDir = getLocalPackagesDir(cwd);
-  if (await exists(formulasDir) && await isDirectory(formulasDir)) {
+  // Collect from each package under .openpackage/packages
+  const packagesDir = getLocalPackagesDir(cwd);
+  if (await exists(packagesDir) && await isDirectory(packagesDir)) {
     try {
-      const formulaDirs = await findDirectoriesContainingFile(
-        formulasDir,
+      const packageDirs = await findDirectoriesContainingFile(
+        packagesDir,
         FILE_PATTERNS.FORMULA_YML,
         async (filePath) => {
           try {
             return await parsePackageYml(filePath);
           } catch (error) {
-            logger.debug(`Failed to parse formula.yml at ${filePath}: ${error}`);
+            logger.debug(`Failed to parse package.yml at ${filePath}: ${error}`);
             return null;
           }
         }
       );
 
-      for (const { parsedContent } of formulaDirs) {
+      for (const { parsedContent } of packageDirs) {
         collectFromConfig(parsedContent);
       }
     } catch (error) {
-      logger.debug(`Failed to enumerate formulas directory for constraints: ${error}`);
+      logger.debug(`Failed to enumerate packages directory for constraints: ${error}`);
     }
   }
 
@@ -226,7 +226,7 @@ export async function gatherGlobalVersionConstraints(cwd: string, includeResolut
 }
 
 /**
- * Gather version constraints only from the main .openpackage/formula.yml
+ * Gather version constraints only from the main .openpackage/package.yml
  * Used to treat root-declared versions as authoritative overrides
  */
 export async function gatherRootVersionConstraints(cwd: string): Promise<Map<string, string[]>> {
@@ -246,10 +246,10 @@ export async function gatherRootVersionConstraints(cwd: string): Promise<Map<str
   if (await exists(mainPackagePath)) {
     try {
       const mainConfig = await parsePackageYml(mainPackagePath);
-      mainConfig.formulas?.forEach(dep => addConstraint(dep.name, dep.version));
-      mainConfig['dev-formulas']?.forEach(dep => addConstraint(dep.name, dep.version));
+      mainConfig.packages?.forEach(dep => addConstraint(dep.name, dep.version));
+      mainConfig['dev-packages']?.forEach(dep => addConstraint(dep.name, dep.version));
     } catch (error) {
-      logger.debug(`Failed to parse main formula.yml for root constraints: ${error}`);
+      logger.debug(`Failed to parse main package.yml for root constraints: ${error}`);
     }
   }
 
@@ -257,15 +257,15 @@ export async function gatherRootVersionConstraints(cwd: string): Promise<Map<str
 }
 
 /**
- * Get formula configuration
+ * Get package configuration
  */
-export async function getGroundzeroPackageConfig(openpackagePath: string, formulaName: string): Promise<PackageYml | null> {
-  const formulaPath = await findPackageDirectory(openpackagePath, formulaName);
-  if (!formulaPath) {
+export async function getGroundzeroPackageConfig(openpackagePath: string, packageName: string): Promise<PackageYml | null> {
+  const packagePath = await findPackageDirectory(openpackagePath, packageName);
+  if (!packagePath) {
     return null;
   }
   
-  const configPath = await findPackageConfigFile(formulaPath);
+  const configPath = await findPackageConfigFile(packagePath);
   if (!configPath) {
     return null;
   }
@@ -273,17 +273,17 @@ export async function getGroundzeroPackageConfig(openpackagePath: string, formul
   try {
     return await parsePackageYml(configPath);
   } catch (error) {
-    logger.warn(`Failed to parse formula config for ${formulaName}: ${error}`);
+    logger.warn(`Failed to parse package config for ${packageName}: ${error}`);
     return null;
   }
 }
 
 /**
- * Check for existing installed formula by searching markdown files in ai, .claude, and .cursor directories
+ * Check for existing installed package by searching markdown files in ai, .claude, and .cursor directories
  */
 export async function checkExistingPackageInMarkdownFiles(
   cwd: string, 
-  formulaName: string
+  packageName: string
 ): Promise<{ found: boolean; version?: string; location?: string }> {
   // Build search targets: ai directory + all detected platform subdirectories
   const targets: Array<{ dir: string; exts: string[]; label: string }> = [];
@@ -309,14 +309,14 @@ export async function checkExistingPackageInMarkdownFiles(
     logger.debug(`Failed to build platform search targets: ${error}`);
   }
 
-  logger.debug(`Checking for existing formula '${formulaName}' across ${targets.length} locations`);
+  logger.debug(`Checking for existing package '${packageName}' across ${targets.length} locations`);
 
   // Search each target directory for files with supported extensions
   for (const target of targets) {
     try {
       const files = await findFilesByExtension(target.dir, target.exts);
       for (const file of files) {
-        // Frontmatter support removed - cannot determine formula ownership
+        // Frontmatter support removed - cannot determine package ownership
       }
     } catch (dirErr) {
       logger.debug(`Failed to search directory ${target.dir}: ${dirErr}`);

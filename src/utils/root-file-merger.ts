@@ -7,27 +7,27 @@ import { buildOpenMarker, buildOpenMarkerRegex, CLOSE_MARKER, CLOSE_MARKER_REGEX
 
 /**
  * Merge package-specific content into a root file while preserving all other content.
- * Finds the formula section between markers and replaces it, or appends if not found.
+ * Finds the package section between markers and replaces it, or appends if not found.
  * 
  * @param existingContent - The current content of the root file (or empty string)
- * @param formulaName - Name of the formula to merge
+ * @param packageName - Name of the package to merge
  * @param newContent - Section body to insert between the markers (without markers)
- * @returns Updated root file content with formula section merged
+ * @returns Updated root file content with package section merged
  */
 export function mergePackageContentIntoRootFile(
   existingContent: string,
-  formulaName: string,
+  packageName: string,
   newContent: string
 ): string {
-  if (!formulaName) {
+  if (!packageName) {
     throw new Error('Package name is required for merging');
   }
 
-  const openMarker = buildOpenMarker(formulaName);
+  const openMarker = buildOpenMarker(packageName);
   const closeMarker = CLOSE_MARKER;
   
-  // Create regex to find existing formula section
-  const openRe = buildOpenMarkerRegex(formulaName);
+  // Create regex to find existing package section
+  const openRe = buildOpenMarkerRegex(packageName);
   const closeRe = CLOSE_MARKER_REGEX;
 
   const openMatch = openRe.exec(existingContent);

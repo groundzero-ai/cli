@@ -4,22 +4,22 @@ import { CONFLICT_RESOLUTION } from '../../constants/index.js';
 import { installAiFiles } from '../../utils/install-orchestrator.js';
 
 /**
- * Handle dry run mode for formula installation
+ * Handle dry run mode for package installation
  */
 export async function handleDryRunMode(
   resolvedPackages: ResolvedPackage[],
-  formulaName: string,
+  packageName: string,
   targetDir: string,
   options: InstallOptions,
-  formulaYmlExists: boolean
+  packageYmlExists: boolean
 ): Promise<CommandResult> {
   console.log(`✓ Dry run - showing what would be installed:\n`);
 
   const mainPackage = resolvedPackages.find(f => f.isRoot);
   if (mainPackage) {
     console.log(`Package: ${mainPackage.name} v${mainPackage.version}`);
-    if (mainPackage.formula.metadata.description) {
-      console.log(`Description: ${mainPackage.formula.metadata.description}`);
+    if (mainPackage.package.metadata.description) {
+      console.log(`Description: ${mainPackage.package.metadata.description}`);
     }
     console.log('');
   }
@@ -50,11 +50,11 @@ export async function handleDryRunMode(
     }
   }
 
-  // Show formula.yml update
-  if (formulaYmlExists) {
-    console.log(`\n✓ Would add to .openpackage/formula.yml: ${formulaName}@${resolvedPackages.find(f => f.isRoot)?.version}`);
+  // Show package.yml update
+  if (packageYmlExists) {
+    console.log(`\n✓ Would add to .openpackage/package.yml: ${packageName}@${resolvedPackages.find(f => f.isRoot)?.version}`);
   } else {
-    console.log('\nNo .openpackage/formula.yml found - skipping dependency addition');
+    console.log('\nNo .openpackage/package.yml found - skipping dependency addition');
   }
 
   return {

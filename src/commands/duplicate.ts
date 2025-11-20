@@ -12,7 +12,7 @@ async function duplicatePackageCommand(
   sourceInput: string,
   newInput: string
 ): Promise<CommandResult> {
-  logger.info(`Duplicating formula: ${sourceInput} -> ${newInput}`);
+  logger.info(`Duplicating package: ${sourceInput} -> ${newInput}`);
 
   // Ensure registry directories
   await ensureRegistryDirectories();
@@ -26,13 +26,13 @@ async function duplicatePackageCommand(
     throw new Error(`Invalid version: ${newVersionInput}. Must be a valid semver version.`);
   }
 
-  // Load source formula (handles ranges; defaults to latest)
+  // Load source package (handles ranges; defaults to latest)
   let sourcePackage: Package;
   try {
     sourcePackage = await packageManager.loadPackage(sourceName, sourceVersionInput);
   } catch (error) {
     if (error instanceof PackageNotFoundError) {
-      return { success: false, error: `Target formula ${sourceName} not found.` };
+      return { success: false, error: `Target package ${sourceName} not found.` };
     }
     throw error instanceof Error ? error : new Error(String(error));
   }
@@ -45,7 +45,7 @@ async function duplicatePackageCommand(
   // Determine new version
   const newVersion = newVersionInput || sourcePackage.metadata.version;
 
-  // Transform files: update formula.yml
+  // Transform files: update package.yml
   const transformedFiles = transformPackageFilesMetadata(
     sourcePackage.files,
     sourceName,
@@ -62,7 +62,7 @@ async function duplicatePackageCommand(
     files: transformedFiles
   };
 
-  // Save duplicated formula
+  // Save duplicated package
   await packageManager.savePackage(newPackage);
 
   console.log(`✓ Duplicated '${sourceName}@${sourcePackage.metadata.version}' -> '${newName}@${newVersion}'`);
@@ -73,11 +73,11 @@ async function duplicatePackageCommand(
 export function setupDuplicateCommand(program: Command): void {
   program
     .command('duplicate')
-    .description('Duplicate a formula in the local registry to a new name and optional version')
-    .argument('<formula>', 'source formula name or formula@version')
-    .argument('<newName>', 'new formula name or newName@version')
-    .action(withErrorHandling(async (formula: string, newName: string) => {
-      const result = await duplicatePackageCommand(formula, newName);
+    .description('Duplicate a package in the local registry to a new name and optional version')
+    .argument('<package>', 'source package name or package@version')
+    .argument('<newName>', 'new package name or newName@version')
+    .action(withErrorHandling(async (pkg: string, newName: string) => {
+      const result = await duplicatePackageCommand(package, newName);
       if (!result.success) {
         // If we already printed a user-friendly message, just exit with error
         if (result.error) throw new Error(result.error);
