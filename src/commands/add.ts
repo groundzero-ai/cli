@@ -8,8 +8,8 @@ import {
 } from 'path';
 import {
   CommandResult,
-  FormulaFile,
-  FormulaYml
+  PackageFile,
+  PackageYml
 } from '../types/index.js';
 import {
   FILE_PATTERNS,
@@ -35,19 +35,19 @@ import {
   walkFiles
 } from '../utils/fs.js';
 import {
-  getLocalFormulaDir,
+  getLocalPackageDir,
   getLocalOpenPackageDir
 } from '../utils/paths.js';
 import {
-  parseFormulaYml,
-  writeFormulaYml
-} from '../utils/formula-yml.js';
+  parsePackageYml,
+  writePackageYml
+} from '../utils/package-yml.js';
 import {
-  normalizeFormulaName,
-  validateFormulaName
-} from '../utils/formula-name.js';
+  normalizePackageName,
+  validatePackageName
+} from '../utils/package-name.js';
 import {
-  promptFormulaDetailsForNamed,
+  promptPackageDetailsForNamed,
   safePrompts
 } from '../utils/prompts.js';
 import {
@@ -61,8 +61,8 @@ import {
   suffixFirstContentDir
 } from '../utils/platform-specific-paths.js';
 import { logger } from '../utils/logger.js';
-import { buildMappingAndWriteIndex } from '../core/add/formula-index-updater.js';
-import { readLocalFormulaFilesForIndex } from '../utils/formula-local-files.js';
+import { buildMappingAndWriteIndex } from '../core/add/package-index-updater.js';
+import { readLocalPackageFilesForIndex } from '../utils/package-local-files.js';
 
 const PLATFORM_ROOT_FILES = buildPlatformRootFiles();
 
@@ -71,10 +71,10 @@ interface SourceEntry {
   registryPath: string;
 }
 
-interface EnsureFormulaResult {
+interface EnsurePackageResult {
   normalizedName: string;
   formulaDir: string;
-  formulaConfig: FormulaYml;
+  formulaConfig: PackageYml;
 }
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
@@ -86,7 +86,7 @@ interface AddCommandOptions {
 export function setupAddCommand(program: Command): void {
   program
     .command('add')
-    .argument('<formula-name>', 'formula to add workspace files into')
+    .argument('<package-name>', 'formula to add workspace files into')
     .argument('<path>', 'file or directory to add (relative to current directory)')
     .description(
       'Copy supported workspace files or directories into a local formula directory.\n' +
@@ -103,7 +103,7 @@ export function setupAddCommand(program: Command): void {
 async function runAddCommand(formulaName: string, inputPath: string, options: AddCommandOptions = {}): Promise<CommandResult<void>> {
   const cwd = process.cwd();
 
-  const ensuredFormula = await ensureFormulaExists(cwd, formulaName);
+  const ensuredPackage = await ensurePackageExists(cwd, formulaName);
 
   const resolvedInputPath = resolve(cwd, inputPath);
   await validateSourcePath(resolvedInputPath, cwd);
@@ -129,16 +129,16 @@ async function runAddCommand(formulaName: string, inputPath: string, options: Ad
   }
 
   const changedFiles = await copyWithConflictResolution(
-    ensuredFormula,
+    ensuredPackage,
     entries
   );
 
   // Always update index using all candidate entries (even if nothing changed on disk)
   // Directory collapsing is now universally applied
-  await updateFormulaIndex(cwd, ensuredFormula);
+  await updatePackageIndex(cwd, ensuredPackage);
 
   if (changedFiles.length > 0) {
-    logger.info(`Added ${changedFiles.length} file(s) to formula '${ensuredFormula.normalizedName}'.`);
+    logger.info(`Added ${changedFiles.length} file(s) to formula '${ensuredPackage.normalizedName}'.`);
   } else {
     logger.info('No files were added or modified.');
   }
@@ -146,21 +146,21 @@ async function runAddCommand(formulaName: string, inputPath: string, options: Ad
   return { success: true };
 }
 
-async function ensureFormulaExists(cwd: string, formulaName: string): Promise<EnsureFormulaResult> {
-  validateFormulaName(formulaName);
-  const normalizedName = normalizeFormulaName(formulaName);
+async function ensurePackageExists(cwd: string, formulaName: string): Promise<EnsurePackageResult> {
+  validatePackageName(formulaName);
+  const normalizedName = normalizePackageName(formulaName);
 
-  const formulaDir = getLocalFormulaDir(cwd, normalizedName);
+  const formulaDir = getLocalPackageDir(cwd, normalizedName);
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
   await ensureDir(formulaDir);
 
-  let formulaConfig: FormulaYml;
+  let formulaConfig: PackageYml;
   if (await exists(formulaYmlPath)) {
-    formulaConfig = await parseFormulaYml(formulaYmlPath);
+    formulaConfig = await parsePackageYml(formulaYmlPath);
   } else {
-    formulaConfig = await promptFormulaDetailsForNamed(normalizedName);
-    await writeFormulaYml(formulaYmlPath, formulaConfig);
+    formulaConfig = await promptPackageDetailsForNamed(normalizedName);
+    await writePackageYml(formulaYmlPath, formulaConfig);
     logger.info(`Created new formula '${formulaConfig.name}@${formulaConfig.version}' at ${relative(cwd, formulaDir)}`);
   }
 
@@ -311,7 +311,7 @@ function isAiRegistryPath(registryPath: string): boolean {
   return registryPath === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`);
 }
 
-// computeDirKeyFromRegistryPath and directory collapsing moved to core/add/formula-index-updater.ts
+// computeDirKeyFromRegistryPath and directory collapsing moved to core/add/package-index-updater.ts
 
 function buildPlatformRootFiles(): Set<string> {
   const rootFiles = new Set<string>();
@@ -342,11 +342,11 @@ function isWithinDirectory(parentDir: string, targetPath: string): boolean {
 }
 
 async function copyWithConflictResolution(
-  ensuredFormula: EnsureFormulaResult,
+  ensuredPackage: EnsurePackageResult,
   entries: SourceEntry[]
-): Promise<FormulaFile[]> {
-  const changedFiles: FormulaFile[] = [];
-  const { formulaDir, normalizedName } = ensuredFormula;
+): Promise<PackageFile[]> {
+  const changedFiles: PackageFile[] = [];
+  const { formulaDir, normalizedName } = ensuredPackage;
 
   for (const entry of entries) {
     const registryPath = entry.registryPath;
@@ -416,12 +416,12 @@ async function promptConflictDecision(formulaName: string, registryPath: string)
   return response.decision as ConflictDecision;
 }
 
-async function updateFormulaIndex(
+async function updatePackageIndex(
   cwd: string,
-  ensuredFormula: EnsureFormulaResult
+  ensuredPackage: EnsurePackageResult
 ): Promise<void> {
-  const { normalizedName, formulaDir } = ensuredFormula;
-  const formulaFiles = await readLocalFormulaFilesForIndex(formulaDir);
+  const { normalizedName, formulaDir } = ensuredPackage;
+  const formulaFiles = await readLocalPackageFilesForIndex(formulaDir);
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
   await buildMappingAndWriteIndex(
     cwd,

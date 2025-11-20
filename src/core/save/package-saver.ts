@@ -1,28 +1,28 @@
-import { FormulaFile, FormulaYml } from "../../types";
-import { normalizeFormulaName } from "../../utils/formula-name.js";
+import { PackageFile, PackageYml } from "../../types";
+import { normalizePackageName } from "../../utils/package-name.js";
 import { ensureDir, writeTextFile, remove } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
 import { resolveTargetDirectory, resolveTargetFilePath } from "../../utils/platform-mapper.js";
-import { getFormulaVersionPath } from "../directory.js";
+import { getPackageVersionPath } from "../directory.js";
 import { UTF8_ENCODING } from "./constants.js";
-import { FormulaYmlInfo } from "./formula-yml-generator.js";
-import { formulaVersionExists } from "../../utils/formula-versioning.js";
+import { PackageYmlInfo } from "./package-yml-generator.js";
+import { formulaVersionExists } from "../../utils/package-versioning.js";
 
 /**
  * Save formula to local registry
  */
-export async function saveFormulaToRegistry(
-  formulaInfo: FormulaYmlInfo,
-  files: FormulaFile[],
+export async function savePackageToRegistry(
+  formulaInfo: PackageYmlInfo,
+  files: PackageFile[],
   silent: boolean = true
-): Promise<{ success: boolean; error?: string; updatedConfig?: FormulaYml }> {
+): Promise<{ success: boolean; error?: string; updatedConfig?: PackageYml }> {
 
   const config = formulaInfo.config;
 
   try {
     // Ensure formula name is normalized for consistent registry paths
-    const normalizedConfig = { ...config, name: normalizeFormulaName(config.name) };
-    const targetPath = getFormulaVersionPath(normalizedConfig.name, normalizedConfig.version);
+    const normalizedConfig = { ...config, name: normalizePackageName(config.name) };
+    const targetPath = getPackageVersionPath(normalizedConfig.name, normalizedConfig.version);
 
     // If version already exists, clear the directory first to remove old files
     if (await formulaVersionExists(normalizedConfig.name, normalizedConfig.version)) {
@@ -33,7 +33,7 @@ export async function saveFormulaToRegistry(
     await ensureDir(targetPath);
     
     // Group files by target directory
-    const directoryGroups = new Map<string, FormulaFile[]>();
+    const directoryGroups = new Map<string, PackageFile[]>();
     
     for (const file of files) {
       const targetDir = resolveTargetDirectory(targetPath, file.path);
@@ -58,7 +58,7 @@ export async function saveFormulaToRegistry(
     await Promise.all(savePromises);
     
     if (!silent) {
-      logger.info(`Formula '${normalizedConfig.name}@${normalizedConfig.version}' saved to local registry`);
+      logger.info(`Package '${normalizedConfig.name}@${normalizedConfig.version}' saved to local registry`);
     }
     return { success: true, updatedConfig: normalizedConfig };
   } catch (error) {

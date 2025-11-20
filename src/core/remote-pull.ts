@@ -1,11 +1,11 @@
 import * as yaml from 'js-yaml';
-import { PullFormulaDownload, PullFormulaResponse } from '../types/api.js';
-import { Formula, FormulaYml } from '../types/index.js';
-import { formulaManager } from './formula.js';
+import { PullPackageDownload, PullPackageResponse } from '../types/api.js';
+import { Package, PackageYml } from '../types/index.js';
+import { packageManager } from './package.js';
 import { ensureRegistryDirectories } from './directory.js';
 import { authManager } from './auth.js';
 import { createHttpClient, HttpClient } from '../utils/http-client.js';
-import { extractFormulaFromTarball, verifyTarballIntegrity, ExtractedFormula } from '../utils/tarball.js';
+import { extractPackageFromTarball, verifyTarballIntegrity, ExtractedPackage } from '../utils/tarball.js';
 import { logger } from '../utils/logger.js';
 import { ConfigError, ValidationError } from '../utils/errors.js';
 
@@ -19,14 +19,14 @@ export interface RemotePullOptions {
   profile?: string;
   apiKey?: string;
   quiet?: boolean;
-  preFetchedResponse?: PullFormulaResponse;
+  preFetchedResponse?: PullPackageResponse;
   httpClient?: HttpClient;
   recursive?: boolean;
 }
 
 export interface RemoteBatchPullOptions extends RemotePullOptions {
   dryRun?: boolean;
-  filter?: (name: string, version: string, download: PullFormulaDownload) => boolean;
+  filter?: (name: string, version: string, download: PullPackageDownload) => boolean;
 }
 
 export type RemotePullFailureReason =
@@ -48,8 +48,8 @@ export interface RemotePullSuccess {
   success: true;
   name: string;
   version: string;
-  response: PullFormulaResponse;
-  extracted: ExtractedFormula;
+  response: PullPackageResponse;
+  extracted: ExtractedPackage;
   registryUrl: string;
   profile: string;
   downloadUrl: string;
@@ -58,13 +58,13 @@ export interface RemotePullSuccess {
 
 export type RemotePullResult = RemotePullSuccess | RemotePullFailure;
 
-export interface RemoteFormulaMetadataSuccess {
+export interface RemotePackageMetadataSuccess {
   success: true;
   context: RemotePullContext;
-  response: PullFormulaResponse;
+  response: PullPackageResponse;
 }
 
-export type RemoteFormulaMetadataResult = RemoteFormulaMetadataSuccess | RemotePullFailure;
+export type RemotePackageMetadataResult = RemotePackageMetadataSuccess | RemotePullFailure;
 
 export interface BatchDownloadItemResult {
   name: string;
@@ -94,8 +94,8 @@ export function parseDownloadName(downloadName: string): { name: string; version
   };
 }
 
-export function aggregateRecursiveDownloads(responses: PullFormulaResponse[]): PullFormulaDownload[] {
-  const aggregated = new Map<string, PullFormulaDownload>();
+export function aggregateRecursiveDownloads(responses: PullPackageResponse[]): PullPackageDownload[] {
+  const aggregated = new Map<string, PullPackageDownload>();
 
   for (const response of responses) {
     if (!Array.isArray(response.downloads)) {
@@ -124,7 +124,7 @@ export function aggregateRecursiveDownloads(responses: PullFormulaResponse[]): P
 }
 
 export async function pullDownloadsBatchFromRemote(
-  responses: PullFormulaResponse | PullFormulaResponse[],
+  responses: PullPackageResponse | PullPackageResponse[],
   options: RemoteBatchPullOptions = {}
 ): Promise<RemoteBatchPullResult> {
   const responseArray = Array.isArray(responses) ? responses : [responses];
@@ -177,11 +177,11 @@ export async function pullDownloadsBatchFromRemote(
         return;
       }
 
-      const tarballBuffer = await downloadFormulaTarball(httpClient, download.downloadUrl);
-      const extracted = await extractFormulaFromTarball(tarballBuffer);
-      const metadata = buildFormulaMetadata(extracted, name, version);
+      const tarballBuffer = await downloadPackageTarball(httpClient, download.downloadUrl);
+      const extracted = await extractPackageFromTarball(tarballBuffer);
+      const metadata = buildPackageMetadata(extracted, name, version);
 
-      await formulaManager.saveFormula({ metadata, files: extracted.files });
+      await packageManager.savePackage({ metadata, files: extracted.files });
 
       pulled.push({ name, version, downloadUrl: download.downloadUrl, success: true });
     } catch (error) {
@@ -206,16 +206,16 @@ export async function pullDownloadsBatchFromRemote(
   };
 }
 
-function buildFormulaMetadata(
-  extracted: ExtractedFormula,
+function buildPackageMetadata(
+  extracted: ExtractedPackage,
   fallbackName: string,
   fallbackVersion: string
-): FormulaYml {
+): PackageYml {
   const formulaFile = extracted.files.find(file => file.path === 'formula.yml');
 
   if (formulaFile) {
     try {
-      const parsed = yaml.load(formulaFile.content) as FormulaYml | undefined;
+      const parsed = yaml.load(formulaFile.content) as PackageYml | undefined;
 
       if (parsed && typeof parsed === 'object' && parsed.name && parsed.version) {
         return parsed;
@@ -237,19 +237,19 @@ function buildFormulaMetadata(
   return {
     name: fallbackName,
     version: fallbackVersion,
-  } as FormulaYml;
+  } as PackageYml;
 }
 
-export async function fetchRemoteFormulaMetadata(
+export async function fetchRemotePackageMetadata(
   name: string,
   version: string | undefined,
   options: RemotePullOptions = {}
-): Promise<RemoteFormulaMetadataResult> {
+): Promise<RemotePackageMetadataResult> {
   try {
     await ensureRegistryDirectories();
 
     const context = await createContext(options);
-    const response = await getRemoteFormula(context.httpClient, name, version, options.recursive);
+    const response = await getRemotePackage(context.httpClient, name, version, options.recursive);
 
     return {
       success: true,
@@ -261,7 +261,7 @@ export async function fetchRemoteFormulaMetadata(
   }
 }
 
-export async function pullFormulaFromRemote(
+export async function pullPackageFromRemote(
   name: string,
   version?: string,
   options: RemotePullOptions = {}
@@ -269,7 +269,7 @@ export async function pullFormulaFromRemote(
   try {
     const metadataResult = options.preFetchedResponse
       ? await createResultFromPrefetched(options)
-      : await fetchRemoteFormulaMetadata(name, version, options);
+      : await fetchRemotePackageMetadata(name, version, options);
 
     if (!metadataResult.success) {
       return metadataResult;
@@ -281,11 +281,11 @@ export async function pullFormulaFromRemote(
       return {
         success: false,
         reason: 'access-denied',
-        message: 'Formula download not available for this account',
+        message: 'Package download not available for this account',
       };
     }
 
-    const tarballBuffer = await downloadFormulaTarball(context.httpClient, downloadUrl);
+    const tarballBuffer = await downloadPackageTarball(context.httpClient, downloadUrl);
 
     if (!verifyTarballIntegrity(tarballBuffer, response.version.tarballSize)) {
       return {
@@ -295,13 +295,13 @@ export async function pullFormulaFromRemote(
       };
     }
 
-    const extracted = await extractFormulaFromTarball(tarballBuffer);
+    const extracted = await extractPackageFromTarball(tarballBuffer);
 
-    await saveFormulaToLocalRegistry(response, extracted);
+    await savePackageToLocalRegistry(response, extracted);
 
     return {
       success: true,
-      name: response.formula.name,
+      name: response.package.name,
       version: response.version.version,
       response,
       extracted,
@@ -315,12 +315,12 @@ export async function pullFormulaFromRemote(
   }
 }
 
-function resolveDownloadUrl(response: PullFormulaResponse): string | undefined {
+function resolveDownloadUrl(response: PullPackageResponse): string | undefined {
   if (!Array.isArray(response.downloads) || response.downloads.length === 0) {
     return undefined;
   }
 
-  const primaryMatch = response.downloads.find(download => download.name === response.formula.name && download.downloadUrl);
+  const primaryMatch = response.downloads.find(download => download.name === response.package.name && download.downloadUrl);
   if (primaryMatch?.downloadUrl) {
     return primaryMatch.downloadUrl;
   }
@@ -329,7 +329,7 @@ function resolveDownloadUrl(response: PullFormulaResponse): string | undefined {
   return fallbackMatch?.downloadUrl;
 }
 
-async function createResultFromPrefetched(options: RemotePullOptions): Promise<RemoteFormulaMetadataResult> {
+async function createResultFromPrefetched(options: RemotePullOptions): Promise<RemotePackageMetadataResult> {
   if (!options.preFetchedResponse) {
     throw new Error('preFetchedResponse missing from options');
   }
@@ -360,12 +360,12 @@ async function createContext(options: RemotePullOptions): Promise<RemotePullCont
   };
 }
 
-async function getRemoteFormula(
+async function getRemotePackage(
   httpClient: HttpClient,
   name: string,
   version?: string,
   recursive?: boolean,
-): Promise<PullFormulaResponse> {
+): Promise<PullPackageResponse> {
   const encodedName = name.split('/').map(segment => encodeURIComponent(segment)).join('/');
   let endpoint = version && version !== 'latest'
     ? `/formulas/pull/by-name/${encodedName}/v/${encodeURIComponent(version)}`
@@ -374,36 +374,36 @@ async function getRemoteFormula(
     ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}recursive=true`
     : endpoint;
   logger.debug(`Fetching remote formula metadata`, { name, version: version ?? 'latest', endpoint: finalEndpoint, recursive: !!recursive });
-  return await httpClient.get<PullFormulaResponse>(finalEndpoint);
+  return await httpClient.get<PullPackageResponse>(finalEndpoint);
 }
 
-async function downloadFormulaTarball(httpClient: HttpClient, downloadUrl: string): Promise<Buffer> {
+async function downloadPackageTarball(httpClient: HttpClient, downloadUrl: string): Promise<Buffer> {
   const buffer = await httpClient.downloadFile(downloadUrl);
   return Buffer.from(buffer);
 }
 
-async function saveFormulaToLocalRegistry(
-  response: PullFormulaResponse,
-  extracted: ExtractedFormula
+async function savePackageToLocalRegistry(
+  response: PullPackageResponse,
+  extracted: ExtractedPackage
 ): Promise<void> {
-  const metadata: FormulaYml & Record<string, unknown> = {
-    name: response.formula.name,
+  const metadata: PackageYml & Record<string, unknown> = {
+    name: response.package.name,
     version: response.version.version,
-    description: response.formula.description,
-    keywords: response.formula.keywords,
-    private: response.formula.isPrivate
+    description: response.package.description,
+    keywords: response.package.keywords,
+    private: response.package.isPrivate
   };
 
   (metadata as any).files = extracted.files.map(file => file.path);
   (metadata as any).created = response.version.createdAt;
   (metadata as any).updated = response.version.updatedAt;
 
-  const formula: Formula = {
-    metadata: metadata as FormulaYml,
+  const formula: Package = {
+    metadata: metadata as PackageYml,
     files: extracted.files
   };
 
-  await formulaManager.saveFormula(formula);
+  await packageManager.savePackage(formula);
 }
 
 function mapErrorToFailure(error: unknown): RemotePullFailure {

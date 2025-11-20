@@ -8,11 +8,11 @@ import { ensureDir, writeTextFile, exists, readTextFile } from '../../utils/fs.j
 import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
 import { type Platform, FILE_PATTERNS } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
-import type { FormulaFile } from '../../types/index.js';
-import { mergeFormulaContentIntoRootFile } from '../../utils/root-file-merger.js';
+import type { PackageFile } from '../../types/index.js';
+import { mergePackageContentIntoRootFile } from '../../utils/root-file-merger.js';
 import { getPathLeaf } from '../../utils/path-normalization.js';
 import { getPlatformForRootFile } from '../../utils/root-file-registry.js';
-import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
+import { extractPackageContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
  * Result of root file sync operation
@@ -34,7 +34,7 @@ export interface RootFileSyncResult {
  */
 export async function syncRootFiles(
   cwd: string,
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   formulaName: string,
   platforms: Platform[]
 ): Promise<RootFileSyncResult> {
@@ -104,7 +104,7 @@ export function isRootFile(filePath: string): boolean {
  */
 async function syncSingleRootFile(
   cwd: string,
-  rootFile: FormulaFile,
+  rootFile: PackageFile,
   formulaName: string,
   detectedPlatforms: Platform[]
 ): Promise<RootFileSyncResult> {
@@ -154,7 +154,7 @@ async function syncSingleRootFile(
 
       // Extract existing section content to compare (only the formula section, not entire file)
       const existingSectionContent = fileExists
-        ? extractFormulaContentFromRootFile(existingContent, formulaName)?.trim() ?? null
+        ? extractPackageContentFromRootFile(existingContent, formulaName)?.trim() ?? null
         : null;
 
       // Compare section content - only update if it differs
@@ -164,7 +164,7 @@ async function syncSingleRootFile(
       }
 
       // Merge the formula content into the target file
-      const mergedContent = mergeFormulaContentIntoRootFile(
+      const mergedContent = mergePackageContentIntoRootFile(
         existingContent,
         formulaName,
         sectionBody

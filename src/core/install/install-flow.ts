@@ -1,6 +1,6 @@
 import * as semver from 'semver';
 import { InstallOptions } from '../../types/index.js';
-import { ResolvedFormula } from '../dependency-resolver.js';
+import { ResolvedPackage } from '../dependency-resolver.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { createPlatformDirectories } from '../platforms.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../openpackage.js';
@@ -10,17 +10,17 @@ import { logger } from '../../utils/logger.js';
 import { VersionConflictError, UserCancellationError } from '../../utils/errors.js';
 import type { Platform } from '../../constants/index.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
-import { createBasicFormulaYml, addFormulaToYml } from '../../utils/formula-management.js';
-import { checkAndHandleAllFormulaConflicts } from '../../utils/install-conflict-handler.js';
+import { createBasicPackageYml, addPackageToYml } from '../../utils/package-management.js';
+import { checkAndHandleAllPackageConflicts } from '../../utils/install-conflict-handler.js';
 import { discoverAndCategorizeFiles } from '../../utils/install-file-discovery.js';
 import { installAiFilesFromList } from '../../utils/install-orchestrator.js';
 import { installRootFilesFromMap } from '../../utils/root-file-installer.js';
-import { installFormulaByIndex, type IndexInstallResult } from '../../utils/index-based-installer.js';
+import { installPackageByIndex, type IndexInstallResult } from '../../utils/index-based-installer.js';
 import { promptVersionSelection } from '../../utils/prompts.js';
 
 export interface DependencyResolutionResult {
-  resolvedFormulas: ResolvedFormula[];
-  missingFormulas: string[];
+  resolvedPackages: ResolvedPackage[];
+  missingPackages: string[];
 }
 
 export class VersionResolutionAbortError extends Error {
@@ -31,13 +31,13 @@ export class VersionResolutionAbortError extends Error {
 }
 
 export interface ConflictProcessingResult {
-  finalResolvedFormulas: ResolvedFormula[];
+  finalResolvedPackages: ResolvedPackage[];
   conflictResult: ConflictSummary;
 }
 
 export interface InstallationPhasesParams {
   cwd: string;
-  formulas: ResolvedFormula[];
+  formulas: ResolvedPackage[];
   platforms: Platform[];
   conflictResult: ConflictSummary;
   options: InstallOptions;
@@ -53,7 +53,7 @@ export interface InstallationPhasesResult {
   totalGroundzeroFiles: number;
 }
 
-export interface GroundzeroFormulaResult {
+export interface GroundzeroPackageResult {
   name: string;
   filesInstalled: number;
   filesUpdated: number;
@@ -62,7 +62,7 @@ export interface GroundzeroFormulaResult {
   overwritten: boolean;
 }
 
-type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllFormulaConflicts>>;
+type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllPackageConflicts>>;
 
 /**
  * Handle formula availability outcomes and return appropriate command results
@@ -75,7 +75,7 @@ export async function prepareInstallEnvironment(
   options: InstallOptions
 ): Promise<{ specifiedPlatforms: string[] | undefined }> {
   await ensureRegistryDirectories();
-  await createBasicFormulaYml(cwd);
+  await createBasicPackageYml(cwd);
 
   const specifiedPlatforms = normalizePlatforms(options.platforms);
 
@@ -113,8 +113,8 @@ export async function resolveDependenciesForInstall(
     );
 
     return {
-      resolvedFormulas: result.resolvedFormulas,
-      missingFormulas: result.missingFormulas
+      resolvedPackages: result.resolvedPackages,
+      missingPackages: result.missingPackages
     };
   } catch (error) {
     if (error instanceof VersionConflictError) {
@@ -133,7 +133,7 @@ export async function resolveDependenciesForInstall(
         throw new VersionResolutionAbortError(conflictName);
       }
 
-      await addFormulaToYml(cwd, conflictName, chosenVersion, false, chosenVersion, true);
+      await addPackageToYml(cwd, conflictName, chosenVersion, false, chosenVersion, true);
 
       const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
       const overrideResult = await resolveDependenciesWithOverrides(
@@ -145,8 +145,8 @@ export async function resolveDependenciesForInstall(
       );
 
       return {
-        resolvedFormulas: overrideResult.resolvedFormulas,
-        missingFormulas: overrideResult.missingFormulas
+        resolvedPackages: overrideResult.resolvedPackages,
+        missingPackages: overrideResult.missingPackages
       };
     }
 
@@ -158,18 +158,18 @@ export async function resolveDependenciesForInstall(
  * Process conflict resolution for all formulas in the dependency tree
  */
 export async function processConflictResolution(
-  resolvedFormulas: ResolvedFormula[],
+  resolvedPackages: ResolvedPackage[],
   options: InstallOptions
 ): Promise<ConflictProcessingResult | { cancelled: true }> {
-  const conflictResult = await checkAndHandleAllFormulaConflicts(resolvedFormulas as any, options);
+  const conflictResult = await checkAndHandleAllPackageConflicts(resolvedPackages as any, options);
 
   if (!conflictResult.shouldProceed) {
     return { cancelled: true };
   }
 
-  const finalResolvedFormulas = resolvedFormulas.filter(formula => !conflictResult.skippedFormulas.includes(formula.name));
+  const finalResolvedPackages = resolvedPackages.filter(formula => !conflictResult.skippedPackages.includes(formula.name));
 
-  return { finalResolvedFormulas, conflictResult };
+  return { finalResolvedPackages, conflictResult };
 }
 
 
@@ -192,7 +192,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
     try {
       logger.debug(`Installing ${resolved.name}@${resolved.version} using index-based installer`);
 
-      const installResult: IndexInstallResult = await installFormulaByIndex(
+      const installResult: IndexInstallResult = await installPackageByIndex(
         cwd,
         resolved.name,
         resolved.version,
@@ -264,7 +264,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
 }
 
 // Helper functions
-function formatFormulaLabel(formulaName: string, version?: string): string {
+function formatPackageLabel(formulaName: string, version?: string): string {
   return version ? `${formulaName}@${version}` : formulaName;
 }
 

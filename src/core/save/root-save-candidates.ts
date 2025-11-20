@@ -1,12 +1,12 @@
 import { join } from 'path';
 
 import { FILE_PATTERNS, type Platform } from '../../constants/index.js';
-import { discoverAllRootFiles } from '../../utils/formula-discovery.js';
+import { discoverAllRootFiles } from '../../utils/package-discovery.js';
 import { exists, readTextFile } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { logger } from '../../utils/logger.js';
-import { extractFormulaSection } from '../../utils/root-file-extractor.js';
+import { extractPackageSection } from '../../utils/root-file-extractor.js';
 import { SaveCandidate } from './save-candidate-types.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 
@@ -25,7 +25,7 @@ export async function loadLocalRootSaveCandidates(
 
     try {
       const content = await readTextFile(fullPath);
-      const extracted = extractFormulaSection(content, formulaName);
+      const extracted = extractPackageSection(content, formulaName);
       const sectionBody = extracted?.sectionBody?.trim() ?? content.trim();
       const contentHash = await calculateFileHash(sectionBody);
       const mtime = await getFileMtime(fullPath);
@@ -62,7 +62,7 @@ export async function discoverWorkspaceRootSaveCandidates(
   for (const file of discovered) {
     try {
       const content = await readTextFile(file.fullPath);
-      const extracted = extractFormulaSection(content, formulaName);
+      const extracted = extractPackageSection(content, formulaName);
       const sectionBody = extracted?.sectionBody?.trim();
 
       if (!sectionBody) {

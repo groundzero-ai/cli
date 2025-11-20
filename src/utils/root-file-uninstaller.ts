@@ -1,6 +1,6 @@
 /**
  * Root File Uninstaller
- * Utilities to remove formula-marked sections from root files and delete empty files
+ * Utilities to remove package-marked sections from root files and delete empty files
  */
 
 import { join } from 'path';
@@ -10,7 +10,7 @@ import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { buildOpenMarkerRegex, CLOSE_MARKER_REGEX } from './root-file-extractor.js';
 
 /** Remove a single formula section from root-file content using markers */
-function stripFormulaSection(content: string, formulaName: string): { changed: boolean; content: string } {
+function stripPackageSection(content: string, formulaName: string): { changed: boolean; content: string } {
   if (!content) return { changed: false, content };
   const openRe = buildOpenMarkerRegex(formulaName);
   const closeRe = CLOSE_MARKER_REGEX;
@@ -25,11 +25,11 @@ function stripFormulaSection(content: string, formulaName: string): { changed: b
 }
 
 /** Remove multiple formula sections from content */
-function stripMultipleFormulaSections(content: string, formulaNames: string[]): { changed: boolean; content: string } {
+function stripMultiplePackageSections(content: string, formulaNames: string[]): { changed: boolean; content: string } {
   let changed = false;
   let current = content;
   for (const name of formulaNames) {
-    const result = stripFormulaSection(current, name);
+    const result = stripPackageSection(current, name);
     if (result.changed) changed = true;
     current = result.content;
   }
@@ -56,7 +56,7 @@ export async function computeRootFileRemovalPlan(cwd: string, formulaNames: stri
     const absPath = join(cwd, filename);
     if (!(await exists(absPath))) continue;
     const original = await readTextFile(absPath);
-    const { changed, content } = stripMultipleFormulaSections(original, formulaNames);
+    const { changed, content } = stripMultiplePackageSections(original, formulaNames);
     if (!changed) continue;
     // Always update root files, never delete them (even if empty)
     toUpdate.push(filename);
@@ -74,7 +74,7 @@ export async function applyRootFileRemovals(cwd: string, formulaNames: string[])
     const absPath = join(cwd, filename);
     if (!(await exists(absPath))) continue;
     const original = await readTextFile(absPath);
-    const { changed, content } = stripMultipleFormulaSections(original, formulaNames);
+    const { changed, content } = stripMultiplePackageSections(original, formulaNames);
     if (!changed) continue;
     // Always update root files, never delete them (even if empty)
     await writeTextFile(absPath, content);

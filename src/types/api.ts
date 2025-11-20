@@ -1,8 +1,8 @@
 /**
- * API response types for the Formula Registry
+ * API response types for the Package Registry
  */
 
-export interface ApiFormula {
+export interface ApiPackage {
   name: string;
   description: string;
   keywords: string[];
@@ -11,28 +11,28 @@ export interface ApiFormula {
   updatedAt: string;
 }
 
-export interface ApiFormulaVersion {
+export interface ApiPackageVersion {
   version: string;
   tarballSize: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface PushFormulaResponse {
+export interface PushPackageResponse {
   message: string;
-  formula: ApiFormula;
-  version: ApiFormulaVersion;
+  package: ApiPackage;
+  version: ApiPackageVersion;
 }
 
-export interface PullFormulaDownload {
+export interface PullPackageDownload {
   name: string;
   downloadUrl?: string;
 }
 
-export interface PullFormulaResponse {
-  formula: ApiFormula;
-  version: ApiFormulaVersion;
-  downloads: PullFormulaDownload[];
+export interface PullPackageResponse {
+  package: ApiPackage;
+  version: ApiPackageVersion;
+  downloads: PullPackageDownload[];
 }
 
 export interface ApiError {

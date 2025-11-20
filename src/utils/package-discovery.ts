@@ -5,7 +5,7 @@ import { logger } from './logger.js';
 import { exists, readTextFile } from './fs.js';
 import { calculateFileHash } from './hash-utils.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
-import { extractFormulaContentFromRootFile } from './root-file-extractor.js';
+import { extractPackageContentFromRootFile } from './root-file-extractor.js';
 import { getFileMtime } from '../utils/file-processing.js';
 import type { DiscoveredFile } from '../types/index.js';
 
@@ -24,7 +24,7 @@ export async function discoverAgentsMdFile(
 
   try {
     const content = await readTextFile(agentsPath);
-    const extracted = extractFormulaContentFromRootFile(content, formulaName);
+    const extracted = extractPackageContentFromRootFile(content, formulaName);
     if (!extracted) {
       return null; // No matching section; treat as non-existent
     }
@@ -49,7 +49,7 @@ export async function discoverAgentsMdFile(
 }
 
 /**
- * Discover all platform root files at project root and extract formula-specific content.
+ * Discover all platform root files at project root and extract package-specific content.
  * Merges CLAUDE.md, GEMINI.md, QWEN.md, WARP.md, and platform AGENTS.md into a single
  * universal AGENTS.md registry path via conflict resolution.
  */
@@ -82,7 +82,7 @@ export async function discoverAllRootFiles(
 
     try {
       const content = await readTextFile(absPath);
-      const extracted = extractFormulaContentFromRootFile(content, formulaName);
+      const extracted = extractPackageContentFromRootFile(content, formulaName);
       if (!extracted) {
         continue; // No matching section in this root file
       }

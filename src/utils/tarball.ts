@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { unlink, readdir, stat, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { FormulaFile, Formula } from '../types/index.js';
+import { PackageFile, Package } from '../types/index.js';
 import { logger } from './logger.js';
 import { ValidationError } from './errors.js';
 import { writeTextFile, readTextFile, ensureDir, exists } from './fs.js';
@@ -18,15 +18,15 @@ export interface TarballInfo {
   checksum: string;
 }
 
-export interface ExtractedFormula {
-  files: FormulaFile[];
+export interface ExtractedPackage {
+  files: PackageFile[];
   checksum: string;
 }
 
 /**
  * Create a tarball from formula files
  */
-export async function createTarballFromFormula(formula: Formula): Promise<TarballInfo> {
+export async function createTarballFromPackage(formula: Package): Promise<TarballInfo> {
   logger.debug(`Creating tarball for formula: ${formula.metadata.name}@${formula.metadata.version}`);
   
   const tempDir = join(tmpdir(), `openpackage-tarball-${Date.now()}`);
@@ -86,10 +86,10 @@ export async function createTarballFromFormula(formula: Formula): Promise<Tarbal
 /**
  * Extract formula files from tarball buffer
  */
-export async function extractFormulaFromTarball(
+export async function extractPackageFromTarball(
   tarballBuffer: Buffer, 
   expectedChecksum?: string
-): Promise<ExtractedFormula> {
+): Promise<ExtractedPackage> {
   logger.debug(`Extracting formula from tarball (${tarballBuffer.length} bytes)`);
   
   const tempDir = join(tmpdir(), `openpackage-extract-${Date.now()}`);
@@ -116,7 +116,7 @@ export async function extractFormulaFromTarball(
     });
     
     // Read extracted files
-    const files: FormulaFile[] = [];
+    const files: PackageFile[] = [];
     const extractFiles = async (dir: string, basePath: string = ''): Promise<void> => {
       const entries = await readdir(dir);
       

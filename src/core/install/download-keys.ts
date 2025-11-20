@@ -1,5 +1,5 @@
-import type { PullFormulaDownload } from '../../types/api.js';
-import { hasFormulaVersion } from '../directory.js';
+import type { PullPackageDownload } from '../../types/api.js';
+import { hasPackageVersion } from '../directory.js';
 import { parseDownloadName } from '../remote-pull.js';
 import { logger } from '../../utils/logger.js';
 
@@ -13,7 +13,7 @@ export function createDownloadKey(name: string, version: string): string {
 /**
  * Compute which download keys are missing locally
  */
-export async function computeMissingDownloadKeys(downloads: PullFormulaDownload[]): Promise<Set<string>> {
+export async function computeMissingDownloadKeys(downloads: PullPackageDownload[]): Promise<Set<string>> {
   const missingKeys = new Set<string>();
 
   for (const download of downloads) {
@@ -27,7 +27,7 @@ export async function computeMissingDownloadKeys(downloads: PullFormulaDownload[
         continue;
       }
 
-      const existsLocally = await hasFormulaVersion(name, version);
+      const existsLocally = await hasPackageVersion(name, version);
       if (!existsLocally) {
         missingKeys.add(createDownloadKey(name, version));
       }

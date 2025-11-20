@@ -1,21 +1,21 @@
 import { dirname, join } from 'path';
 import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
-import { parseFormulaYml } from '../../utils/formula-yml.js';
+import { parsePackageYml } from '../../utils/package-yml.js';
 import {
-  getFormulaIndexPath,
-  readFormulaIndex,
-  writeFormulaIndex,
-  type FormulaIndexRecord,
+  getPackageIndexPath,
+  readPackageIndex,
+  writePackageIndex,
+  type PackageIndexRecord,
   sortMapping,
   pruneNestedDirectories
-} from '../../utils/formula-index-yml.js';
+} from '../../utils/package-index-yml.js';
 import {
-  buildIndexMappingForFormulaFiles,
-  loadOtherFormulaIndexes
+  buildIndexMappingForPackageFiles,
+  loadOtherPackageIndexes
 } from '../../utils/index-based-installer.js';
-import { getLocalFormulaDir } from '../../utils/paths.js';
-import type { FormulaFile } from '../../types/index.js';
+import { getLocalPackageDir } from '../../utils/paths.js';
+import type { PackageFile } from '../../types/index.js';
 import { PLATFORM_DIRS, type Platform } from '../../constants/index.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
@@ -166,7 +166,7 @@ function collapseFileEntriesToDirKeys(
 }
 
 /**
- * Build mapping from FormulaFile[] and write/merge to formula.index.yml.
+ * Build mapping from PackageFile[] and write/merge to formula.index.yml.
  * Automatically collapses file entries into directory keys when appropriate.
  */
 export interface BuildIndexOptions {
@@ -190,7 +190,7 @@ export interface BuildIndexOptions {
  * their target files are excluded from the universal key (e.g., setup.md) to avoid duplication.
  */
 function buildExactFileMapping(
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   platforms: Platform[]
 ): Record<string, string[]> {
   const mapping: Record<string, string[]> = {};
@@ -294,23 +294,23 @@ function buildExactFileMapping(
 export async function buildMappingAndWriteIndex(
   cwd: string,
   formulaName: string,
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   platforms: Platform[],
   options: BuildIndexOptions = {}
 ): Promise<void> {
   try {
     // Read existing index and other indexes for conflict context
-    const previousIndex = await readFormulaIndex(cwd, formulaName);
-    const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+    const previousIndex = await readPackageIndex(cwd, formulaName);
+    const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
 
     // Resolve version (prefer previous index; otherwise read from formula.yml)
     let version = previousIndex?.version || '';
     if (!version) {
-      const formulaDir = getLocalFormulaDir(cwd, formulaName);
+      const formulaDir = getLocalPackageDir(cwd, formulaName);
       const formulaYmlPath = join(formulaDir, 'formula.yml');
       if (await exists(formulaYmlPath)) {
         try {
-          const formulaYml = await parseFormulaYml(formulaYmlPath);
+          const formulaYml = await parsePackageYml(formulaYmlPath);
           version = formulaYml.version;
         } catch (error) {
           logger.warn(`Failed to read formula.yml for version: ${error}`);
@@ -325,7 +325,7 @@ export async function buildMappingAndWriteIndex(
     }
 
     // Build mapping using same flow as install
-    let newMapping = await buildIndexMappingForFormulaFiles(
+    let newMapping = await buildIndexMappingForPackageFiles(
       cwd,
       formulaFiles,
       platforms,
@@ -357,13 +357,13 @@ export async function buildMappingAndWriteIndex(
       previousFilesWithoutDirKeys,
       newMapping
     );
-    const indexRecord: FormulaIndexRecord = {
-      path: getFormulaIndexPath(cwd, formulaName),
+    const indexRecord: PackageIndexRecord = {
+      path: getPackageIndexPath(cwd, formulaName),
       formulaName,
       version,
       files: mergedFiles
     };
-    await writeFormulaIndex(indexRecord);
+    await writePackageIndex(indexRecord);
     logger.debug(`Updated formula.index.yml for ${formulaName}@${version}`);
   } catch (error) {
     logger.warn(`Failed to update formula.index.yml for ${formulaName}: ${error}`);

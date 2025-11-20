@@ -1,12 +1,12 @@
 import { exists } from './fs.js';
-import { parseFormulaYml } from './formula-yml.js';
-import { getLocalFormulaYmlPath } from './paths.js';
-import { extractFormulasFromConfig } from './install-helpers.js';
-import { normalizeFormulaName } from './formula-name.js';
+import { parsePackageYml } from './package-yml.js';
+import { getLocalPackageYmlPath } from './paths.js';
+import { extractPackagesFromConfig } from './install-helpers.js';
+import { normalizePackageName } from './package-name.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/openpackage.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { logger } from './logger.js';
-import { FormulaYml } from '../types/index.js';
+import { PackageYml } from '../types/index.js';
 
 export interface DependencyCoverage {
   direct: Set<string>;
@@ -16,21 +16,21 @@ export interface DependencyCoverage {
 export async function getDependencyCoverage(cwd: string): Promise<DependencyCoverage> {
   const direct = new Set<string>();
   const transitive = new Set<string>();
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const formulaYmlPath = getLocalPackageYmlPath(cwd);
 
   if (!(await exists(formulaYmlPath))) {
     return { direct, transitive };
   }
 
-  let config: FormulaYml;
+  let config: PackageYml;
   try {
-    config = await parseFormulaYml(formulaYmlPath);
+    config = await parsePackageYml(formulaYmlPath);
   } catch (error) {
     logger.warn(`Failed to parse main formula.yml while computing dependency coverage: ${error}`);
     return { direct, transitive };
   }
 
-  const topLevel = extractFormulasFromConfig(config);
+  const topLevel = extractPackagesFromConfig(config);
   if (topLevel.length === 0) {
     return { direct, transitive };
   }
@@ -39,7 +39,7 @@ export async function getDependencyCoverage(cwd: string): Promise<DependencyCove
   const rootConstraints = await gatherRootVersionConstraints(cwd);
 
   for (const dep of topLevel) {
-    const normalizedName = normalizeFormulaName(dep.name);
+    const normalizedName = normalizePackageName(dep.name);
     direct.add(normalizedName);
 
     try {
@@ -55,11 +55,11 @@ export async function getDependencyCoverage(cwd: string): Promise<DependencyCove
         rootConstraints
       );
 
-      for (const resolved of result.resolvedFormulas) {
+      for (const resolved of result.resolvedPackages) {
         if (resolved.isRoot) {
           continue;
         }
-        transitive.add(normalizeFormulaName(resolved.name));
+        transitive.add(normalizePackageName(resolved.name));
       }
     } catch (error) {
       logger.debug(`Failed to resolve dependencies for ${dep.name} while computing coverage: ${error}`);
@@ -73,18 +73,18 @@ export async function getDependencyCoverage(cwd: string): Promise<DependencyCove
   return { direct, transitive };
 }
 
-export async function isFormulaTransitivelyCovered(cwd: string, formulaName: string): Promise<boolean> {
+export async function isPackageTransitivelyCovered(cwd: string, formulaName: string): Promise<boolean> {
   const { transitive } = await getDependencyCoverage(cwd);
-  return transitive.has(normalizeFormulaName(formulaName));
+  return transitive.has(normalizePackageName(formulaName));
 }
 
-export async function isFormulaCovered(
+export async function isPackageCovered(
   cwd: string,
   formulaName: string,
   options?: { includeDirect?: boolean }
 ): Promise<boolean> {
   const coverage = await getDependencyCoverage(cwd);
-  const normalized = normalizeFormulaName(formulaName);
+  const normalized = normalizePackageName(formulaName);
 
   if (options?.includeDirect !== false && coverage.direct.has(normalized)) {
     return true;

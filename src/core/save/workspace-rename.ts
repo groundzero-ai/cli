@@ -2,13 +2,13 @@ import { dirname } from 'path';
 
 import { FILE_PATTERNS } from '../../constants/index.js';
 import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
-import { discoverAllRootFiles } from '../../utils/formula-discovery.js';
-import { FormulaYmlInfo } from './formula-yml-generator.js';
-import { extractFormulaSection, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';
+import { discoverAllRootFiles } from '../../utils/package-discovery.js';
+import { PackageYmlInfo } from './package-yml-generator.js';
+import { extractPackageSection, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';
 import { readTextFile, writeTextFile, exists, renameDirectory, removeEmptyDirectories } from '../../utils/fs.js';
-import { writeFormulaYml, parseFormulaYml } from '../../utils/formula-yml.js';
-import { getLocalFormulaDir, getLocalFormulaYmlPath, getLocalFormulasDir } from '../../utils/paths.js';
-import { areFormulaNamesEquivalent } from '../../utils/formula-name.js';
+import { writePackageYml, parsePackageYml } from '../../utils/package-yml.js';
+import { getLocalPackageDir, getLocalPackageYmlPath, getLocalPackagesDir } from '../../utils/paths.js';
+import { arePackageNamesEquivalent } from '../../utils/package-name.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -16,9 +16,9 @@ import { logger } from '../../utils/logger.js';
  * Updates formula.yml, markdown frontmatter, index.yml entries, root markers,
  * formula directory, and root formula.yml dependencies.
  */
-export async function applyWorkspaceFormulaRename(
+export async function applyWorkspacePackageRename(
   cwd: string,
-  formulaInfo: FormulaYmlInfo,
+  formulaInfo: PackageYmlInfo,
   newName: string
 ): Promise<void> {
   const currentName = formulaInfo.config.name;
@@ -28,7 +28,7 @@ export async function applyWorkspaceFormulaRename(
 
   // Update formula.yml with the new name before further processing
   const updatedConfig = { ...formulaInfo.config, name: newName };
-  await writeFormulaYml(formulaInfo.fullPath, updatedConfig);
+  await writePackageYml(formulaInfo.fullPath, updatedConfig);
 
   // Frontmatter and index.yml support removed - no metadata updates needed
 
@@ -36,7 +36,7 @@ export async function applyWorkspaceFormulaRename(
   const rootFiles = await discoverAllRootFiles(cwd, currentName);
   for (const rootFile of rootFiles) {
     const originalContent = await readTextFile(rootFile.fullPath);
-    const extracted = extractFormulaSection(originalContent, currentName);
+    const extracted = extractPackageSection(originalContent, currentName);
     if (!extracted) {
       continue;
     }
@@ -51,12 +51,12 @@ export async function applyWorkspaceFormulaRename(
   }
 
   // Update root formula.yml dependencies (project formula.yml)
-  await updateRootFormulaYmlDependencies(cwd, currentName, newName);
+  await updateRootPackageYmlDependencies(cwd, currentName, newName);
 
   // For sub-formulas, move the directory to the new normalized name
-  if (!formulaInfo.isRootFormula) {
+  if (!formulaInfo.isRootPackage) {
     const currentDir = dirname(formulaInfo.fullPath);
-    const targetDir = getLocalFormulaDir(cwd, newName);
+    const targetDir = getLocalPackageDir(cwd, newName);
 
     if (currentDir !== targetDir) {
       if (await exists(targetDir)) {
@@ -65,7 +65,7 @@ export async function applyWorkspaceFormulaRename(
       await renameDirectory(currentDir, targetDir);
 
       // Clean up empty directories left after the move (e.g., empty @scope directories)
-      const formulasDir = getLocalFormulasDir(cwd);
+      const formulasDir = getLocalPackagesDir(cwd);
       if (await exists(formulasDir)) {
         await removeEmptyDirectories(formulasDir);
       }
@@ -76,25 +76,25 @@ export async function applyWorkspaceFormulaRename(
 /**
  * Update dependencies on the old formula name to the new name in root formula.yml
  */
-async function updateRootFormulaYmlDependencies(
+async function updateRootPackageYmlDependencies(
   cwd: string,
   oldName: string,
   newName: string
 ): Promise<void> {
-  const rootFormulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const rootPackageYmlPath = getLocalPackageYmlPath(cwd);
 
-  if (!(await exists(rootFormulaYmlPath))) {
+  if (!(await exists(rootPackageYmlPath))) {
     return; // No root formula.yml to update
   }
 
   try {
-    const config = await parseFormulaYml(rootFormulaYmlPath);
+    const config = await parsePackageYml(rootPackageYmlPath);
     let updated = false;
 
     // Update dependencies in formulas array
     if (config.formulas) {
       for (const dep of config.formulas) {
-        if (areFormulaNamesEquivalent(dep.name, oldName)) {
+        if (arePackageNamesEquivalent(dep.name, oldName)) {
           dep.name = newName;
           updated = true;
         }
@@ -104,7 +104,7 @@ async function updateRootFormulaYmlDependencies(
     // Update dependencies in dev-formulas array
     if (config['dev-formulas']) {
       for (const dep of config['dev-formulas']) {
-        if (areFormulaNamesEquivalent(dep.name, oldName)) {
+        if (arePackageNamesEquivalent(dep.name, oldName)) {
           dep.name = newName;
           updated = true;
         }
@@ -112,7 +112,7 @@ async function updateRootFormulaYmlDependencies(
     }
 
     if (updated) {
-      await writeFormulaYml(rootFormulaYmlPath, config);
+      await writePackageYml(rootPackageYmlPath, config);
       logger.debug(`Updated root formula.yml dependencies from ${oldName} to ${newName}`);
     }
   } catch (error) {

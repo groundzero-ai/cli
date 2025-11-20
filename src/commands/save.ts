@@ -4,26 +4,26 @@ import { SaveOptions, CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { addFormulaToYml } from '../utils/formula-management.js';
+import { addPackageToYml } from '../utils/package-management.js';
 import { performPlatformSync } from '../core/sync/platform-sync.js';
-import { parseFormulaInput, normalizeFormulaName } from '../utils/formula-name.js';
-import { discoverFormulaFilesForSave } from '../core/save/save-file-discovery.js';
+import { parsePackageInput, normalizePackageName } from '../utils/package-name.js';
+import { discoverPackageFilesForSave } from '../core/save/save-file-discovery.js';
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
-import { getOrCreateFormulaYml } from '../core/save/formula-yml-generator.js';
-import { saveFormulaToRegistry } from '../core/save/formula-saver.js';
-import { formulaVersionExists } from '../utils/formula-versioning.js';
-import { applyWorkspaceFormulaRename } from '../core/save/workspace-rename.js';
-import { isFormulaTransitivelyCovered } from '../utils/dependency-coverage.js';
+import { getOrCreatePackageYml } from '../core/save/package-yml-generator.js';
+import { savePackageToRegistry } from '../core/save/package-saver.js';
+import { formulaVersionExists } from '../utils/package-versioning.js';
+import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
+import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
 
 /**
  * Main implementation of the save formula command
  * Now only supports specifying the formula name (optionally with @version)
- * @param formulaName - Formula name (optionally name@version)
+ * @param formulaName - Package name (optionally name@version)
  * @param versionType - Optional version type ('stable')
  * @param options - Command options (force, bump, etc.)
  * @returns Promise resolving to command result
  */
-async function saveFormulaCommand(
+async function savePackageCommand(
   formulaName: string,
   versionType?: string,
   options?: SaveOptions
@@ -31,15 +31,15 @@ async function saveFormulaCommand(
   const cwd = process.cwd();
 
   // Parse inputs to determine the pattern being used
-  const { name, version: explicitVersion } = parseFormulaInput(formulaName);
+  const { name, version: explicitVersion } = parsePackageInput(formulaName);
 
   const renameInput = options?.rename?.trim();
   let renameTarget: string | undefined;
   let renameVersion: string | undefined;
 
   if (renameInput) {
-    const { name: renameName, version: renameVer } = parseFormulaInput(renameInput);
-    const normalizedRename = normalizeFormulaName(renameName);
+    const { name: renameName, version: renameVer } = parsePackageInput(renameInput);
+    const normalizedRename = normalizePackageName(renameName);
     if (normalizedRename !== name) {
       renameTarget = normalizedRename;
       renameVersion = renameVer;
@@ -55,9 +55,9 @@ async function saveFormulaCommand(
   // Get formula configuration based on input pattern
   // Use rename version if provided, otherwise use original version
   const formulaVersion = renameVersion || explicitVersion;
-  let formulaInfo = await getOrCreateFormulaYml(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
+  let formulaInfo = await getOrCreatePackageYml(cwd, name, formulaVersion, versionType, options?.bump, options?.force);
   let formulaConfig = formulaInfo.config;
-  let isRootFormula = formulaInfo.isRootFormula;
+  let isRootPackage = formulaInfo.isRootPackage;
   let targetVersion = formulaConfig.version;
   let isWipVersion = targetVersion.endsWith(WIP_SUFFIX);
 
@@ -69,10 +69,10 @@ async function saveFormulaCommand(
       }
     }
 
-    await applyWorkspaceFormulaRename(cwd, formulaInfo, renameTarget);
+    await applyWorkspacePackageRename(cwd, formulaInfo, renameTarget);
 
     // Re-fetch formula info at the new location with the same target version
-    formulaInfo = await getOrCreateFormulaYml(
+    formulaInfo = await getOrCreatePackageYml(
       cwd,
       renameTarget,
       targetVersion,
@@ -81,19 +81,19 @@ async function saveFormulaCommand(
       /* force */ true
     );
     formulaConfig = formulaInfo.config;
-    isRootFormula = formulaInfo.isRootFormula;
+    isRootPackage = formulaInfo.isRootPackage;
     targetVersion = formulaConfig.version;
     isWipVersion = targetVersion.endsWith(WIP_SUFFIX);
   }
 
   // Discover and process files directly into formula files array
   // Only use explicit --force flag to skip prompts; WIP versions should still prompt for conflicts
-  const formulaFiles = await discoverFormulaFilesForSave(formulaInfo, {
+  const formulaFiles = await discoverPackageFilesForSave(formulaInfo, {
     force: options?.force
   });
 
   // Save formula to local registry
-  const saveResult = await saveFormulaToRegistry(formulaInfo, formulaFiles);
+  const saveResult = await savePackageToRegistry(formulaInfo, formulaFiles);
 
   if (!saveResult.success) {
     return { success: false, error: saveResult.error || ERROR_MESSAGES.SAVE_FAILED };
@@ -113,10 +113,10 @@ async function saveFormulaCommand(
 
   // Finalize the save operation
   // Don't add root formula to itself as a dependency
-  if (!options?.skipProjectLink && !isRootFormula) {
-    const transitivelyCovered = await isFormulaTransitivelyCovered(cwd, formulaConfig.name);
+  if (!options?.skipProjectLink && !isRootPackage) {
+    const transitivelyCovered = await isPackageTransitivelyCovered(cwd, formulaConfig.name);
     if (!transitivelyCovered) {
-      await addFormulaToYml(
+      await addPackageToYml(
         cwd,
         formulaConfig.name,
         formulaConfig.version,
@@ -130,7 +130,7 @@ async function saveFormulaCommand(
   }
   
   // Display appropriate message based on formula type
-  const formulaType = isRootFormula ? 'root formula' : 'formula';
+  const formulaType = isRootPackage ? 'root formula' : 'formula';
   console.log(`${LOG_PREFIXES.SAVED} ${formulaConfig.name}@${formulaConfig.version} (${formulaType}, ${formulaFiles.length} files):`);
   if (formulaFiles.length > 0) {
     const savedPaths = formulaFiles.map(f => f.path);
@@ -180,12 +180,12 @@ export function setupSaveCommand(program: Command): void {
   program
     .command('save')
     .alias('s')
-    .argument('<formula-name>', 'formula name (optionally formula-name@version)')
+    .argument('<package-name>', 'formula name (optionally package-name@version)')
     .argument('[version-type]', 'version type: stable (optional)')
     .description('Save a formula to local registry.\n' +
       'Usage:\n' +
-      '  opn save <formula-name>                # Detects files and saves to registry\n' +
-      '  opn save <formula-name> stable        # Save as stable version (with optional --bump)\n' +
+      '  opn save <package-name>                # Detects files and saves to registry\n' +
+      '  opn save <package-name> stable        # Save as stable version (with optional --bump)\n' +
       'Auto-generates local dev versions by default.')
     .option('-f, --force', 'overwrite existing version or skip confirmations')
     .option('-b, --bump <type>', `bump version (patch|minor|major). Creates prerelease by default, stable when combined with "${VERSION_TYPE_STABLE}" argument`)
@@ -196,7 +196,7 @@ export function setupSaveCommand(program: Command): void {
         throw new ValidationError(ERROR_MESSAGES.INVALID_VERSION_TYPE.replace('%s', versionType).replace('%s', VERSION_TYPE_STABLE));
       }
 
-      const result = await saveFormulaCommand(formulaName, versionType, options);
+      const result = await savePackageCommand(formulaName, versionType, options);
       if (!result.success) {
         throw new Error(result.error || 'Save operation failed');
       }

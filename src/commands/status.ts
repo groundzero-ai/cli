@@ -1,18 +1,18 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import * as semver from 'semver';
-import { CommandResult, FormulaYml, FormulaDependency } from '../types/index.js';
-import { parseFormulaYml } from '../utils/formula-yml.js';
-import { ensureRegistryDirectories, listFormulaVersions } from '../core/directory.js';
-import { GroundzeroFormula, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/openpackage.js';
+import { CommandResult, PackageYml, PackageDependency } from '../types/index.js';
+import { parsePackageYml } from '../utils/package-yml.js';
+import { ensureRegistryDirectories, listPackageVersions } from '../core/directory.js';
+import { GroundzeroPackage, gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../core/openpackage.js';
 import { resolveDependencies } from '../core/dependency-resolver.js';
 import { registryManager } from '../core/registry.js';
 import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
 import {
-  getLocalFormulaYmlPath,
-  getLocalFormulasDir,
+  getLocalPackageYmlPath,
+  getLocalPackagesDir,
   getLocalOpenPackageDir,
   getAIDir
 } from '../utils/paths.js';
@@ -27,26 +27,26 @@ import {
 } from '../constants/index.js';
 import { getPlatformDefinition, detectAllPlatforms } from '../core/platforms.js';
 import { findDirectoriesContainingFile } from '../utils/file-processing.js';
-import { discoverFormulasForStatus } from '../core/status/status-file-discovery.js';
-import { normalizeFormulaName } from '../utils/formula-name.js';
+import { discoverPackagesForStatus } from '../core/status/status-file-discovery.js';
+import { normalizePackageName } from '../utils/package-name.js';
 
 /**
- * Formula status types
+ * Package status types
  */
-type FormulaStatus = 'installed' | 'outdated' | 'missing' | 'dependency-mismatch' | 'registry-unavailable' | 'structure-invalid' | 'platform-mismatch' | 'update-available' | 'files-missing' | 'orphaned-files' | 'frontmatter-mismatch';
-type FormulaType = 'formula' | 'dev-formula' | 'dependency';
+type PackageStatus = 'installed' | 'outdated' | 'missing' | 'dependency-mismatch' | 'registry-unavailable' | 'structure-invalid' | 'platform-mismatch' | 'update-available' | 'files-missing' | 'orphaned-files' | 'frontmatter-mismatch';
+type PackageType = 'formula' | 'dev-formula' | 'dependency';
 
 /**
  * Enhanced formula status interface
  */
-interface FormulaStatusInfo {
+interface PackageStatusInfo {
   name: string;
   installedVersion: string;
   availableVersion?: string;
   registryVersion?: string;
-  status: FormulaStatus;
-  type: FormulaType;
-  dependencies?: FormulaStatusInfo[];
+  status: PackageStatus;
+  type: PackageType;
+  dependencies?: PackageStatusInfo[];
   path?: string;
   issues?: string[];
   conflictResolution?: string;
@@ -109,12 +109,12 @@ interface CommandOptions {
  * Scan local formula metadata from .openpackage/formulas directory
  * Recursively scans to handle scoped formulas (e.g., @scope/name)
  */
-async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, FormulaYml>> {
-  const formulasDir = getLocalFormulasDir(cwd);
-  const localFormulas = new Map<string, FormulaYml>();
+async function scanLocalPackageMetadata(cwd: string): Promise<Map<string, PackageYml>> {
+  const formulasDir = getLocalPackagesDir(cwd);
+  const localPackages = new Map<string, PackageYml>();
   
   if (!(await exists(formulasDir))) {
-    return localFormulas;
+    return localPackages;
   }
   
   try {
@@ -124,7 +124,7 @@ async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, Formul
       FILE_PATTERNS.FORMULA_YML,
       async (filePath) => {
         try {
-          return await parseFormulaYml(filePath);
+          return await parsePackageYml(filePath);
         } catch (error) {
           logger.warn(`Failed to parse local formula metadata: ${filePath}`, { error });
           return null;
@@ -135,14 +135,14 @@ async function scanLocalFormulaMetadata(cwd: string): Promise<Map<string, Formul
     // Build the map from results
     for (const result of formulaDirs) {
       if (result.parsedContent) {
-        localFormulas.set(result.parsedContent.name, result.parsedContent);
+        localPackages.set(result.parsedContent.name, result.parsedContent);
       }
     }
   } catch (error) {
     logger.error('Failed to scan local formula metadata', { error, formulasDir });
   }
   
-  return localFormulas;
+  return localPackages;
 }
 
 /**
@@ -173,13 +173,13 @@ async function detectPlatformStatus(cwd: string): Promise<PlatformStatus[]> {
  */
 async function checkRegistryVersions(formulaName: string): Promise<{ latest?: string; available: string[] }> {
   try {
-    const [hasFormula, metadata, available] = await Promise.all([
-      registryManager.hasFormula(formulaName),
-      registryManager.getFormulaMetadata(formulaName).catch(() => null),
-      listFormulaVersions(formulaName).catch(() => [])
+    const [hasPackage, metadata, available] = await Promise.all([
+      registryManager.hasPackage(formulaName),
+      registryManager.getPackageMetadata(formulaName).catch(() => null),
+      listPackageVersions(formulaName).catch(() => [])
     ]);
     
-    if (!hasFormula) {
+    if (!hasPackage) {
       return { available: [] };
     }
     
@@ -196,40 +196,40 @@ async function checkRegistryVersions(formulaName: string): Promise<{ latest?: st
 /**
  * Analyze status of a single formula with enhanced checks
  */
-async function analyzeFormulaStatus(
-  requiredFormula: FormulaDependency,
-  availableFormula: GroundzeroFormula | null,
-  localMetadata: FormulaYml | null,
-  type: FormulaType,
+async function analyzePackageStatus(
+  requiredPackage: PackageDependency,
+  availablePackage: GroundzeroPackage | null,
+  localMetadata: PackageYml | null,
+  type: PackageType,
   registryCheck: boolean = false
-): Promise<FormulaStatusInfo> {
-  const status: FormulaStatusInfo = {
-    name: requiredFormula.name,
-    installedVersion: requiredFormula.version,
+): Promise<PackageStatusInfo> {
+  const status: PackageStatusInfo = {
+    name: requiredPackage.name,
+    installedVersion: requiredPackage.version,
     type,
     status: 'missing'
   };
   
   // Check registry if requested
   if (registryCheck) {
-    const registryInfo = await checkRegistryVersions(requiredFormula.name);
+    const registryInfo = await checkRegistryVersions(requiredPackage.name);
     status.registryVersion = registryInfo.latest;
     
     if (registryInfo.available.length === 0) {
       status.status = 'registry-unavailable';
-      status.issues = [`Formula '${requiredFormula.name}' not found in registry`];
+      status.issues = [`Package '${requiredPackage.name}' not found in registry`];
       return status;
     }
   }
 
-  // Case 1: Formula not found by scanner
-  if (!availableFormula) {
+  // Case 1: Package not found by scanner
+  if (!availablePackage) {
     if (localMetadata) {
       status.status = 'files-missing';
-      status.issues = [`Formula '${requiredFormula.name}' has local metadata but no files detected`];
+      status.issues = [`Package '${requiredPackage.name}' has local metadata but no files detected`];
     } else {
       status.status = 'missing';
-      status.issues = [`Formula '${requiredFormula.name}' not found`];
+      status.issues = [`Package '${requiredPackage.name}' not found`];
     }
     
     // Check for registry updates if available
@@ -241,12 +241,12 @@ async function analyzeFormulaStatus(
     return status;
   }
 
-  // Case 2: Formula exists - compare versions  
-  status.availableVersion = localMetadata?.version || availableFormula.version;
-  status.path = availableFormula.path;
+  // Case 2: Package exists - compare versions  
+  status.availableVersion = localMetadata?.version || availablePackage.version;
+  status.path = availablePackage.path;
 
-  const requiredVersion = requiredFormula.version;
-  const installedVersion = availableFormula.version;
+  const requiredVersion = requiredPackage.version;
+  const installedVersion = availablePackage.version;
   // Ensure displayed version reflects the actual installed/detected version
   status.installedVersion = installedVersion;
 
@@ -308,14 +308,14 @@ async function analyzeFormulaStatus(
 /**
  * Build dependency tree using install's dependency resolver
  */
-async function buildFormulaDependencyTree(
+async function buildPackageDependencyTree(
   formulaName: string,
   cwd: string,
-  availableFormulas: Map<string, GroundzeroFormula>,
-  localMetadata: Map<string, FormulaYml>,
+  availablePackages: Map<string, GroundzeroPackage>,
+  localMetadata: Map<string, PackageYml>,
   version?: string,
   registryCheck: boolean = false
-): Promise<FormulaStatusInfo[]> {
+): Promise<PackageStatusInfo[]> {
   try {
     // Use the install command's dependency resolver to get the complete tree
     const constraints = await gatherGlobalVersionConstraints(cwd);
@@ -331,24 +331,24 @@ async function buildFormulaDependencyTree(
       constraints,
       rootConstraints
     );
-    const resolvedFormulas = result.resolvedFormulas;
-    const missingFormulas = result.missingFormulas;
+    const resolvedPackages = result.resolvedPackages;
+    const missingPackages = result.missingPackages;
 
     // Convert resolved formulas to status info in parallel
-    const dependencyPromises = resolvedFormulas
+    const dependencyPromises = resolvedPackages
       .filter(resolved => !resolved.isRoot) // Skip the root formula
       .map(async (resolved) => {
-        const availableFormula = availableFormulas.get(resolved.name) || null;
+        const availablePackage = availablePackages.get(resolved.name) || null;
         const localMeta = localMetadata.get(resolved.name) || null;
         
-        const dependency: FormulaDependency = {
+        const dependency: PackageDependency = {
           name: resolved.name,
           version: resolved.requiredRange || resolved.version
         };
         
-        const depStatus = await analyzeFormulaStatus(
+        const depStatus = await analyzePackageStatus(
           dependency,
-          availableFormula,
+          availablePackage,
           localMeta,
           'dependency',
           registryCheck
@@ -362,13 +362,13 @@ async function buildFormulaDependencyTree(
       });
 
     // Add status info for missing formulas
-    const missingPromises = missingFormulas.map(async (missingName) => {
-      const dependency: FormulaDependency = {
+    const missingPromises = missingPackages.map(async (missingName) => {
+      const dependency: PackageDependency = {
         name: missingName,
         version: 'latest'
       };
 
-      return await analyzeFormulaStatus(
+      return await analyzePackageStatus(
         dependency,
         null, // no available formula
         null, // no local metadata
@@ -383,15 +383,15 @@ async function buildFormulaDependencyTree(
     logger.warn(`Failed to resolve dependencies for ${formulaName}`, { error });
     
     // Fallback to basic dependency scanning
-    const formula = availableFormulas.get(formulaName);
+    const formula = availablePackages.get(formulaName);
     if (!formula?.formulas) {
       return [];
     }
     
     const fallbackPromises = formula.formulas.map(async (dep) => {
-      const availableDep = availableFormulas.get(dep.name) || null;
+      const availableDep = availablePackages.get(dep.name) || null;
       const localMeta = localMetadata.get(dep.name) || null;
-      return analyzeFormulaStatus(dep, availableDep, localMeta, 'dependency', registryCheck);
+      return analyzePackageStatus(dep, availableDep, localMeta, 'dependency', registryCheck);
     });
     
     return Promise.all(fallbackPromises);
@@ -406,13 +406,13 @@ async function performStatusAnalysis(
   options: StatusOptions = {}
 ): Promise<{
   projectInfo: ProjectStatus;
-  formulas: FormulaStatusInfo[];
+  formulas: PackageStatusInfo[];
 }> {
   // 1. Check basic project structure in parallel
   const [openpackageDir, formulaYmlPath, formulasDir, aiDir] = [
     getLocalOpenPackageDir(cwd),
-    getLocalFormulaYmlPath(cwd),
-    getLocalFormulasDir(cwd),
+    getLocalPackageYmlPath(cwd),
+    getLocalPackagesDir(cwd),
     getAIDir(cwd)
   ];
   
@@ -434,7 +434,7 @@ async function performStatusAnalysis(
   
   // 2. Parse main formula.yml and detect platforms in parallel
   const [cwdConfig, platformStatuses] = await Promise.all([
-    parseFormulaYml(formulaYmlPath).catch(error => {
+    parsePackageYml(formulaYmlPath).catch(error => {
       throw new ValidationError(`Failed to parse formula.yml: ${error}`);
     }),
     options.platforms ? detectPlatformStatus(cwd) : Promise.resolve([])
@@ -443,8 +443,8 @@ async function performStatusAnalysis(
   // 3. Discover installed files using same method as uninstall and read local metadata in parallel
   // First collect all formula names including dependencies
   const formulaNames = new Set<string>([
-    ...(cwdConfig.formulas || []).map(f => normalizeFormulaName(f.name)),
-    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => normalizeFormulaName(f.name))
+    ...(cwdConfig.formulas || []).map(f => normalizePackageName(f.name)),
+    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => normalizePackageName(f.name))
   ]);
 
   // Resolve dependencies for each formula to get their names
@@ -463,19 +463,19 @@ async function performStatusAnalysis(
         constraints,
         rootConstraints
       );
-      const resolvedFormulas = result.resolvedFormulas;
-      const missingFormulas = result.missingFormulas;
+      const resolvedPackages = result.resolvedPackages;
+      const missingPackages = result.missingPackages;
 
       // Add all resolved dependency names to the set
-      for (const resolved of resolvedFormulas) {
+      for (const resolved of resolvedPackages) {
         if (!resolved.isRoot) {
-          formulaNames.add(normalizeFormulaName(resolved.name));
+          formulaNames.add(normalizePackageName(resolved.name));
         }
       }
 
       // Add missing formula names to the set
-      for (const missing of missingFormulas) {
-        formulaNames.add(normalizeFormulaName(missing));
+      for (const missing of missingPackages) {
+        formulaNames.add(normalizePackageName(missing));
       }
     } catch (error) {
       logger.debug(`Failed to resolve dependencies for ${formula.name}`, { error });
@@ -483,31 +483,31 @@ async function performStatusAnalysis(
   }
 
   const [detectedByFrontmatter, localMetadata] = await Promise.all([
-    discoverFormulasForStatus(Array.from(formulaNames)),
-    scanLocalFormulaMetadata(cwd)
+    discoverPackagesForStatus(Array.from(formulaNames)),
+    scanLocalPackageMetadata(cwd)
   ]);
 
   // Build availability map using detection results, preferring metadata versions when present
-  const availableFormulas = new Map<string, GroundzeroFormula>();
+  const availablePackages = new Map<string, GroundzeroPackage>();
   for (const [name, det] of detectedByFrontmatter) {
     const meta = localMetadata.get(name);
-    availableFormulas.set(name, {
+    availablePackages.set(name, {
       name,
       version: meta?.version || '0.0.0',
       path: det.anyPath || join(aiDir, name)
-    } as GroundzeroFormula);
+    } as GroundzeroPackage);
   }
   
   // 4. Analyze all formulas in parallel
-  const allFormulas = [
-    ...(cwdConfig.formulas || []).map(f => ({ ...f, type: 'formula' as FormulaType })),
-    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => ({ ...f, type: 'dev-formula' as FormulaType }))
+  const allPackages = [
+    ...(cwdConfig.formulas || []).map(f => ({ ...f, type: 'formula' as PackageType })),
+    ...(cwdConfig[DEPENDENCY_ARRAYS.DEV_FORMULAS] || []).map(f => ({ ...f, type: 'dev-formula' as PackageType }))
   ];
   
-  const analysisPromises = allFormulas.map(async (formula) => {
-    const available = availableFormulas.get(formula.name) || null;
+  const analysisPromises = allPackages.map(async (formula) => {
+    const available = availablePackages.get(formula.name) || null;
     const localMeta = localMetadata.get(formula.name) || null;
-    const status = await analyzeFormulaStatus(formula, available, localMeta, formula.type, options.registry);
+    const status = await analyzePackageStatus(formula, available, localMeta, formula.type, options.registry);
     const detected = detectedByFrontmatter.get(formula.name);
     if (detected) {
       status.fileSummary = {
@@ -520,10 +520,10 @@ async function performStatusAnalysis(
     // Build dependency tree if installed
     if (status.status === 'installed') {
       try {
-        status.dependencies = await buildFormulaDependencyTree(
+        status.dependencies = await buildPackageDependencyTree(
           formula.name,
           cwd,
-          availableFormulas,
+          availablePackages,
           localMetadata,
           formula.version,
           options.registry
@@ -562,7 +562,7 @@ async function performStatusAnalysis(
  */
 function renderTreeView(
   projectInfo: ProjectStatus,
-  formulas: FormulaStatusInfo[],
+  formulas: PackageStatusInfo[],
   options: { depth?: number; platforms?: boolean } = {}
 ): void {
   // Project header with status indicators
@@ -592,14 +592,14 @@ function renderTreeView(
   console.log('');
   formulas.forEach((formula, i) => {
     const isLast = i === formulas.length - 1;
-    renderFormulaTree(formula, '', isLast, options.depth, 1);
+    renderPackageTree(formula, '', isLast, options.depth, 1);
   });
 }
 
 /**
  * Status icon and suffix mapping
  */
-const STATUS_ICONS: Record<FormulaStatus, string> = {
+const STATUS_ICONS: Record<PackageStatus, string> = {
   'installed': '✅',
   'missing': '❌',
   'outdated': '⚠️',
@@ -616,7 +616,7 @@ const STATUS_ICONS: Record<FormulaStatus, string> = {
 /**
  * Get status suffix for display
  */
-function getStatusSuffix(formula: FormulaStatusInfo): string {
+function getStatusSuffix(formula: PackageStatusInfo): string {
   switch (formula.status) {
     case 'missing':
       return ' (missing)';
@@ -646,8 +646,8 @@ function getStatusSuffix(formula: FormulaStatusInfo): string {
 /**
  * Render individual formula in enhanced tree format
  */
-function renderFormulaTree(
-  formula: FormulaStatusInfo,
+function renderPackageTree(
+  formula: PackageStatusInfo,
   prefix: string,
   isLast: boolean,
   maxDepth?: number,
@@ -672,7 +672,7 @@ function renderFormulaTree(
   // Optional file-level summary (verbose)
   if ((formula as any).fileSummary && (globalThis as any).__statusVerbose) {
     const fsPrefix = prefix + (isLast ? '    ' : '│   ');
-    const fs = (formula as any).fileSummary as NonNullable<FormulaStatusInfo['fileSummary']>;
+    const fs = (formula as any).fileSummary as NonNullable<PackageStatusInfo['fileSummary']>;
     console.log(`${fsPrefix}📄 ai files: ${fs.aiFiles.found}`);
     const platforms = Object.keys(fs.platformFiles || {});
     if (platforms.length > 0) {
@@ -697,7 +697,7 @@ function renderFormulaTree(
       const childPrefix = prefix + (isLast ? '    ' : '│   ');
       formula.dependencies.forEach((dep, j) => {
         const isLastChild = j === formula.dependencies!.length - 1;
-        renderFormulaTree(dep, childPrefix, isLastChild, maxDepth, currentDepth + 1);
+        renderPackageTree(dep, childPrefix, isLastChild, maxDepth, currentDepth + 1);
       });
     } else {
       const childPrefix = prefix + (isLast ? '    ' : '│   ');
@@ -709,12 +709,12 @@ function renderFormulaTree(
 /**
  * Collect all formulas including dependencies recursively
  */
-function collectAllFormulas(formulas: FormulaStatusInfo[]): FormulaStatusInfo[] {
-  const allFormulas: FormulaStatusInfo[] = [];
+function collectAllPackages(formulas: PackageStatusInfo[]): PackageStatusInfo[] {
+  const allPackages: PackageStatusInfo[] = [];
   
-  function collect(formulaList: FormulaStatusInfo[]) {
+  function collect(formulaList: PackageStatusInfo[]) {
     for (const formula of formulaList) {
-      allFormulas.push(formula);
+      allPackages.push(formula);
       if (formula.dependencies) {
         collect(formula.dependencies);
       }
@@ -722,19 +722,19 @@ function collectAllFormulas(formulas: FormulaStatusInfo[]): FormulaStatusInfo[] 
   }
   
   collect(formulas);
-  return allFormulas;
+  return allPackages;
 }
 
 /**
  * Render enhanced flat table view of formulas
  */
-function renderFlatView(formulas: FormulaStatusInfo[], options: { registry?: boolean } = {}): void {
+function renderFlatView(formulas: PackageStatusInfo[], options: { registry?: boolean } = {}): void {
   if (formulas.length === 0) {
     console.log('No formulas found.');
     return;
   }
   
-  const allFormulas = collectAllFormulas(formulas);
+  const allPackages = collectAllPackages(formulas);
   
   // Enhanced table header
   const headers = ['FORMULA', 'INSTALLED', 'STATUS', 'TYPE'];
@@ -753,7 +753,7 @@ function renderFlatView(formulas: FormulaStatusInfo[], options: { registry?: boo
   console.log(headers.map((_, i) => '-'.repeat(widths[i] - 1).padEnd(widths[i])).join(''));
   
   // Display each formula
-  allFormulas.forEach(formula => {
+  allPackages.forEach(formula => {
     const values = [
       formula.name.padEnd(widths[0]),
       formula.installedVersion.padEnd(widths[1]),
@@ -771,11 +771,11 @@ function renderFlatView(formulas: FormulaStatusInfo[], options: { registry?: boo
     console.log(values.join(''));
   });
   
-  console.log('\nTotal: ${allFormulas.length} formulas');
+  console.log('\nTotal: ${allPackages.length} formulas');
   
   // Summary by status
   const statusCounts = new Map<string, number>();
-  allFormulas.forEach(formula => {
+  allPackages.forEach(formula => {
     statusCounts.set(formula.status, (statusCounts.get(formula.status) || 0) + 1);
   });
   
@@ -788,7 +788,7 @@ function renderFlatView(formulas: FormulaStatusInfo[], options: { registry?: boo
 /**
  * Calculate status counts efficiently
  */
-function calculateStatusCounts(formulas: FormulaStatusInfo[]) {
+function calculateStatusCounts(formulas: PackageStatusInfo[]) {
   const counts = {
     installed: 0,
     missing: 0,
@@ -817,11 +817,11 @@ function calculateStatusCounts(formulas: FormulaStatusInfo[]) {
 /**
  * Display status summary and recommendations
  */
-function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: ReturnType<typeof calculateStatusCounts>) {
-  const totalFormulas = formulas.length;
+function displayStatusSummary(formulas: PackageStatusInfo[], statusCounts: ReturnType<typeof calculateStatusCounts>) {
+  const totalPackages = formulas.length;
   
   console.log('');
-  console.log(`Summary: ${statusCounts.installed}/${totalFormulas} installed`);
+  console.log(`Summary: ${statusCounts.installed}/${totalPackages} installed`);
   
   if (statusCounts.missing > 0) {
     console.log(`❌ ${statusCounts.missing} formulas missing from ai directory`);
@@ -844,7 +844,7 @@ function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: Retur
   }
   
   // Show actionable recommendations
-  if (totalFormulas === 0) {
+  if (totalPackages === 0) {
     console.log('');
     console.log('💡 Tips:');
     console.log('• Add formulas to formula.yml and run "opn install" to install them');
@@ -861,7 +861,7 @@ function displayStatusSummary(formulas: FormulaStatusInfo[], statusCounts: Retur
       }
       
       if (statusCounts.updateAvailable > 0) {
-        console.log('• Run "opn install --force <formula-name>" to update specific formulas');
+        console.log('• Run "opn install --force <package-name>" to update specific formulas');
       }
       
       if (statusCounts.structureInvalid > 0) {
@@ -894,7 +894,7 @@ async function statusCommand(options: CommandOptions = {}): Promise<CommandResul
     });
     
     // Display results
-    console.log(`📁 Formula status for: ${cwd}`);
+    console.log(`📁 Package status for: ${cwd}`);
     console.log('');
     
     if (options.flat) {

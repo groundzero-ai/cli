@@ -1,17 +1,17 @@
 import { join } from 'path';
-import { formulaManager } from '../core/formula.js';
+import { packageManager } from '../core/package.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
-import type { FormulaFile } from '../types/index.js';
+import type { PackageFile } from '../types/index.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 
 export interface CategorizedInstallFiles {
-  pathBasedFiles: FormulaFile[];
+  pathBasedFiles: PackageFile[];
   rootFiles: Map<string, string>;
 }
 
 
 function collectRootFiles(
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   platforms: Platform[]
 ): Map<string, string> {
   const rootFiles = new Map<string, string>();
@@ -39,10 +39,10 @@ export async function discoverAndCategorizeFiles(
   platforms: Platform[]
 ): Promise<CategorizedInstallFiles> {
   // Load once
-  const formula = await formulaManager.loadFormula(formulaName, version);
+  const formula = await packageManager.loadPackage(formulaName, version);
 
   // Priority 1: Path-based files (all files from formula)
-  const pathBasedFiles: FormulaFile[] = [];
+  const pathBasedFiles: PackageFile[] = [];
   for (const file of formula.files) {
     const p = file.path;
     if (p === 'formula.yml') continue; // never install registry formula.yml

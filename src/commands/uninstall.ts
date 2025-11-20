@@ -2,19 +2,19 @@ import { Command } from 'commander';
 import { join, relative, dirname } from 'path';
 import { readdir } from 'fs/promises';
 import { UninstallOptions, CommandResult } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml } from '../utils/formula-yml.js';
+import { parsePackageYml, writePackageYml } from '../utils/package-yml.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
-import { discoverFormulaFilesForUninstall } from '../core/uninstall/uninstall-file-discovery.js';
+import { discoverPackageFilesForUninstall } from '../core/uninstall/uninstall-file-discovery.js';
 import { buildDependencyTree, findDanglingDependencies } from '../core/dependency-resolver.js';
 import { exists, remove, removeEmptyDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, ValidationError } from '../utils/errors.js';
-import { areFormulaNamesEquivalent, validateFormulaName } from '../utils/formula-name.js';
+import { arePackageNamesEquivalent, validatePackageName } from '../utils/package-name.js';
 import {
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
 } from '../constants/index.js';
-import { getLocalFormulaYmlPath, getAIDir, getLocalFormulasDir, getLocalFormulaDir } from '../utils/paths.js';
+import { getLocalPackageYmlPath, getAIDir, getLocalPackagesDir, getLocalPackageDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 import { normalizePathForProcessing } from '../utils/path-normalization.js';
 import { getAllPlatformDirs } from '../utils/platform-utils.js';
@@ -24,14 +24,14 @@ import { getAllPlatformDirs } from '../utils/platform-utils.js';
 /**
  * Get protected formulas from cwd formula.yml
  */
-async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
-  const protectedFormulas = new Set<string>();
+async function getProtectedPackages(targetDir: string): Promise<Set<string>> {
+  const protectedPackages = new Set<string>();
   
-  const formulaYmlPath = getLocalFormulaYmlPath(targetDir);
-  if (!(await exists(formulaYmlPath))) return protectedFormulas;
+  const formulaYmlPath = getLocalPackageYmlPath(targetDir);
+  if (!(await exists(formulaYmlPath))) return protectedPackages;
   
   try {
-    const config = await parseFormulaYml(formulaYmlPath);
+    const config = await parsePackageYml(formulaYmlPath);
     
     // Add all formulas and dev-formulas to protected set
     const allDeps = [
@@ -39,22 +39,22 @@ async function getProtectedFormulas(targetDir: string): Promise<Set<string>> {
       ...(config['dev-formulas'] || [])
     ];
     
-    allDeps.forEach(dep => protectedFormulas.add(dep.name));
-    logger.debug(`Protected formulas: ${Array.from(protectedFormulas).join(', ')}`);
+    allDeps.forEach(dep => protectedPackages.add(dep.name));
+    logger.debug(`Protected formulas: ${Array.from(protectedPackages).join(', ')}`);
   } catch (error) {
     logger.warn(`Failed to parse formula.yml for protected formulas: ${error}`);
   }
   
-  return protectedFormulas;
+  return protectedPackages;
 }
 
 /**
  * Remove formula from formula.yml file
  */
-async function removeFormulaFromYml(targetDir: string, formulaName: string): Promise<boolean> {
+async function removePackageFromYml(targetDir: string, formulaName: string): Promise<boolean> {
   // Check for .openpackage/formula.yml
   const configPaths = [
-    getLocalFormulaYmlPath(targetDir)
+    getLocalPackageYmlPath(targetDir)
   ];
   
   let configPath: string | null = null;
@@ -71,7 +71,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
   }
   
   try {
-    const config = await parseFormulaYml(configPath);
+    const config = await parsePackageYml(configPath);
     let removed = false;
     
     // Remove from both formulas and dev-formulas arrays
@@ -79,7 +79,7 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
     for (const section of sections) {
       if (config[section]) {
         const initialLength = config[section]!.length;
-        config[section] = config[section]!.filter(dep => !areFormulaNamesEquivalent(dep.name, formulaName));
+        config[section] = config[section]!.filter(dep => !arePackageNamesEquivalent(dep.name, formulaName));
         if (config[section]!.length < initialLength) {
           removed = true;
           logger.info(`Removed ${formulaName} from ${section}`);
@@ -88,10 +88,10 @@ async function removeFormulaFromYml(targetDir: string, formulaName: string): Pro
     }
     
     if (removed) {
-      await writeFormulaYml(configPath, config);
+      await writePackageYml(configPath, config);
       return true;
     } else {
-      logger.warn(`Formula ${formulaName} not found in dependencies`);
+      logger.warn(`Package ${formulaName} not found in dependencies`);
       return false;
     }
   } catch (error) {
@@ -114,7 +114,7 @@ async function displayDryRunInfo(
 ): Promise<void> {
   console.log(`🔍 Dry run - showing what would be uninstalled:\n`);
 
-  console.log(`📦 Formulas to remove: ${formulasToRemove.length}`);
+  console.log(`📦 Packages to remove: ${formulasToRemove.length}`);
   console.log(`├── Main: ${formulaName}`);
   if (danglingDependencies.size > 0) {
     for (const dep of danglingDependencies) {
@@ -127,7 +127,7 @@ async function displayDryRunInfo(
   const formulaYmlFilesToRemove: string[] = [];
   const readmeFilesToRemove: string[] = [];
   for (const formula of formulasToRemove) {
-    const formulaDir = getLocalFormulaDir(cwd, formula);
+    const formulaDir = getLocalPackageDir(cwd, formula);
     const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
     const readmePath = join(formulaDir, FILE_PATTERNS.README_MD);
     if (await exists(formulaYmlPath)) {
@@ -140,7 +140,7 @@ async function displayDryRunInfo(
 
   const totalMetadataFiles = formulaYmlFilesToRemove.length + readmeFilesToRemove.length;
   if (totalMetadataFiles > 0) {
-    console.log(`\n📄 Formula metadata to remove (${totalMetadataFiles}):`);
+    console.log(`\n📄 Package metadata to remove (${totalMetadataFiles}):`);
     for (const formula of formulaYmlFilesToRemove) {
       console.log(`├── ${formula}/formula.yml`);
     }
@@ -148,7 +148,7 @@ async function displayDryRunInfo(
       console.log(`├── ${formula}/README.md`);
     }
   } else {
-    console.log(`\n📄 Formula metadata to remove: none`);
+    console.log(`\n📄 Package metadata to remove: none`);
   }
   
   console.log('');
@@ -161,12 +161,12 @@ async function displayDryRunInfo(
   }
   
   // Check platform files that would be cleaned up for all formulas
-  const discoveredByFormula = await Promise.all(
-    formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
+  const discoveredByPackage = await Promise.all(
+    formulasToRemove.map(async (name) => ({ name, files: await discoverPackageFilesForUninstall(name) }))
   );
   const platformCleanup: Record<string, string[]> = {};
   const seen = new Set<string>();
-  for (const { files } of discoveredByFormula) {
+  for (const { files } of discoveredByPackage) {
     for (const f of files) {
       if (f.isRootFile) continue;
       if (seen.has(f.fullPath)) continue;
@@ -191,7 +191,7 @@ async function displayDryRunInfo(
 
   // Check formula.yml updates
   const configPaths = [
-    getLocalFormulaYmlPath(targetDir)
+    getLocalPackageYmlPath(targetDir)
   ];
 
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
@@ -220,7 +220,7 @@ function displayUninstallSuccess(
   platformCleanup: Record<string, string[]>,
   updatedRootFiles: string[]
 ): void {
-  console.log(`✓ Formula '${formulaName}' uninstalled successfully`);
+  console.log(`✓ Package '${formulaName}' uninstalled successfully`);
   console.log(`📁 Target directory: ${targetDir}`);
 
   // Collect all removed files
@@ -272,12 +272,12 @@ function displayUninstallSuccess(
 /**
  * Uninstall formula command implementation with recursive dependency resolution
  */
-async function uninstallFormulaCommand(
+async function uninstallPackageCommand(
   formulaName: string,
   targetDir: string,
   options: UninstallOptions
 ): Promise<CommandResult> {
-  validateFormulaName(formulaName);
+  validatePackageName(formulaName);
 
   logger.info(`Uninstalling formula '${formulaName}' from: ${targetDir}`, { options });
   
@@ -299,8 +299,8 @@ async function uninstallFormulaCommand(
   
   if (options.recursive) {
     // Build dependency tree and find dangling dependencies
-    const protectedFormulas = await getProtectedFormulas(cwd);
-    const dependencyTree = await buildDependencyTree(cwd, protectedFormulas);
+    const protectedPackages = await getProtectedPackages(cwd);
+    const dependencyTree = await buildDependencyTree(cwd, protectedPackages);
     danglingDependencies = await findDanglingDependencies(formulaName, dependencyTree);
     
     formulasToRemove = [formulaName, ...Array.from(danglingDependencies)];
@@ -322,12 +322,12 @@ async function uninstallFormulaCommand(
     const rootPlan = await computeRootFileRemovalPlan(cwd, formulasToRemove);
     
     // Build platform cleanup summary via centralized discovery across all formulas
-    const discoveredByFormula = await Promise.all(
-      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
+    const discoveredByPackage = await Promise.all(
+      formulasToRemove.map(async (name) => ({ name, files: await discoverPackageFilesForUninstall(name) }))
     );
     const platformCleanup: Record<string, string[]> = {};
     const seen = new Set<string>();
-    for (const { files } of discoveredByFormula) {
+    for (const { files } of discoveredByPackage) {
       for (const f of files) {
         if (f.isRootFile) continue;
         if (seen.has(f.fullPath)) continue;
@@ -363,14 +363,14 @@ async function uninstallFormulaCommand(
     }
 
     // Discover platform-specific files BEFORE removing formula directories (to access formula.index.yml files)
-    const discoveredByFormula = await Promise.all(
-      formulasToRemove.map(async (name) => ({ name, files: await discoverFormulaFilesForUninstall(name) }))
+    const discoveredByPackage = await Promise.all(
+      formulasToRemove.map(async (name) => ({ name, files: await discoverPackageFilesForUninstall(name) }))
     );
 
     // Remove formula.yml files and directories for all formulas being removed
-    const formulasDir = getLocalFormulasDir(cwd);
+    const formulasDir = getLocalPackagesDir(cwd);
     for (const formula of formulasToRemove) {
-      const formulaDir = getLocalFormulaDir(cwd, formula);
+      const formulaDir = getLocalPackageDir(cwd, formula);
       const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
       // Remove the formula.yml file if it exists
@@ -394,7 +394,7 @@ async function uninstallFormulaCommand(
     // Now remove the discovered platform-specific files
     const platformCleanup: Record<string, string[]> = {};
     const seen = new Set<string>();
-    for (const { files } of discoveredByFormula) {
+    for (const { files } of discoveredByPackage) {
       for (const f of files) {
         if (f.isRootFile) continue; // Root files handled separately
         if (seen.has(f.fullPath)) continue; // Dedupe
@@ -472,7 +472,7 @@ async function uninstallFormulaCommand(
     // Remove all formulas being uninstalled from formula.yml
     const ymlRemovalResults: Record<string, boolean> = {};
     for (const formula of formulasToRemove) {
-      ymlRemovalResults[formula] = await removeFormulaFromYml(cwd, formula);
+      ymlRemovalResults[formula] = await removePackageFromYml(cwd, formula);
     }
     const removedFromYml = ymlRemovalResults[formulaName];
 
@@ -516,13 +516,13 @@ export function setupUninstallCommand(program: Command): void {
     .command('uninstall')
     .alias('un')
     .description('Remove a formula from the ai directory and update dependencies')
-    .argument('<formula-name>', 'name of the formula to uninstall')
+    .argument('<package-name>', 'name of the formula to uninstall')
     .argument('[target-dir]', 'target directory (defaults to current directory)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--recursive', 'recursively remove dangling dependencies (formulas not depended upon by any remaining formulas, excluding those listed in cwd formula.yml)')
     .action(withErrorHandling(async (formulaName: string, targetDir: string, options: UninstallOptions) => {
-      const result = await uninstallFormulaCommand(formulaName, targetDir, options);
-      if (!result.success && result.error !== 'Formula not found') {
+      const result = await uninstallPackageCommand(formulaName, targetDir, options);
+      if (!result.success && result.error !== 'Package not found') {
         throw new Error(result.error || 'Uninstall operation failed');
       }
     }));

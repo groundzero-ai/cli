@@ -1,25 +1,25 @@
 import { join } from 'path';
 import * as semver from 'semver';
-import { FormulaYml, RegistryEntry, CommandResult } from '../types/index.js';
+import { PackageYml, RegistryEntry, CommandResult } from '../types/index.js';
 import { 
   listDirectories, 
   exists 
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { 
-  FormulaNotFoundError, 
+  PackageNotFoundError, 
   RegistryError 
 } from '../utils/errors.js';
 import {
   getRegistryDirectories,
-  getFormulaVersionPath,
-  getLatestFormulaVersion,
-  listFormulaVersions,
-  hasFormulaVersion,
-  findFormulaByName,
-  listAllFormulas
+  getPackageVersionPath,
+  getLatestPackageVersion,
+  listPackageVersions,
+  hasPackageVersion,
+  findPackageByName,
+  listAllPackages
 } from './directory.js';
-import { parseFormulaYml } from '../utils/formula-yml.js';
+import { parsePackageYml } from '../utils/package-yml.js';
 import { 
   resolveVersionRange, 
   isExactVersion, 
@@ -34,32 +34,32 @@ export class RegistryManager {
   /**
    * List local formulas (latest version by default, all versions with --all)
    */
-  async listFormulas(filter?: string, showAllVersions: boolean = false): Promise<RegistryEntry[]> {
+  async listPackages(filter?: string, showAllVersions: boolean = false): Promise<RegistryEntry[]> {
     logger.debug('Listing local formulas', { filter, showAllVersions });
     
     try {
       const { formulas: formulasDir } = getRegistryDirectories();
       
       if (!(await exists(formulasDir))) {
-        logger.debug('Formulas directory does not exist, returning empty list');
+        logger.debug('Packages directory does not exist, returning empty list');
         return [];
       }
       
-      const formulaNames = await listAllFormulas();
+      const formulaNames = await listAllPackages();
       const entries: RegistryEntry[] = [];
       
       for (const formulaName of formulaNames) {
         try {
           if (showAllVersions) {
             // Get all versions for this formula
-            const versions = await listFormulaVersions(formulaName);
+            const versions = await listPackageVersions(formulaName);
             if (versions.length === 0) continue;
             
             // Process each version
             for (const version of versions) {
-              const formulaPath = getFormulaVersionPath(formulaName, version);
+              const formulaPath = getPackageVersionPath(formulaName, version);
               const formulaYmlPath = join(formulaPath, 'formula.yml');
-              const metadata = await parseFormulaYml(formulaYmlPath);
+              const metadata = await parsePackageYml(formulaYmlPath);
               
               // Apply filter if provided
               if (filter && !this.matchesFilter(metadata.name, filter)) {
@@ -76,12 +76,12 @@ export class RegistryManager {
             }
           } else {
             // Show only latest version
-            const latestVersion = await getLatestFormulaVersion(formulaName);
+            const latestVersion = await getLatestPackageVersion(formulaName);
             if (!latestVersion) continue;
             
-            const formulaPath = getFormulaVersionPath(formulaName, latestVersion);
+            const formulaPath = getPackageVersionPath(formulaName, latestVersion);
             const formulaYmlPath = join(formulaPath, 'formula.yml');
-            const metadata = await parseFormulaYml(formulaYmlPath);
+            const metadata = await parsePackageYml(formulaYmlPath);
             
             // Apply filter if provided
             if (filter && !this.matchesFilter(metadata.name, filter)) {
@@ -130,14 +130,14 @@ export class RegistryManager {
   /**
    * Get formula metadata (latest version by default)
    */
-  async getFormulaMetadata(formulaName: string, version?: string): Promise<FormulaYml> {
+  async getPackageMetadata(formulaName: string, version?: string): Promise<PackageYml> {
     logger.debug(`Getting metadata for formula: ${formulaName}`, { version });
 
     try {
       // Find the actual formula name (handles case-insensitive lookup)
-      const actualFormulaName = await findFormulaByName(formulaName);
-      if (!actualFormulaName) {
-        throw new FormulaNotFoundError(formulaName);
+      const actualPackageName = await findPackageByName(formulaName);
+      if (!actualPackageName) {
+        throw new PackageNotFoundError(formulaName);
       }
 
       let targetVersion: string | null;
@@ -148,14 +148,14 @@ export class RegistryManager {
           targetVersion = version;
         } else {
           // It's a version range - resolve it to a specific version
-          const availableVersions = await listFormulaVersions(actualFormulaName);
+          const availableVersions = await listPackageVersions(actualPackageName);
           if (availableVersions.length === 0) {
-            throw new FormulaNotFoundError(formulaName);
+            throw new PackageNotFoundError(formulaName);
           }
 
           targetVersion = resolveVersionRange(version, availableVersions);
           if (!targetVersion) {
-            throw new FormulaNotFoundError(
+            throw new PackageNotFoundError(
               `No version of '${formulaName}' satisfies range '${version}'. Available versions: ${availableVersions.join(', ')}`
             );
           }
@@ -163,24 +163,24 @@ export class RegistryManager {
         }
       } else {
         // No version specified - get latest
-        targetVersion = await getLatestFormulaVersion(actualFormulaName);
+        targetVersion = await getLatestPackageVersion(actualPackageName);
       }
 
       if (!targetVersion) {
-        throw new FormulaNotFoundError(formulaName);
+        throw new PackageNotFoundError(formulaName);
       }
 
-      const formulaPath = getFormulaVersionPath(actualFormulaName, targetVersion);
+      const formulaPath = getPackageVersionPath(actualPackageName, targetVersion);
       const formulaYmlPath = join(formulaPath, 'formula.yml');
 
       if (!(await exists(formulaYmlPath))) {
-        throw new FormulaNotFoundError(formulaName);
+        throw new PackageNotFoundError(formulaName);
       }
 
-      const metadata = await parseFormulaYml(formulaYmlPath);
+      const metadata = await parsePackageYml(formulaYmlPath);
       return metadata;
     } catch (error) {
-      if (error instanceof FormulaNotFoundError) {
+      if (error instanceof PackageNotFoundError) {
         throw error;
       }
       
@@ -195,49 +195,49 @@ export class RegistryManager {
   /**
    * List all versions of a formula
    */
-  async listFormulaVersions(formulaName: string): Promise<string[]> {
-    return await listFormulaVersions(formulaName);
+  async listPackageVersions(formulaName: string): Promise<string[]> {
+    return await listPackageVersions(formulaName);
   }
   
   /**
    * Get specific version metadata
    */
-  async getFormulaVersion(formulaName: string, version: string): Promise<FormulaYml> {
-    return await this.getFormulaMetadata(formulaName, version);
+  async getPackageVersion(formulaName: string, version: string): Promise<PackageYml> {
+    return await this.getPackageMetadata(formulaName, version);
   }
   
   /**
    * Check if a formula exists (any version)
    */
-  async hasFormula(formulaName: string): Promise<boolean> {
+  async hasPackage(formulaName: string): Promise<boolean> {
     // First try direct lookup (works for normalized names)
-    const latestVersion = await getLatestFormulaVersion(formulaName);
+    const latestVersion = await getLatestPackageVersion(formulaName);
     if (latestVersion !== null) {
       return true;
     }
 
     // If not found, try case-insensitive lookup
-    const foundFormula = await findFormulaByName(formulaName);
-    return foundFormula !== null;
+    const foundPackage = await findPackageByName(formulaName);
+    return foundPackage !== null;
   }
   
   /**
    * Check if a specific version exists
    */
-  async hasFormulaVersion(formulaName: string, version: string): Promise<boolean> {
-    return await hasFormulaVersion(formulaName, version);
+  async hasPackageVersion(formulaName: string, version: string): Promise<boolean> {
+    return await hasPackageVersion(formulaName, version);
   }
   
   /**
    * Get statistics about the local registry
    */
   async getRegistryStats(): Promise<{
-    totalFormulas: number;
+    totalPackages: number;
     totalSize: number;
     lastUpdated?: string;
   }> {
     try {
-      const formulas = await this.listFormulas();
+      const formulas = await this.listPackages();
       let lastUpdated: string | undefined;
       
       for (const formula of formulas) {
@@ -247,7 +247,7 @@ export class RegistryManager {
       }
       
       return {
-        totalFormulas: formulas.length,
+        totalPackages: formulas.length,
         totalSize: 0, // TODO: Calculate actual size
         lastUpdated
       };
@@ -271,11 +271,11 @@ export class RegistryManager {
     
     try {
       const issues: string[] = [];
-      const formulas = await this.listFormulas();
+      const formulas = await this.listPackages();
       
       for (const formula of formulas) {
         try {
-          const metadata = await this.getFormulaMetadata(formula.name);
+          const metadata = await this.getPackageMetadata(formula.name);
           
           // Check metadata consistency
           if (metadata.name !== formula.name) {

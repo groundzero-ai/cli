@@ -13,7 +13,7 @@ export const ERROR_MESSAGES = {
   INVALID_BUMP_TYPE: 'Invalid bump type: %s. Must be \'patch\', \'minor\', or \'major\'.',
   INVALID_VERSION_TYPE: 'Invalid version type: %s. Only \'%s\' is supported.',
   PARSE_FORMULA_FAILED: 'Failed to parse existing formula.yml at %s: %s',
-  FORMULA_DIR_NOT_FOUND: 'Formula directory not found at %s'
+  FORMULA_DIR_NOT_FOUND: 'Package directory not found at %s'
 } as const;
 
 export const LOG_PREFIXES = {

@@ -177,7 +177,7 @@ export function findSubpathIndex(fullPath: string, subpath: string): number {
  * Examples:
  * - '.cursor/rules' -> './.cursor/rules'
  * - 'src/components' -> './src/components'
- * - 'formula-name' -> 'formula-name' (unchanged)
+ * - 'package-name' -> 'package-name' (unchanged)
  * - './already/normalized' -> './already/normalized' (unchanged)
  * - '/absolute/path' -> '/absolute/path' (unchanged)
  */

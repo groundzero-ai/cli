@@ -34,11 +34,11 @@ export async function promptForPlatformSelection(): Promise<string[]> {
 export function displayInstallationSummary(
   totalInstalled: number,
   totalSkipped: number,
-  totalFormulas: number,
+  totalPackages: number,
   results: Array<{ name: string; success: boolean; error?: string }>
 ): void {
   console.log(`\n✓ Installation Summary:`);
-  console.log(`✓ Successfully installed: ${totalInstalled}/${totalFormulas} formulas`);
+  console.log(`✓ Successfully installed: ${totalInstalled}/${totalPackages} formulas`);
 
   if (totalSkipped > 0) {
     console.log(`❌ Failed to install: ${totalSkipped} formulas`);
@@ -54,31 +54,31 @@ export function displayInstallationSummary(
  */
 export function displayInstallationResults(
   formulaName: string,
-  resolvedFormulas: any[],
+  resolvedPackages: any[],
   platformResult: { platforms: string[]; created: string[] },
   options: any,
-  mainFormula?: any,
+  mainPackage?: any,
   allAddedFiles?: string[],
   allUpdatedFiles?: string[],
   rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] },
-  missingFormulas?: string[]
+  missingPackages?: string[]
 ): void {
   // Build installation summary
   let summaryText = `✓ Installed ${formulaName}`;
-  if (mainFormula) {
-    summaryText += `@${mainFormula.version}`;
+  if (mainPackage) {
+    summaryText += `@${mainPackage.version}`;
   }
 
   console.log(`${summaryText}`);
 
-  const dependencyFormulas = resolvedFormulas.filter(f => !f.isRoot);
-  if (dependencyFormulas.length > 0) {
-    console.log(`✓ Installed dependencies: ${dependencyFormulas.length}`);
-    for (const dep of dependencyFormulas) {
+  const dependencyPackages = resolvedPackages.filter(f => !f.isRoot);
+  if (dependencyPackages.length > 0) {
+    console.log(`✓ Installed dependencies: ${dependencyPackages.length}`);
+    for (const dep of dependencyPackages) {
       console.log(`   ├── ${dep.name}@${dep.version}`);
     }
   }
-  console.log(`✓ Total formulas processed: ${resolvedFormulas.length}`);
+  console.log(`✓ Total formulas processed: ${resolvedPackages.length}`);
 
   // Show detailed file list
   if (allAddedFiles && allAddedFiles.length > 0) {
@@ -127,14 +127,14 @@ export function displayInstallationResults(
   }
 
   // Report missing formulas (displayed last)
-  if (missingFormulas && missingFormulas.length > 0) {
+  if (missingPackages && missingPackages.length > 0) {
     console.log(`\n⚠️  Missing dependencies detected:`);
-    for (const missing of missingFormulas) {
+    for (const missing of missingPackages) {
       console.log(`   • ${missing} (not found in registry)`);
     }
     console.log(`\n💡 To resolve missing dependencies:`);
     console.log(`   • Create locally: opn init && opn save`);
-    console.log(`   • Pull from remote: opn pull ${missingFormulas.join(' ')}`);
+    console.log(`   • Pull from remote: opn pull ${missingPackages.join(' ')}`);
     console.log(`   • Remove from formula.yml`);
     console.log('');
   }

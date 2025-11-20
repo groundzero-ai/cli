@@ -5,13 +5,13 @@ import { logger } from './logger.js';
  * Custom error classes for different types of errors in the OpenPackage CLI
  */
 
-export class FormulaNotFoundError extends OpenPackageError {
+export class PackageNotFoundError extends OpenPackageError {
   constructor(formulaName: string) {
-    super(`Formula '${formulaName}' not found`, ErrorCodes.FORMULA_NOT_FOUND, { formulaName });
+    super(`Package '${formulaName}' not found`, ErrorCodes.FORMULA_NOT_FOUND, { formulaName });
   }
 }
 
-export class FormulaVersionNotFoundError extends OpenPackageError {
+export class PackageVersionNotFoundError extends OpenPackageError {
   constructor(message: string) {
     super(message, ErrorCodes.FORMULA_NOT_FOUND);
   }
@@ -32,13 +32,13 @@ export class VersionConflictError extends OpenPackageError {
   }
 }
 
-export class FormulaAlreadyExistsError extends OpenPackageError {
+export class PackageAlreadyExistsError extends OpenPackageError {
   constructor(formulaName: string) {
-    super(`Formula '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
+    super(`Package '${formulaName}' already exists`, ErrorCodes.FORMULA_ALREADY_EXISTS, { formulaName });
   }
 }
 
-export class InvalidFormulaError extends OpenPackageError {
+export class InvalidPackageError extends OpenPackageError {
   constructor(reason: string, details?: any) {
     super(`Invalid formula: ${reason}`, ErrorCodes.INVALID_FORMULA, details);
   }
@@ -93,7 +93,7 @@ export class UserCancellationError extends Error {
 export function handleError(error: unknown): CommandResult {
   if (error instanceof OpenPackageError) {
     // For CLI UX, avoid noisy error logs by default; surface details only in verbose mode
-    if (!(error instanceof FormulaVersionNotFoundError)) {
+    if (!(error instanceof PackageVersionNotFoundError)) {
       logger.debug(error.message, { code: error.code, details: error.details });
     }
     return {

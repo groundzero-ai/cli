@@ -1,9 +1,9 @@
 import { dirname, join } from 'path';
-import type { FormulaFile } from '../../types/index.js';
-import type { FormulaYmlInfo } from './formula-yml-generator.js';
+import type { PackageFile } from '../../types/index.js';
+import type { PackageYmlInfo } from './package-yml-generator.js';
 import { FILE_PATTERNS, PLATFORM_DIRS, PLATFORMS, type Platform } from '../../constants/index.js';
-import { FORMULA_INDEX_FILENAME, readFormulaIndex, isDirKey } from '../../utils/formula-index-yml.js';
-import { getLocalFormulaDir } from '../../utils/paths.js';
+import { FORMULA_INDEX_FILENAME, readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
+import { getLocalPackageDir } from '../../utils/paths.js';
 import { ensureDir, exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
@@ -37,12 +37,12 @@ export interface SaveConflictResolutionOptions {
   force?: boolean;
 }
 
-export async function resolveFormulaFilesWithConflicts(
-  formulaInfo: FormulaYmlInfo,
+export async function resolvePackageFilesWithConflicts(
+  formulaInfo: PackageYmlInfo,
   options: SaveConflictResolutionOptions = {}
-): Promise<FormulaFile[]> {
+): Promise<PackageFile[]> {
   const cwd = process.cwd();
-  const formulaDir = getLocalFormulaDir(cwd, formulaInfo.config.name);
+  const formulaDir = getLocalPackageDir(cwd, formulaInfo.config.name);
 
   if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
     return [];
@@ -62,7 +62,7 @@ export async function resolveFormulaFilesWithConflicts(
 
   const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
 
-  const indexRecord = await readFormulaIndex(cwd, formulaInfo.config.name);
+  const indexRecord = await readPackageIndex(cwd, formulaInfo.config.name);
 
   if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
     // No index yet (first save) – run root-only conflict resolution so prompts are shown for CLAUDE.md, WARP.md, etc.
@@ -128,7 +128,7 @@ export async function resolveFormulaFilesWithConflicts(
     }
 
     // After resolving root conflicts, return filtered files from local dir
-    return await readFilteredLocalFormulaFiles(formulaDir);
+    return await readFilteredLocalPackageFiles(formulaDir);
   }
 
   const fileKeys = new Set<string>();
@@ -147,7 +147,7 @@ export async function resolveFormulaFilesWithConflicts(
     }
   }
 
-  const isAllowedRegistryPathForFormula = (registryPath: string): boolean => {
+  const isAllowedRegistryPathForPackage = (registryPath: string): boolean => {
     const normalizedPath = normalizeRegistryPath(registryPath);
     if (fileKeys.has(normalizedPath)) {
       return true;
@@ -156,11 +156,11 @@ export async function resolveFormulaFilesWithConflicts(
   };
 
   const filteredWorkspacePlatformCandidates = workspacePlatformCandidates.filter(candidate =>
-    isAllowedRegistryPathForFormula(candidate.registryPath)
+    isAllowedRegistryPathForPackage(candidate.registryPath)
   );
 
   const filteredWorkspaceRootCandidates = workspaceRootCandidates.filter(candidate =>
-    candidate.isRootFile || isAllowedRegistryPathForFormula(candidate.registryPath)
+    candidate.isRootFile || isAllowedRegistryPathForPackage(candidate.registryPath)
   );
 
   const workspaceCandidates = [...filteredWorkspacePlatformCandidates, ...filteredWorkspaceRootCandidates];
@@ -263,7 +263,7 @@ export async function resolveFormulaFilesWithConflicts(
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
   await applyFrontmatterMergePlans(formulaDir, frontmatterPlans);
-  return await readFilteredLocalFormulaFiles(formulaDir);
+  return await readFilteredLocalPackageFiles(formulaDir);
 }
 
 async function loadLocalCandidates(formulaDir: string): Promise<SaveCandidate[]> {
@@ -706,7 +706,7 @@ async function promptForCandidate(
 }
 
 function formatCandidateLabel(candidate: SaveCandidate): string {
-  const prefix = candidate.source === 'local' ? 'Formula' : 'Workspace';
+  const prefix = candidate.source === 'local' ? 'Package' : 'Workspace';
   return `${prefix}: ${candidate.displayPath}`;
 }
 
@@ -745,9 +745,9 @@ function isYamlOverrideFileForSave(normalizedPath: string): boolean {
   return normalizedPath !== FILE_PATTERNS.FORMULA_YML && isSkippableRegistryPath(normalizedPath);
 }
 
-async function readFilteredLocalFormulaFiles(formulaDir: string): Promise<FormulaFile[]> {
+async function readFilteredLocalPackageFiles(formulaDir: string): Promise<PackageFile[]> {
   const entries = await findFilesByExtension(formulaDir, [], formulaDir);
-  const files: FormulaFile[] = [];
+  const files: PackageFile[] = [];
 
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
@@ -758,10 +758,10 @@ async function readFilteredLocalFormulaFiles(formulaDir: string): Promise<Formul
     const isAllowed = isAllowedRegistryPath(normalizedPath);
     const isRoot = isRootRegistryPath(normalizedPath);
     const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);
-    const isFormulaYml = normalizedPath === FILE_PATTERNS.FORMULA_YML;
+    const isPackageYml = normalizedPath === FILE_PATTERNS.FORMULA_YML;
     const isRootLevelFile = !normalizedPath.includes('/');
 
-    if (!isAllowed && !isRoot && !isYamlOverride && !isFormulaYml && !isRootLevelFile) continue;
+    if (!isAllowed && !isRoot && !isYamlOverride && !isPackageYml && !isRootLevelFile) continue;
 
     const content = await readTextFile(entry.fullPath);
     files.push({

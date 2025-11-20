@@ -11,8 +11,8 @@ import {
   walkFiles
 } from './fs.js';
 import { writeIfChanged } from '../core/install/file-updater.js';
-import { getLocalFormulasDir } from './paths.js';
-import { formulaManager } from '../core/formula.js';
+import { getLocalPackagesDir } from './paths.js';
+import { packageManager } from '../core/package.js';
 import { logger } from './logger.js';
 import {
   PLATFORM_DIRS,
@@ -30,22 +30,22 @@ import {
 import { mapUniversalToPlatform } from './platform-mapper.js';
 import { safePrompts } from './prompts.js';
 import type { InstallOptions } from '../types/index.js';
-import type { FormulaFile } from '../types/index.js';
+import type { PackageFile } from '../types/index.js';
 import { mergePlatformYamlOverride, loadRegistryYamlOverrides } from './platform-yaml-merge.js';
 import { parseUniversalPath } from './platform-file.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 
 import {
   FORMULA_INDEX_FILENAME,
-  getFormulaIndexPath,
-  readFormulaIndex,
-  writeFormulaIndex,
+  getPackageIndexPath,
+  readPackageIndex,
+  writePackageIndex,
   sortMapping,
   ensureTrailingSlash,
   isDirKey,
-  type FormulaIndexRecord,
+  type PackageIndexRecord,
   pruneNestedDirectories
-} from './formula-index-yml.js';
+} from './package-index-yml.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -97,7 +97,7 @@ type ConflictResolution = 'keep-both' | 'skip' | 'overwrite';
 export interface PlannedConflict {
   relPath: string;
   reason: 'owned-by-other' | 'exists-unowned';
-  ownerFormula?: string;
+  ownerPackage?: string;
 }
 
 interface PlannedTargetDetail {
@@ -111,7 +111,7 @@ interface PlannedTargetDetail {
 // Conflict Planning Functions
 // ============================================================================
 
-export async function planConflictsForFormula(
+export async function planConflictsForPackage(
   cwd: string,
   formulaName: string,
   version: string,
@@ -121,9 +121,9 @@ export async function planConflictsForFormula(
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
-  const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
-  const previousIndex = await readFormulaIndex(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, formulaName);
   const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
 
   const conflicts: PlannedConflict[] = [];
@@ -141,7 +141,7 @@ export async function planConflictsForFormula(
         conflicts.push({
           relPath: normalizedRel,
           reason: 'owned-by-other',
-          ownerFormula: owner.formulaName
+          ownerPackage: owner.formulaName
         });
         seen.add(normalizedRel);
         continue;
@@ -226,11 +226,11 @@ async function updateOwnerIndexAfterRename(
   owner: ConflictOwner,
   oldRelPath: string,
   newRelPath: string,
-  indexByFormula: Map<string, FormulaIndexRecord>
+  indexByPackage: Map<string, PackageIndexRecord>
 ): Promise<void> {
   const normalizedOld = normalizePathForProcessing(oldRelPath);
   const normalizedNew = normalizePathForProcessing(newRelPath);
-  const record = indexByFormula.get(owner.formulaName);
+  const record = indexByPackage.get(owner.formulaName);
   if (!record) return;
 
   if (owner.type === 'file') {
@@ -239,7 +239,7 @@ async function updateOwnerIndexAfterRename(
     const idx = values.findIndex(value => normalizePathForProcessing(value) === normalizedOld);
     if (idx === -1) return;
     values[idx] = normalizedNew;
-    await writeFormulaIndex(record);
+    await writePackageIndex(record);
   } else {
     // Directory key still valid; nothing to change.
   }
@@ -249,7 +249,7 @@ async function resolveConflictsForPlannedFiles(
   cwd: string,
   plannedFiles: PlannedFile[],
   context: ExpandedIndexesContext,
-  otherIndexes: FormulaIndexRecord[],
+  otherIndexes: PackageIndexRecord[],
   previousOwnedPaths: Set<string>,
   options: InstallOptions
 ): Promise<string[]> {
@@ -263,9 +263,9 @@ async function resolveConflictsForPlannedFiles(
       perPathDecisions.set(normalizePathForProcessing(rawPath), decision as ConflictResolution);
     }
   }
-  const indexByFormula = new Map<string, FormulaIndexRecord>();
+  const indexByPackage = new Map<string, PackageIndexRecord>();
   for (const record of otherIndexes) {
-    indexByFormula.set(record.formulaName, record);
+    indexByPackage.set(record.formulaName, record);
   }
 
   for (const planned of plannedFiles) {
@@ -314,7 +314,7 @@ async function resolveConflictsForPlannedFiles(
           await ensureDir(dirname(absLocalPath));
           try {
             await fs.rename(absTarget, absLocalPath);
-            await updateOwnerIndexAfterRename(owner, normalizedRel, localRelPath, indexByFormula);
+            await updateOwnerIndexAfterRename(owner, normalizedRel, localRelPath, indexByPackage);
             context.installedPathOwners.delete(normalizedRel);
             context.installedPathOwners.set(normalizePathForProcessing(localRelPath), owner);
             warnings.push(`Renamed existing ${normalizedRel} from ${owner.formulaName} to ${localRelPath}.`);
@@ -426,10 +426,10 @@ function normalizeRelativePath(cwd: string, absPath: string): string {
   return normalized.replace(/\\/g, '/');
 }
 
-async function collectFormulaDirectories(
+async function collectPackageDirectories(
   cwd: string
 ): Promise<Array<{ formulaName: string; dir: string }>> {
-  const formulasRoot = getLocalFormulasDir(cwd);
+  const formulasRoot = getLocalPackagesDir(cwd);
   if (!(await exists(formulasRoot))) {
     return [];
   }
@@ -461,19 +461,19 @@ async function collectFormulaDirectories(
   return results;
 }
 
-export async function loadOtherFormulaIndexes(
+export async function loadOtherPackageIndexes(
   cwd: string,
-  excludeFormula: string
-): Promise<FormulaIndexRecord[]> {
-  const directories = await collectFormulaDirectories(cwd);
-  const results: FormulaIndexRecord[] = [];
+  excludePackage: string
+): Promise<PackageIndexRecord[]> {
+  const directories = await collectPackageDirectories(cwd);
+  const results: PackageIndexRecord[] = [];
 
   for (const entry of directories) {
-    if (entry.formulaName === excludeFormula) continue;
+    if (entry.formulaName === excludePackage) continue;
     const indexPath = join(entry.dir, FORMULA_INDEX_FILENAME);
     if (!(await exists(indexPath))) continue;
 
-    const record = await readFormulaIndex(cwd, entry.formulaName);
+    const record = await readPackageIndex(cwd, entry.formulaName);
     if (record) {
       record.path = indexPath;
       results.push(record);
@@ -504,7 +504,7 @@ async function collectFilesUnderDirectory(cwd: string, dirRel: string): Promise<
 
 async function buildExpandedIndexesContext(
   cwd: string,
-  indexes: FormulaIndexRecord[]
+  indexes: PackageIndexRecord[]
 ): Promise<ExpandedIndexesContext> {
   const dirKeyOwners = new Map<string, ConflictOwner[]>();
   const installedPathOwners = new Map<string, ConflictOwner>();
@@ -555,7 +555,7 @@ async function loadRegistryFileEntries(
   formulaName: string,
   version: string
 ): Promise<RegistryFileEntry[]> {
-  const formula = await formulaManager.loadFormula(formulaName, version);
+  const formula = await packageManager.loadPackage(formulaName, version);
   const entries: RegistryFileEntry[] = [];
 
   for (const file of formula.files) {
@@ -635,7 +635,7 @@ function groupPlannedFiles(plannedFiles: PlannedFile[]): Map<string, PlannedFile
 // Planning Functions
 // ============================================================================
 
-function buildPlannedTargetMap(plannedFiles: PlannedFile[], yamlOverrides: FormulaFile[]): Map<string, PlannedTargetDetail> {
+function buildPlannedTargetMap(plannedFiles: PlannedFile[], yamlOverrides: PackageFile[]): Map<string, PlannedTargetDetail> {
   const map = new Map<string, PlannedTargetDetail>();
 
   type PlannedWithParsed = { planned: PlannedFile; parsed: ReturnType<typeof parseUniversalPath> };
@@ -900,7 +900,7 @@ function buildIndexMappingFromPlans(plans: GroupPlan[]): Record<string, string[]
 // Main Install Function
 // ============================================================================
 
-export async function installFormulaByIndex(
+export async function installPackageByIndex(
   cwd: string,
   formulaName: string,
   version: string,
@@ -913,8 +913,8 @@ export async function installFormulaByIndex(
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
   const groups = groupPlannedFiles(plannedFiles);
-  const previousIndex = await readFormulaIndex(cwd, formulaName);
-  const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, formulaName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
   const groupPlans = await decideGroupPlans(cwd, groups, previousIndex, context);
   const previousOwnedPaths = await expandIndexToFilePaths(cwd, previousIndex);
@@ -941,13 +941,13 @@ export async function installFormulaByIndex(
 
   if (!options.dryRun) {
     const mapping = buildIndexMappingFromPlans(groupPlans);
-    const indexRecord: FormulaIndexRecord = {
-      path: getFormulaIndexPath(cwd, formulaName),
+    const indexRecord: PackageIndexRecord = {
+      path: getPackageIndexPath(cwd, formulaName),
       formulaName,
       version,
       files: mapping
     };
-    await writeFormulaIndex(indexRecord);
+    await writePackageIndex(indexRecord);
   }
 
   return operationResult;
@@ -963,7 +963,7 @@ export async function installFormulaByIndex(
 
 async function expandIndexToFilePaths(
   cwd: string,
-  index: FormulaIndexRecord | null
+  index: PackageIndexRecord | null
 ): Promise<Set<string>> {
   const owned = new Set<string>();
   if (!index) return owned;
@@ -1164,7 +1164,7 @@ async function checkPlatformDirectoryOccupancy(
 }
 
 function hadPreviousDirForPlatform(
-  previousIndex: FormulaIndexRecord | null,
+  previousIndex: PackageIndexRecord | null,
   groupKey: string,
   platform: Platform | 'ai' | 'other'
 ): boolean {
@@ -1198,7 +1198,7 @@ async function determinePlatformDecisions(
   cwd: string,
   targetDirsByPlatform: Map<Platform | 'ai' | 'other', Set<string>>,
   wasDirKey: boolean,
-  previousIndex: FormulaIndexRecord | null,
+  previousIndex: PackageIndexRecord | null,
   groupKey: string
 ): Promise<Map<Platform | 'ai' | 'other', 'dir' | 'file'>> {
   const platformDecisions = new Map<Platform | 'ai' | 'other', 'dir' | 'file'>();
@@ -1228,7 +1228,7 @@ function computeOverallDecision(
 async function decideGroupPlans(
   cwd: string,
   groups: Map<string, PlannedFile[]>,
-  previousIndex: FormulaIndexRecord | null,
+  previousIndex: PackageIndexRecord | null,
   context: ExpandedIndexesContext
 ): Promise<GroupPlan[]> {
   const plans: GroupPlan[] = [];
@@ -1278,7 +1278,7 @@ async function decideGroupPlans(
 // ============================================================================
 
 /**
- * Build index mapping for formula files using the same logic flow as installFormulaByIndex
+ * Build index mapping for formula files using the same logic flow as installPackageByIndex
  * This function reuses the planning, grouping, and decision logic to ensure consistency
  * between installation and sync operations.
  * 
@@ -1289,14 +1289,14 @@ async function decideGroupPlans(
  * @param otherIndexes - Other formula indexes for conflict detection
  * @returns Record mapping registry paths to installed paths
  */
-export async function buildIndexMappingForFormulaFiles(
+export async function buildIndexMappingForPackageFiles(
   cwd: string,
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   platforms: Platform[],
-  previousIndex: FormulaIndexRecord | null,
-  otherIndexes: FormulaIndexRecord[]
+  previousIndex: PackageIndexRecord | null,
+  otherIndexes: PackageIndexRecord[]
 ): Promise<Record<string, string[]>> {
-  // Convert FormulaFile[] to RegistryFileEntry[] format
+  // Convert PackageFile[] to RegistryFileEntry[] format
   const registryEntries: RegistryFileEntry[] = formulaFiles
     .filter(file => {
       const normalized = normalizeRegistryPath(file.path);
@@ -1315,7 +1315,7 @@ export async function buildIndexMappingForFormulaFiles(
     return {};
   }
 
-  // Reuse existing planning logic - this ensures consistency with installFormulaByIndex
+  // Reuse existing planning logic - this ensures consistency with installPackageByIndex
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
   
@@ -1323,11 +1323,11 @@ export async function buildIndexMappingForFormulaFiles(
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
   const groupPlans = await decideGroupPlans(cwd, groups, previousIndex, context);
   
-  // Build the mapping using the same logic as installFormulaByIndex
+  // Build the mapping using the same logic as installPackageByIndex
   return buildIndexMappingFromPlans(groupPlans);
 }
 
-function filterRegistryEntriesForFormulaFiles(formulaFiles: FormulaFile[]): RegistryFileEntry[] {
+function filterRegistryEntriesForPackageFiles(formulaFiles: PackageFile[]): RegistryFileEntry[] {
   return formulaFiles
     .filter(file => {
       const normalized = normalizeRegistryPath(file.path);
@@ -1347,21 +1347,21 @@ export interface PlannedSyncOutcome {
   mapping: Record<string, string[]>;
 }
 
-export async function applyPlannedSyncForFormulaFiles(
+export async function applyPlannedSyncForPackageFiles(
   cwd: string,
   formulaName: string,
   version: string,
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   platforms: Platform[],
   options: InstallOptions
 ): Promise<PlannedSyncOutcome> {
-  const registryEntries = filterRegistryEntriesForFormulaFiles(formulaFiles);
+  const registryEntries = filterRegistryEntriesForPackageFiles(formulaFiles);
 
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
-  const previousIndex = await readFormulaIndex(cwd, formulaName);
-  const otherIndexes = await loadOtherFormulaIndexes(cwd, formulaName);
+  const previousIndex = await readPackageIndex(cwd, formulaName);
+  const otherIndexes = await loadOtherPackageIndexes(cwd, formulaName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
 
   const groups = groupPlannedFiles(plannedFiles);
@@ -1388,13 +1388,13 @@ export async function applyPlannedSyncForFormulaFiles(
   let mapping: Record<string, string[]> = {};
   if (!options.dryRun) {
     mapping = buildIndexMappingFromPlans(groupPlans);
-    const indexRecord: FormulaIndexRecord = {
-      path: getFormulaIndexPath(cwd, formulaName),
+    const indexRecord: PackageIndexRecord = {
+      path: getPackageIndexPath(cwd, formulaName),
       formulaName,
       version,
       files: mapping
     };
-    await writeFormulaIndex(indexRecord);
+    await writePackageIndex(indexRecord);
   }
 
   return {

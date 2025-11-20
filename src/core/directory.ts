@@ -5,7 +5,7 @@ import { OpenPackageDirectories } from '../types/index.js';
 import { PLATFORM_DIRS, FORMULA_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { normalizeFormulaName } from '../utils/formula-name.js';
+import { normalizePackageName } from '../utils/package-name.js';
 
 /**
  * Cross-platform directory resolution following platform conventions
@@ -97,26 +97,26 @@ export function getTempDirectory(operation: string): string {
 
 /**
  * Get the base path for a formula (contains all versions)
- * Formula names are normalized to lowercase for consistent registry paths.
+ * Package names are normalized to lowercase for consistent registry paths.
  */
-export function getFormulaPath(formulaName: string): string {
+export function getPackagePath(formulaName: string): string {
   const dirs = getRegistryDirectories();
-  const normalizedName = normalizeFormulaName(formulaName);
+  const normalizedName = normalizePackageName(formulaName);
   return path.join(dirs.formulas, normalizedName);
 }
 
 /**
  * Get the path for a specific version of a formula
  */
-export function getFormulaVersionPath(formulaName: string, version: string): string {
-  return path.join(getFormulaPath(formulaName), version);
+export function getPackageVersionPath(formulaName: string, version: string): string {
+  return path.join(getPackagePath(formulaName), version);
 }
 
 /**
  * List all versions of a formula
  */
-export async function listFormulaVersions(formulaName: string): Promise<string[]> {
-  const formulaPath = getFormulaPath(formulaName);
+export async function listPackageVersions(formulaName: string): Promise<string[]> {
+  const formulaPath = getPackagePath(formulaName);
   
   if (!(await exists(formulaPath))) {
     return [];
@@ -129,16 +129,16 @@ export async function listFormulaVersions(formulaName: string): Promise<string[]
 /**
  * Get the latest version of a formula
  */
-export async function getLatestFormulaVersion(formulaName: string): Promise<string | null> {
-  const versions = await listFormulaVersions(formulaName);
+export async function getLatestPackageVersion(formulaName: string): Promise<string | null> {
+  const versions = await listPackageVersions(formulaName);
   return versions.length > 0 ? versions[0] : null;
 }
 
 /**
  * Check if a specific version exists
  */
-export async function hasFormulaVersion(formulaName: string, version: string): Promise<boolean> {
-  const versionPath = getFormulaVersionPath(formulaName, version);
+export async function hasPackageVersion(formulaName: string, version: string): Promise<boolean> {
+  const versionPath = getPackageVersionPath(formulaName, version);
   return await exists(versionPath);
 }
 
@@ -147,8 +147,8 @@ export async function hasFormulaVersion(formulaName: string, version: string): P
  * Returns the normalized formula name if found, null otherwise.
  * If multiple formulas match the same normalized name, returns the first one found.
  */
-export async function findFormulaByName(formulaName: string): Promise<string | null> {
-  const normalizedTarget = normalizeFormulaName(formulaName);
+export async function findPackageByName(formulaName: string): Promise<string | null> {
+  const normalizedTarget = normalizePackageName(formulaName);
   const dirs = getRegistryDirectories();
 
   if (!(await exists(dirs.formulas))) {
@@ -164,7 +164,7 @@ export async function findFormulaByName(formulaName: string): Promise<string | n
 
   // Then try case-insensitive match
   for (const dirName of formulaDirs) {
-    if (normalizeFormulaName(dirName) === normalizedTarget) {
+    if (normalizePackageName(dirName) === normalizedTarget) {
       return dirName; // Return the actual directory name as it exists on disk
     }
   }
@@ -176,7 +176,7 @@ export async function findFormulaByName(formulaName: string): Promise<string | n
  * List all formula base names in the local registry, including scoped formulas.
  * Returns names relative to the formulas root, e.g. 'name' or '@scope/name'.
  */
-export async function listAllFormulas(): Promise<string[]> {
+export async function listAllPackages(): Promise<string[]> {
   const { formulas } = getRegistryDirectories();
 
   if (!(await exists(formulas))) {

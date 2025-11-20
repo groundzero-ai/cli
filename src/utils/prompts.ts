@@ -1,9 +1,9 @@
 import prompts from 'prompts';
 import { basename } from 'path';
-import { FormulaYml } from '../types/index.js';
+import { PackageYml } from '../types/index.js';
 import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
-import { normalizeFormulaName, validateFormulaName } from './formula-name.js';
+import { normalizePackageName, validatePackageName } from './package-name.js';
 import { readTextFile } from './fs.js';
 
 /**
@@ -49,10 +49,10 @@ export async function promptConfirmation(message: string, initial: boolean = fal
 /**
  * Prompt for overwrite confirmation with specific formula context
  */
-export async function promptFormulaOverwrite(formulaName: string, existingVersion?: string): Promise<boolean> {
+export async function promptPackageOverwrite(formulaName: string, existingVersion?: string): Promise<boolean> {
   const versionSuffix = existingVersion ? ` (${existingVersion})` : '';
   return await promptConfirmation(
-    `Formula '${formulaName}' already exists${versionSuffix}. Overwrite all files?`,
+    `Package '${formulaName}' already exists${versionSuffix}. Overwrite all files?`,
     false
   );
 }
@@ -60,7 +60,7 @@ export async function promptFormulaOverwrite(formulaName: string, existingVersio
 /**
  * Prompt for formula deletion confirmation
  */
-export async function promptFormulaDelete(formulaName: string): Promise<boolean> {
+export async function promptPackageDelete(formulaName: string): Promise<boolean> {
   return await promptConfirmation(
     `Are you sure you want to delete formula '${formulaName}'? This action cannot be undone.`,
     false
@@ -70,7 +70,7 @@ export async function promptFormulaDelete(formulaName: string): Promise<boolean>
 /**
  * Prompt for creating a new formula
  */
-export async function promptCreateFormula(): Promise<boolean> {
+export async function promptCreatePackage(): Promise<boolean> {
   return await promptConfirmation(
     'No formula.yml found. Would you like to create a new formula?',
     true
@@ -78,9 +78,9 @@ export async function promptCreateFormula(): Promise<boolean> {
 }
 
 /**
- * Formula details prompt for interactive formula creation
+ * Package details prompt for interactive formula creation
  */
-export async function promptFormulaDetails(defaultName?: string): Promise<FormulaYml> {
+export async function promptPackageDetails(defaultName?: string): Promise<PackageYml> {
   const cwd = process.cwd();
   const suggestedName = defaultName || basename(cwd);
 
@@ -88,12 +88,12 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     {
       type: 'text',
       name: 'name',
-      message: 'Formula name:',
+      message: 'Package name:',
       initial: suggestedName,
       validate: (value: string) => {
         if (!value) return 'Name is required';
         try {
-          validateFormulaName(value);
+          validatePackageName(value);
           return true;
         } catch (error) {
           return (error as Error).message.replace('%s', value);
@@ -136,8 +136,8 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
     ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
     : [];
 
-  const config: FormulaYml = {
-    name: normalizeFormulaName(response.name),
+  const config: PackageYml = {
+    name: normalizePackageName(response.name),
     version: response.version,
     ...(response.description && { description: response.description }),
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
@@ -148,9 +148,9 @@ export async function promptFormulaDetails(defaultName?: string): Promise<Formul
 }
 
 /**
- * Formula details prompt for named formula creation (skips name prompt)
+ * Package details prompt for named formula creation (skips name prompt)
  */
-export async function promptFormulaDetailsForNamed(formulaName: string): Promise<FormulaYml> {
+export async function promptPackageDetailsForNamed(formulaName: string): Promise<PackageYml> {
   const response = await safePrompts([
     {
       type: 'text',
@@ -188,8 +188,8 @@ export async function promptFormulaDetailsForNamed(formulaName: string): Promise
     ? response.keywords.trim().split(/\s+/).filter((k: string) => k.length > 0)
     : [];
 
-  const config: FormulaYml = {
-    name: normalizeFormulaName(formulaName),
+  const config: PackageYml = {
+    name: normalizePackageName(formulaName),
     version: response.version,
     ...(response.description && { description: response.description }),
     ...(keywordsArray.length > 0 && { keywords: keywordsArray }),
@@ -336,7 +336,7 @@ export async function promptPrereleaseVersionsDelete(
 /**
  * Prompt user for formula installation conflict resolution
  */
-export async function promptFormulaInstallConflict(
+export async function promptPackageInstallConflict(
   formulaName: string,
   existingVersion: string,
   newVersion: string,
@@ -351,7 +351,7 @@ export async function promptFormulaInstallConflict(
   const response = await safePrompts({
     type: 'select',
     name: 'choice',
-    message: `Formula '${formulaName}' already installed. How would you like to proceed?`,
+    message: `Package '${formulaName}' already installed. How would you like to proceed?`,
     choices: [
       {
         title: `Keep installed - Skip installation`,

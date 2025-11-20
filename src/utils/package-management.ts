@@ -1,15 +1,15 @@
 import { basename, join, relative } from 'path';
-import { FormulaYml, FormulaDependency } from '../types/index.js';
-import { parseFormulaYml, writeFormulaYml } from './formula-yml.js';
+import { PackageYml, PackageDependency } from '../types/index.js';
+import { parsePackageYml, writePackageYml } from './package-yml.js';
 import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
 import { logger } from './logger.js';
-import { getLocalOpenPackageDir, getLocalFormulaYmlPath, getLocalFormulasDir, getLocalFormulaDir } from './paths.js';
+import { getLocalOpenPackageDir, getLocalPackageYmlPath, getLocalPackagesDir, getLocalPackageDir } from './paths.js';
 import { DEPENDENCY_ARRAYS, FILE_PATTERNS } from '../constants/index.js';
 import { createCaretRange } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
-import { normalizeFormulaName, areFormulaNamesEquivalent } from './formula-name.js';
-import { formulaManager } from '../core/formula.js';
-import { FORMULA_INDEX_FILENAME } from './formula-index-yml.js';
+import { normalizePackageName, arePackageNamesEquivalent } from './package-name.js';
+import { packageManager } from '../core/package.js';
+import { FORMULA_INDEX_FILENAME } from './package-index-yml.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -17,7 +17,7 @@ import { FORMULA_INDEX_FILENAME } from './formula-index-yml.js';
  */
 export async function ensureLocalOpenPackageStructure(cwd: string): Promise<void> {
   const openpackageDir = getLocalOpenPackageDir(cwd);
-  const formulasDir = getLocalFormulasDir(cwd);
+  const formulasDir = getLocalPackagesDir(cwd);
   
   await Promise.all([
     ensureDir(openpackageDir),
@@ -31,12 +31,12 @@ export async function ensureLocalOpenPackageStructure(cwd: string): Promise<void
  * @param force - If true, overwrite existing formula.yml
  * @returns the formula.yml if it was created, null if it already existed and force=false
  */
-export async function createBasicFormulaYml(cwd: string, force: boolean = false): Promise<FormulaYml | null> {
+export async function createBasicPackageYml(cwd: string, force: boolean = false): Promise<PackageYml | null> {
   await ensureLocalOpenPackageStructure(cwd);
 
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const formulaYmlPath = getLocalPackageYmlPath(cwd);
   const projectName = basename(cwd);
-  const basicFormulaYml: FormulaYml = {
+  const basicPackageYml: PackageYml = {
     name: projectName,
     version: '0.1.0',
     formulas: [],
@@ -47,23 +47,23 @@ export async function createBasicFormulaYml(cwd: string, force: boolean = false)
     if (!force) {
       return null; // formula.yml already exists, no need to create
     }
-    await writeFormulaYml(formulaYmlPath, basicFormulaYml);
+    await writePackageYml(formulaYmlPath, basicPackageYml);
     logger.info(`Overwrote basic formula.yml with name: ${projectName}`);
     console.log(`📋 Overwrote basic formula.yml in .openpackage/ with name: ${projectName}`);
-    return basicFormulaYml;
+    return basicPackageYml;
   }
 
-  await writeFormulaYml(formulaYmlPath, basicFormulaYml);
+  await writePackageYml(formulaYmlPath, basicPackageYml);
   logger.info(`Initialized workspace formula.yml`);
   console.log(`📋 Initialized workspace formula.yml in .openpackage/`);
-  return basicFormulaYml;
+  return basicPackageYml;
 }
 
 /**
  * Add a formula dependency to formula.yml with smart placement logic
  * Shared utility for both install and save commands
  */
-export async function addFormulaToYml(
+export async function addPackageToYml(
   cwd: string,
   formulaName: string,
   formulaVersion: string,
@@ -71,13 +71,13 @@ export async function addFormulaToYml(
   originalVersion?: string, // The original version/range that was requested
   silent: boolean = false
 ): Promise<void> {
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const formulaYmlPath = getLocalPackageYmlPath(cwd);
   
   if (!(await exists(formulaYmlPath))) {
     return; // If no formula.yml exists, ignore this step
   }
   
-  const config = await parseFormulaYml(formulaYmlPath);
+  const config = await parsePackageYml(formulaYmlPath);
   
   // Determine the version to write to formula.yml
   let versionToWrite: string;
@@ -91,13 +91,13 @@ export async function addFormulaToYml(
     versionToWrite = createCaretRange(baseVersion);
   }
   
-  const dependency: FormulaDependency = {
-    name: normalizeFormulaName(formulaName),
+  const dependency: PackageDependency = {
+    name: normalizePackageName(formulaName),
     version: versionToWrite
   };
   
   // Find current location and determine target location
-  const currentLocation = await findFormulaLocation(cwd, formulaName);
+  const currentLocation = await findPackageLocation(cwd, formulaName);
   
   let targetArray: 'formulas' | 'dev-formulas';
   if (currentLocation === DEPENDENCY_ARRAYS.DEV_FORMULAS && !isDev) {
@@ -117,7 +117,7 @@ export async function addFormulaToYml(
   // Remove from current location if moving between arrays
   if (currentLocation && currentLocation !== targetArray) {
     const currentArray = config[currentLocation]!;
-    const currentIndex = currentArray.findIndex(dep => areFormulaNamesEquivalent(dep.name, formulaName));
+    const currentIndex = currentArray.findIndex(dep => arePackageNamesEquivalent(dep.name, formulaName));
     if (currentIndex >= 0) {
       currentArray.splice(currentIndex, 1);
     }
@@ -125,7 +125,7 @@ export async function addFormulaToYml(
   
   // Update or add dependency
   const targetArrayRef = config[targetArray]!;
-  const existingIndex = targetArrayRef.findIndex(dep => areFormulaNamesEquivalent(dep.name, formulaName));
+  const existingIndex = targetArrayRef.findIndex(dep => arePackageNamesEquivalent(dep.name, formulaName));
   
   if (existingIndex >= 0) {
     targetArrayRef[existingIndex] = dependency;
@@ -141,22 +141,22 @@ export async function addFormulaToYml(
     }
   }
   
-  await writeFormulaYml(formulaYmlPath, config);
+  await writePackageYml(formulaYmlPath, config);
 }
 
 /**
  * Copy the full formula directory from the local registry into the project structure
  * Removes all existing files except formula.index.yml before writing new files
  */
-export async function writeLocalFormulaFromRegistry(
+export async function writeLocalPackageFromRegistry(
   cwd: string,
   formulaName: string,
   version: string
 ): Promise<void> {
-  const formula = await formulaManager.loadFormula(formulaName, version);
-  const localFormulaDir = getLocalFormulaDir(cwd, formulaName);
+  const formula = await packageManager.loadPackage(formulaName, version);
+  const localPackageDir = getLocalPackageDir(cwd, formulaName);
 
-  await ensureDir(localFormulaDir);
+  await ensureDir(localPackageDir);
 
   // Build set of files that should exist after installation
   const filesToKeep = new Set<string>(
@@ -167,9 +167,9 @@ export async function writeLocalFormulaFromRegistry(
 
   // List all existing files in the directory
   const existingFiles: string[] = [];
-  if (await exists(localFormulaDir)) {
-    for await (const filePath of walkFiles(localFormulaDir)) {
-      const relPath = relative(localFormulaDir, filePath);
+  if (await exists(localPackageDir)) {
+    for await (const filePath of walkFiles(localPackageDir)) {
+      const relPath = relative(localPackageDir, filePath);
       existingFiles.push(relPath);
     }
   }
@@ -178,7 +178,7 @@ export async function writeLocalFormulaFromRegistry(
   const filesToRemove = existingFiles.filter(file => !filesToKeep.has(file));
   await Promise.all(
     filesToRemove.map(async (file) => {
-      const filePath = join(localFormulaDir, file);
+      const filePath = join(localPackageDir, file);
       try {
         await remove(filePath);
         logger.debug(`Removed residual file: ${filePath}`);
@@ -191,7 +191,7 @@ export async function writeLocalFormulaFromRegistry(
   // Write all files from the formula
   await Promise.all(
     formula.files.map(async (file) => {
-      const targetPath = join(localFormulaDir, file.path);
+      const targetPath = join(localPackageDir, file.path);
       const encoding = (file.encoding ?? 'utf8') as BufferEncoding;
       await writeTextFile(targetPath, file.content, encoding);
     })
@@ -200,28 +200,28 @@ export async function writeLocalFormulaFromRegistry(
 
 /**
  * Find formula location in formula.yml
- * Helper function for addFormulaToYml
+ * Helper function for addPackageToYml
  */
-async function findFormulaLocation(
+async function findPackageLocation(
   cwd: string,
   formulaName: string
 ): Promise<'formulas' | 'dev-formulas' | null> {
-  const formulaYmlPath = getLocalFormulaYmlPath(cwd);
+  const formulaYmlPath = getLocalPackageYmlPath(cwd);
   
   if (!(await exists(formulaYmlPath))) {
     return null;
   }
   
   try {
-    const config = await parseFormulaYml(formulaYmlPath);
+    const config = await parsePackageYml(formulaYmlPath);
     
     // Check in formulas array
-    if (config.formulas?.some(dep => areFormulaNamesEquivalent(dep.name, formulaName))) {
+    if (config.formulas?.some(dep => arePackageNamesEquivalent(dep.name, formulaName))) {
       return DEPENDENCY_ARRAYS.FORMULAS;
     }
 
     // Check in dev-formulas array
-    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => areFormulaNamesEquivalent(dep.name, formulaName))) {
+    if (config[DEPENDENCY_ARRAYS.DEV_FORMULAS]?.some(dep => arePackageNamesEquivalent(dep.name, formulaName))) {
       return DEPENDENCY_ARRAYS.DEV_FORMULAS;
     }
     

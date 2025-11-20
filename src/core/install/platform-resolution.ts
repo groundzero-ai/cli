@@ -1,6 +1,6 @@
 import { PLATFORMS, type Platform } from '../../constants/index.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
-import { detectPlatforms, promptForPlatformSelection } from '../../utils/formula-installation.js';
+import { detectPlatforms, promptForPlatformSelection } from '../../utils/package-installation.js';
 
 /**
  * Resolve platforms for an operation.

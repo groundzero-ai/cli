@@ -64,13 +64,13 @@ async function setupProfile(profileName: string): Promise<CommandResult> {
     if (profileName === 'default') {
       console.log('');
       console.log('💡 You can now use:');
-      console.log('  opn push <formula-name>');
-      console.log('  opn pull <formula-name>');
+      console.log('  opn push <package-name>');
+      console.log('  opn pull <package-name>');
     } else {
       console.log('');
       console.log('💡 You can now use:');
-      console.log(`  opn push <formula-name> --profile ${profileName}`);
-      console.log(`  opn pull <formula-name> --profile ${profileName}`);
+      console.log(`  opn push <package-name> --profile ${profileName}`);
+      console.log(`  opn pull <package-name> --profile ${profileName}`);
     }
 
     return {

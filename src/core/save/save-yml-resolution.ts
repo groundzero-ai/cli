@@ -329,7 +329,7 @@ async function promptYamlOverrideDecision(
         value: 'workspace',
       },
       {
-        title: `Formula (${formulaFilePath})`,
+        title: `Package (${formulaFilePath})`,
         value: 'local',
       }
     ]

@@ -1,13 +1,13 @@
 import * as semver from 'semver';
-import { FormulaYml } from '../types/index.js';
-import { resolveDependencies, ResolvedFormula } from '../core/dependency-resolver.js';
+import { PackageYml } from '../types/index.js';
+import { resolveDependencies, ResolvedPackage } from '../core/dependency-resolver.js';
 import { gatherRootVersionConstraints } from '../core/openpackage.js';
-import { areFormulaNamesEquivalent } from './formula-name.js';
+import { arePackageNamesEquivalent } from './package-name.js';
 
 /**
  * Extract formulas from formula.yml configuration
  */
-export function extractFormulasFromConfig(config: FormulaYml): Array<{ name: string; version?: string; isDev: boolean }> {
+export function extractPackagesFromConfig(config: PackageYml): Array<{ name: string; version?: string; isDev: boolean }> {
   const formulas: Array<{ name: string; version?: string; isDev: boolean }> = [];
   
   // Extract regular formulas
@@ -41,10 +41,10 @@ export function extractFormulasFromConfig(config: FormulaYml): Array<{ name: str
 export async function resolveDependenciesWithOverrides(
   formulaName: string,
   targetDir: string,
-  skippedFormulas: string[],
+  skippedPackages: string[],
   globalConstraints?: Map<string, string[]>,
   version?: string
-): Promise<{ resolvedFormulas: ResolvedFormula[]; missingFormulas: string[] }> {
+): Promise<{ resolvedPackages: ResolvedPackage[]; missingPackages: string[] }> {
   // Re-gather root constraints (which now includes any newly persisted versions)
   const rootConstraints = await gatherRootVersionConstraints(targetDir);
   
@@ -54,15 +54,15 @@ export async function resolveDependenciesWithOverrides(
     dir: string,
     isRoot: boolean = true,
     visitedStack: Set<string> = new Set(),
-    resolvedFormulas: Map<string, ResolvedFormula> = new Map(),
+    resolvedPackages: Map<string, ResolvedPackage> = new Map(),
     ver?: string,
     requiredVersions: Map<string, string[]> = new Map(),
     globalConst?: Map<string, string[]>,
     rootOver?: Map<string, string[]>
-  ): Promise<{ resolvedFormulas: ResolvedFormula[]; missingFormulas: string[] }> => {
+  ): Promise<{ resolvedPackages: ResolvedPackage[]; missingPackages: string[] }> => {
     // Skip if this formula is in the skipped list
-    if (skippedFormulas.includes(name)) {
-      return { resolvedFormulas: Array.from(resolvedFormulas.values()), missingFormulas: [] };
+    if (skippedPackages.includes(name)) {
+      return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: [] };
     }
 
     return await resolveDependencies(
@@ -70,7 +70,7 @@ export async function resolveDependenciesWithOverrides(
       dir,
       isRoot,
       visitedStack,
-      resolvedFormulas,
+      resolvedPackages,
       ver,
       requiredVersions,
       globalConst,
@@ -97,16 +97,16 @@ export async function resolveDependenciesWithOverrides(
  */
 export async function getVersionInfoFromDependencyTree(
   formulaName: string,
-  resolvedFormulas: ResolvedFormula[]
+  resolvedPackages: ResolvedPackage[]
 ): Promise<{ highestVersion: string; requiredVersion?: string }> {
   let highestVersion = '0.0.0';
   let highestRequiredVersion: string | undefined;
   
   // Get the requiredVersions map from the first resolved formula
-  const requiredVersions = (resolvedFormulas[0] as any)?.requiredVersions as Map<string, string[]> | undefined;
+  const requiredVersions = (resolvedPackages[0] as any)?.requiredVersions as Map<string, string[]> | undefined;
   
-  for (const resolved of resolvedFormulas) {
-    if (areFormulaNamesEquivalent(resolved.name, formulaName)) {
+  for (const resolved of resolvedPackages) {
+    if (arePackageNamesEquivalent(resolved.name, formulaName)) {
       if (semver.gt(resolved.version, highestVersion)) {
         highestVersion = resolved.version;
       }

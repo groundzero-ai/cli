@@ -37,32 +37,32 @@ export interface AuthOptions {
   apiKey?: string;
 }
 
-// Formula types
+// Package types
 
-export interface FormulaFile {
+export interface PackageFile {
   path: string;
   content: string;
   encoding?: string;
 }
 
-export interface Formula {
-  metadata: FormulaYml;
-  files: FormulaFile[];
+export interface Package {
+  metadata: PackageYml;
+  files: PackageFile[];
 }
 
-export interface FormulaRepository {
+export interface PackageRepository {
   type: string
   url: string
   directory?: string
 }
 
-// Formula.yml file types
-export interface FormulaDependency {
+// Package.yml file types
+export interface PackageDependency {
   name: string;
   version: string;
 }
 
-export interface FormulaYml {
+export interface PackageYml {
   name: string;
   version: string;
   private?: boolean;
@@ -72,10 +72,10 @@ export interface FormulaYml {
   author?: string;
   license?: string;
   homepage?: string;
-  repository?: FormulaRepository;
+  repository?: PackageRepository;
 
-  formulas?: FormulaDependency[];
-  'dev-formulas'?: FormulaDependency[];
+  formulas?: PackageDependency[];
+  'dev-formulas'?: PackageDependency[];
 }
 
 // Command option types
@@ -167,7 +167,7 @@ export interface RegistryEntry {
 }
 
 // Status and error types
-export interface FormulaStatus {
+export interface PackageStatus {
   name: string;
   version: string;
   status: 'installed' | 'outdated' | 'modified' | 'error';

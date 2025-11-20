@@ -1,7 +1,7 @@
-import type { RemoteFormulaMetadataSuccess, RemoteBatchPullResult } from '../remote-pull.js';
-import type { ResolvedFormula } from '../dependency-resolver.js';
-import { fetchRemoteFormulaMetadata, pullDownloadsBatchFromRemote, aggregateRecursiveDownloads, parseDownloadName } from '../remote-pull.js';
-import { hasFormulaVersion } from '../directory.js';
+import type { RemotePackageMetadataSuccess, RemoteBatchPullResult } from '../remote-pull.js';
+import type { ResolvedPackage } from '../dependency-resolver.js';
+import { fetchRemotePackageMetadata, pullDownloadsBatchFromRemote, aggregateRecursiveDownloads, parseDownloadName } from '../remote-pull.js';
+import { hasPackageVersion } from '../directory.js';
 import { getVersionInfoFromDependencyTree } from '../../utils/install-helpers.js';
 import { promptOverwriteConfirmation } from '../../utils/prompts.js';
 import { Spinner } from '../../utils/spinner.js';
@@ -14,12 +14,12 @@ import { describeRemoteFailure } from './remote-reporting.js';
  */
 export async function fetchMissingDependencyMetadata(
   missing: string[],
-  resolvedFormulas: ResolvedFormula[],
+  resolvedPackages: ResolvedPackage[],
   opts: { dryRun: boolean; profile?: string; apiKey?: string }
-): Promise<RemoteFormulaMetadataSuccess[]> {
+): Promise<RemotePackageMetadataSuccess[]> {
   const { dryRun } = opts;
   const uniqueMissing = Array.from(new Set(missing));
-  const metadataResults: RemoteFormulaMetadataSuccess[] = [];
+  const metadataResults: RemotePackageMetadataSuccess[] = [];
 
   const metadataSpinner = dryRun ? null : new Spinner(`Fetching metadata for ${uniqueMissing.length} missing formula(s)...`);
   if (metadataSpinner) metadataSpinner.start();
@@ -28,13 +28,13 @@ export async function fetchMissingDependencyMetadata(
     for (const missingName of uniqueMissing) {
       let requiredVersion: string | undefined;
       try {
-        const versionInfo = await getVersionInfoFromDependencyTree(missingName, resolvedFormulas);
+        const versionInfo = await getVersionInfoFromDependencyTree(missingName, resolvedPackages);
         requiredVersion = versionInfo.requiredVersion;
       } catch (error) {
         logger.debug('Failed to determine required version for missing dependency', { missingName, error });
       }
 
-      const metadataResult = await fetchRemoteFormulaMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
+      const metadataResult = await fetchRemotePackageMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
       if (!metadataResult.success) {
         const message = describeRemoteFailure(requiredVersion ? `${missingName}@${requiredVersion}` : missingName, metadataResult);
         console.log(`⚠️  ${message}`);
@@ -54,7 +54,7 @@ export async function fetchMissingDependencyMetadata(
  * Pull missing dependencies from remote
  */
 export async function pullMissingDependencies(
-  metadata: RemoteFormulaMetadataSuccess[],
+  metadata: RemotePackageMetadataSuccess[],
   keysToDownload: Set<string>,
   opts: { dryRun: boolean; profile?: string; apiKey?: string }
 ): Promise<RemoteBatchPullResult[]> {
@@ -111,8 +111,8 @@ export async function pullMissingDependencies(
 /**
  * Plan which downloads to pull for a formula based on remote metadata
  */
-export async function planRemoteDownloadsForFormula(
-  metadata: RemoteFormulaMetadataSuccess,
+export async function planRemoteDownloadsForPackage(
+  metadata: RemotePackageMetadataSuccess,
   opts: { forceRemote: boolean; dryRun: boolean }
 ): Promise<{ downloadKeys: Set<string>; warnings: string[] }> {
   const { forceRemote, dryRun } = opts;
@@ -124,7 +124,7 @@ export async function planRemoteDownloadsForFormula(
     try {
       const { name: downloadName, version: downloadVersion } = parseDownloadName(download.name);
       const key = createDownloadKey(downloadName, downloadVersion);
-      const existsLocally = await hasFormulaVersion(downloadName, downloadVersion);
+      const existsLocally = await hasPackageVersion(downloadName, downloadVersion);
 
       if (forceRemote) {
         let shouldDownload = true;

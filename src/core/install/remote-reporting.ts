@@ -58,7 +58,7 @@ export function recordBatchOutcome(
 export function describeRemoteFailure(label: string, failure: RemotePullFailure): string {
   switch (failure.reason) {
     case 'not-found':
-      return `Formula '${label}' not found in remote registry`;
+      return `Package '${label}' not found in remote registry`;
     case 'access-denied':
       return failure.message || `Access denied pulling ${label}`;
     case 'network':

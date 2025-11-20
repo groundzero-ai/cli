@@ -6,7 +6,7 @@ import { findFilesByExtension } from "../../utils/file-processing.js";
 import { logger } from "../../utils/logger.js";
 import { calculateFileHash } from "../../utils/hash-utils.js";
 import { obtainSourceDirAndRegistryPath } from "./file-discovery.js";
-import { areFormulaNamesEquivalent } from "../../utils/formula-name.js";
+import { arePackageNamesEquivalent } from "../../utils/package-name.js";
 
 /**
  * Determine if a markdown file should be included based on frontmatter rules
@@ -28,7 +28,7 @@ export function shouldIncludeMarkdownFile(
   // }
 
   // Otherwise, include files with matching frontmatter
-  if (frontmatter?.formula?.name && areFormulaNamesEquivalent(frontmatter.formula.name, formulaName)) {
+  if (frontmatter?.formula?.name && arePackageNamesEquivalent(frontmatter.formula.name, formulaName)) {
     logger.debug(`Including ${mdFile.relativePath} from ${platform} (matches formula name in frontmatter)`);
     return true;
   }

@@ -3,13 +3,13 @@ import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
-import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
+import { extractPackageContentFromRootFile } from '../../utils/root-file-extractor.js';
 
 /**
  * Discover installed formulas using same methods as uninstall but optimized for status command
  * Returns detailed file information for formulas in the config
  */
-export async function discoverFormulasForStatus(
+export async function discoverPackagesForStatus(
   formulaNames: string[]
 ): Promise<Map<string, {
   aiFiles: string[];
@@ -46,14 +46,14 @@ export async function discoverFormulasForStatus(
   // Process each platform configuration
   for (const cfg of configs) {
     if (cfg.platform === PLATFORM_AI) {
-      await discoverAIForFormulas(cwd, result, formulaNames);
+      await discoverAIForPackages(cwd, result, formulaNames);
     } else {
-      await discoverPlatformForFormulas(cwd, cfg.platform, result, formulaNames);
+      await discoverPlatformForPackages(cwd, cfg.platform, result, formulaNames);
     }
   }
 
   // Check root files for all formulas
-  await discoverRootFilesForFormulas(cwd, result, formulaNames);
+  await discoverRootFilesForPackages(cwd, result, formulaNames);
 
   // Only return entries that have actual files discovered
     const filteredResult = new Map<string, typeof result extends Map<infer K, infer V> ? V : never>();
@@ -72,7 +72,7 @@ export async function discoverFormulasForStatus(
 /**
  * Discover AI files for requested formulas using same logic as uninstall
  */
-async function discoverAIForFormulas(
+async function discoverAIForPackages(
   cwd: string,
   result: Map<string, any>,
   formulaNames: string[]
@@ -97,7 +97,7 @@ async function discoverAIForFormulas(
 /**
  * Discover platform files for requested formulas using same logic as uninstall
  */
-async function discoverPlatformForFormulas(
+async function discoverPlatformForPackages(
   cwd: string,
   platform: string,
   result: Map<string, any>,
@@ -125,7 +125,7 @@ async function discoverPlatformForFormulas(
 /**
  * Discover root files for requested formulas using same logic as uninstall
  */
-async function discoverRootFilesForFormulas(
+async function discoverRootFilesForPackages(
   cwd: string,
   result: Map<string, any>,
   formulaNames: string[]
@@ -150,7 +150,7 @@ async function discoverRootFilesForFormulas(
       const content = await readTextFile(absPath);
       for (const formulaName of formulaNames) {
         console.log('formulaName', formulaName);
-        const extracted = extractFormulaContentFromRootFile(content, formulaName);
+        const extracted = extractPackageContentFromRootFile(content, formulaName);
         if (extracted) {
           const entry = result.get(formulaName)!;
           // console.log('entry', entry);

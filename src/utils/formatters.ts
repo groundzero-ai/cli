@@ -1,4 +1,4 @@
-import { FormulaYml } from '../types/index.js';
+import { PackageYml } from '../types/index.js';
 
 /**
  * Formatting utilities for consistent display across commands
@@ -7,7 +7,7 @@ import { FormulaYml } from '../types/index.js';
 /**
  * Interface for formula table entries
  */
-export interface FormulaTableEntry {
+export interface PackageTableEntry {
   name: string;
   version: string;
   description?: string;
@@ -19,7 +19,7 @@ export interface FormulaTableEntry {
 /**
  * Format and display a simple formula table (used by list and search commands)
  */
-export function displayFormulaTable(formulas: FormulaTableEntry[], title?: string, showAllVersions: boolean = false): void {
+export function displayPackageTable(formulas: PackageTableEntry[], title?: string, showAllVersions: boolean = false): void {
   if (title) {
     console.log(title);
     console.log('');
@@ -55,7 +55,7 @@ export function displayFormulaTable(formulas: FormulaTableEntry[], title?: strin
 /**
  * Format and display an extended formula table with status information (used by status command)
  */
-export function displayExtendedFormulaTable(formulas: FormulaTableEntry[]): void {
+export function displayExtendedPackageTable(formulas: PackageTableEntry[]): void {
   if (formulas.length === 0) {
     console.log('No formulas found.');
     return;
@@ -187,7 +187,7 @@ export function formatFileSize(bytes: number): string {
 /**
  * Display formula configuration details in a consistent format
  */
-export function displayFormulaConfig(formulaConfig: FormulaYml, path: string, isExisting: boolean = false): void {
+export function displayPackageConfig(formulaConfig: PackageYml, path: string, isExisting: boolean = false): void {
   const action = isExisting ? 'already exists' : 'created';
   console.log(`✓ ${path} ${action}`);
 

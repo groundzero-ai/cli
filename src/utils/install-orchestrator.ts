@@ -2,7 +2,7 @@ import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
 import { PLATFORM_DIRS } from '../constants/index.js';
 import { logger } from './logger.js';
-import { formulaManager } from '../core/formula.js';
+import { packageManager } from '../core/package.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
 
 /**
@@ -25,7 +25,7 @@ export async function installAiFiles(
 
   try {
     // Get formula from registry
-    const formula = await formulaManager.loadFormula(formulaName, version);
+    const formula = await packageManager.loadPackage(formulaName, version);
 
     // Filter to only install AI directory files (those starting with ai/) - allow all file types
     const aiPrefix = `${PLATFORM_DIRS.AI}/`;

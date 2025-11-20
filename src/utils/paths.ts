@@ -1,8 +1,8 @@
 import { join } from 'path';
 import { PLATFORM_DIRS, FILE_PATTERNS, FORMULA_DIRS } from '../constants/index.js';
 import { exists } from './fs.js';
-import { areFormulaNamesEquivalent, SCOPED_FORMULA_REGEX } from './formula-name.js';
-import { parseFormulaYml } from './formula-yml.js';
+import { arePackageNamesEquivalent, SCOPED_FORMULA_REGEX } from './package-name.js';
+import { parsePackageYml } from './package-yml.js';
 
 /**
  * Path utility functions for consistent file and directory path handling
@@ -12,22 +12,22 @@ import { parseFormulaYml } from './formula-yml.js';
 /**
  * Get the path to the local formula.yml file
  */
-export function getLocalFormulaYmlPath(cwd: string): string {
+export function getLocalPackageYmlPath(cwd: string): string {
   return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FILE_PATTERNS.FORMULA_YML);
 }
 
 /**
  * Check if a formula name matches the root formula in .openpackage/formula.yml
  */
-export async function isRootFormula(cwd: string, formulaName: string): Promise<boolean> {
-  const rootFormulaYmlPath = getLocalFormulaYmlPath(cwd);
-  if (!(await exists(rootFormulaYmlPath))) {
+export async function isRootPackage(cwd: string, formulaName: string): Promise<boolean> {
+  const rootPackageYmlPath = getLocalPackageYmlPath(cwd);
+  if (!(await exists(rootPackageYmlPath))) {
     return false;
   }
   
   try {
-    const config = await parseFormulaYml(rootFormulaYmlPath);
-    return areFormulaNamesEquivalent(config.name, formulaName);
+    const config = await parsePackageYml(rootPackageYmlPath);
+    return arePackageNamesEquivalent(config.name, formulaName);
   } catch (error) {
     return false;
   }
@@ -43,7 +43,7 @@ export function getLocalOpenPackageDir(cwd: string): string {
 /**
  * Get the local formulas directory path
  */
-export function getLocalFormulasDir(cwd: string): string {
+export function getLocalPackagesDir(cwd: string): string {
   return join(cwd, PLATFORM_DIRS.OPENPACKAGE, FORMULA_DIRS.FORMULAS);
 }
 
@@ -51,7 +51,7 @@ export function getLocalFormulasDir(cwd: string): string {
  * Get the local formula directory path for a specific formula
  * Handles scoped formulas with nested directory structure (@scope/name -> @scope/name/)
  */
-export function getLocalFormulaDir(cwd: string, formulaName: string): string {
+export function getLocalPackageDir(cwd: string, formulaName: string): string {
   const scopedMatch = formulaName.match(SCOPED_FORMULA_REGEX);
   if (scopedMatch) {
     const [, scope, localName] = scopedMatch;

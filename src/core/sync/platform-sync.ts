@@ -5,9 +5,9 @@
 
 import { getDetectedPlatforms } from '../platforms.js';
 import { logger } from '../../utils/logger.js';
-import type { FormulaFile, InstallOptions } from '../../types/index.js';
+import type { PackageFile, InstallOptions } from '../../types/index.js';
 import { syncRootFiles } from './root-files-sync.js';
-import { applyPlannedSyncForFormulaFiles } from '../../utils/index-based-installer.js';
+import { applyPlannedSyncForPackageFiles } from '../../utils/index-based-installer.js';
 
 /**
  * Result of platform sync operation
@@ -22,7 +22,7 @@ export async function performPlatformSync(
   cwd: string,
   formulaName: string,
   formulaVersion: string,
-  formulaFiles: FormulaFile[],
+  formulaFiles: PackageFile[],
   options: InstallOptions = {}
 ): Promise<PlatformSyncResult> {
   const detectedPlatforms = await getDetectedPlatforms(cwd);
@@ -37,7 +37,7 @@ export async function performPlatformSync(
     resolvedPlatforms: detectedPlatforms
   };
 
-  const plannerOutcome = await applyPlannedSyncForFormulaFiles(
+  const plannerOutcome = await applyPlannedSyncForPackageFiles(
     cwd,
     formulaName,
     formulaVersion,

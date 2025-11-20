@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import * as semver from 'semver';
 import { PruneOptions, CommandResult, PrereleaseVersion, PruneResult } from '../types/index.js';
-import { ensureRegistryDirectories, listFormulaVersions, getFormulaVersionPath } from '../core/directory.js';
+import { ensureRegistryDirectories, listPackageVersions, getPackageVersionPath } from '../core/directory.js';
 import { registryManager } from '../core/registry.js';
-import { formulaManager } from '../core/formula.js';
+import { packageManager } from '../core/package.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { promptConfirmation } from '../utils/prompts.js';
@@ -28,7 +28,7 @@ function extractTimestamp(version: string): number {
 async function findPrereleaseVersions(formulaFilter?: string): Promise<PrereleaseVersion[]> {
   logger.debug('Finding prerelease versions', { formulaFilter });
   
-  const formulas = await registryManager.listFormulas(undefined, true); // Get all versions, no filter yet
+  const formulas = await registryManager.listPackages(undefined, true); // Get all versions, no filter yet
   const prereleaseVersions: PrereleaseVersion[] = [];
   
   for (const formula of formulas) {
@@ -40,7 +40,7 @@ async function findPrereleaseVersions(formulaFilter?: string): Promise<Prereleas
     if (isLocalVersion(formula.version)) {
       const baseVersion = extractBaseVersion(formula.version);
       const timestamp = extractTimestamp(formula.version);
-      const formulaPath = getFormulaVersionPath(formula.name, formula.version);
+      const formulaPath = getPackageVersionPath(formula.name, formula.version);
       
       prereleaseVersions.push({
         formulaName: formula.name,
@@ -61,7 +61,7 @@ async function findPrereleaseVersions(formulaFilter?: string): Promise<Prereleas
  * Considers both stable versions and base versions from prereleases
  */
 async function getLatestBaseVersion(formulaName: string): Promise<string | null> {
-  const allVersions = await listFormulaVersions(formulaName);
+  const allVersions = await listPackageVersions(formulaName);
   const baseVersions = new Set<string>();
   
   for (const version of allVersions) {
@@ -85,7 +85,7 @@ async function getLatestBaseVersion(formulaName: string): Promise<string | null>
 /**
  * Group prerelease versions by formula
  */
-function groupByFormula(versions: PrereleaseVersion[]): Map<string, PrereleaseVersion[]> {
+function groupByPackage(versions: PrereleaseVersion[]): Map<string, PrereleaseVersion[]> {
   const groups = new Map<string, PrereleaseVersion[]>();
   
   for (const version of versions) {
@@ -117,7 +117,7 @@ async function analyzeDeletionSafety(
     return { toDelete: versions, toPreserve: [] };
   }
   
-  const formulaGroups = groupByFormula(versions);
+  const formulaGroups = groupByPackage(versions);
   const toDelete: PrereleaseVersion[] = [];
   const toPreserve: PrereleaseVersion[] = [];
   
@@ -202,7 +202,7 @@ async function confirmPruneOperation(
   // Show what will be preserved
   if (toPreserve.length > 0) {
     console.log('✅ Versions to PRESERVE (latest prerelease of latest base version):');
-    const preserveGroups = groupByFormula(toPreserve);
+    const preserveGroups = groupByPackage(toPreserve);
     for (const [formulaName, versions] of preserveGroups) {
       for (const version of versions) {
         console.log(`   📦 ${formulaName}@${version.version} (latest prerelease of v${version.baseVersion})`);
@@ -212,8 +212,8 @@ async function confirmPruneOperation(
   }
   
   // Show formulas with no prereleases for latest base version
-  const deleteGroups = groupByFormula(toDelete);
-  const preserveGroups = groupByFormula(toPreserve);
+  const deleteGroups = groupByPackage(toDelete);
+  const preserveGroups = groupByPackage(toPreserve);
   const formulasWithoutLatestPrereleases = [...deleteGroups.keys()].filter(name => 
     !preserveGroups.has(name)
   );
@@ -291,7 +291,7 @@ async function executePruneOperation(versions: PrereleaseVersion[]): Promise<Pru
   
   for (const version of versions) {
     try {
-      await formulaManager.deleteFormulaVersion(version.formulaName, version.version);
+      await packageManager.deletePackageVersion(version.formulaName, version.version);
       deletedVersions.push(version);
       console.log(`✓ Deleted ${version.formulaName}@${version.version}`);
     } catch (error) {
@@ -425,7 +425,7 @@ export function setupPruneCommand(program: Command): void {
   program
     .command('prune')
     .description('Remove old prerelease versions from local registry. Preserves latest prerelease of latest version unless --all is specified.')
-    .argument('[formula-name]', 'specific formula to prune (optional)')
+    .argument('[package-name]', 'specific formula to prune (optional)')
     .option('--all', 'delete ALL prerelease versions including latest ones')
     .option('--dry-run', 'show what would be deleted without doing it')
     .option('-f, --force', 'skip confirmation prompts')

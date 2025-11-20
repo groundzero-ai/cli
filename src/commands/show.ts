@@ -4,15 +4,15 @@ import { Command } from 'commander';
 import { CommandResult } from '../types/index.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, FormulaNotFoundError } from '../utils/errors.js';
+import { withErrorHandling, PackageNotFoundError } from '../utils/errors.js';
 import { describeVersionRange, isExactVersion } from '../utils/version-ranges.js';
-import { parseFormulaInput } from '../utils/formula-name.js';
-import { formulaManager } from '../core/formula.js';
+import { parsePackageInput } from '../utils/package-name.js';
+import { packageManager } from '../core/package.js';
 
 /**
  * Show formula details command implementation (supports formula@version)
  */
-async function showFormulaCommand(formulaInput: string): Promise<CommandResult> {
+async function showPackageCommand(formulaInput: string): Promise<CommandResult> {
   logger.debug(`Showing details for formula input: ${formulaInput}`);
   
   // Ensure registry directories exist
@@ -20,15 +20,15 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
   
   try {
     // Parse input (supports name@version or name@range)
-    const { name, version } = parseFormulaInput(formulaInput);
+    const { name, version } = parsePackageInput(formulaInput);
     
     // Load formula (resolves ranges to a specific version)
-    const formula = await formulaManager.loadFormula(name, version);
+    const formula = await packageManager.loadPackage(name, version);
     const metadata = formula.metadata;
     const files = formula.files;
     
     // Display formula details
-    console.log(`✓ Formula: ${metadata.name}`);
+    console.log(`✓ Package: ${metadata.name}`);
     
     console.log(`✓ Version: ${metadata.version}`);
     if (metadata.description) {
@@ -54,7 +54,7 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
 
     // Dependencies section
     if (metadata.formulas && metadata.formulas.length > 0) {
-      console.log(`✓ Imported Formulas (${metadata.formulas.length}):`);
+      console.log(`✓ Imported Packages (${metadata.formulas.length}):`);
       for (const dep of metadata.formulas) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
@@ -64,7 +64,7 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     }
     
     if (metadata['dev-formulas'] && metadata['dev-formulas'].length > 0) {
-      console.log(`✓ Imported Dev Formulas (${metadata['dev-formulas'].length}):`);
+      console.log(`✓ Imported Dev Packages (${metadata['dev-formulas'].length}):`);
       for (const dep of metadata['dev-formulas']) {
         const rangeDescription = !isExactVersion(dep.version) 
           ? ` (${describeVersionRange(dep.version)})`
@@ -88,8 +88,8 @@ async function showFormulaCommand(formulaInput: string): Promise<CommandResult> 
     };
   } catch (error) {
     // Align with other commands' UX for not found
-    if (error instanceof FormulaNotFoundError) {
-      return { success: false, error: `Formula '${formulaInput}' not found` };
+    if (error instanceof PackageNotFoundError) {
+      return { success: false, error: `Package '${formulaInput}' not found` };
     }
     throw new Error(`Failed to show formula: ${error}`);
   }
@@ -103,8 +103,8 @@ export function setupShowCommand(program: Command): void {
   program
     .command('show')
     .description('Show details of a formula. Supports versioning with formula@version syntax.')
-    .argument('<formula-name>', 'name of the formula to show. Supports formula@version syntax.')
+    .argument('<package-name>', 'name of the formula to show. Supports formula@version syntax.')
     .action(withErrorHandling(async (formulaInput: string) => {
-      await showFormulaCommand(formulaInput);
+      await showPackageCommand(formulaInput);
     }));
 }

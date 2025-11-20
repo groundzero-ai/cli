@@ -1,24 +1,24 @@
 import { join } from 'path';
 import { InstallOptions } from '../types/index.js';
-import { ResolvedFormula } from '../core/dependency-resolver.js';
-import { checkExistingFormulaInMarkdownFiles } from '../core/openpackage.js';
-import { parseFormulaYml } from './formula-yml.js';
+import { ResolvedPackage } from '../core/dependency-resolver.js';
+import { checkExistingPackageInMarkdownFiles } from '../core/openpackage.js';
+import { parsePackageYml } from './package-yml.js';
 import { exists } from './fs.js';
 import { logger } from './logger.js';
-import { getLocalFormulaDir } from './paths.js';
+import { getLocalPackageDir } from './paths.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getVersionInfoFromDependencyTree } from './install-helpers.js';
-import { promptFormulaOverwrite } from './prompts.js';
+import { promptPackageOverwrite } from './prompts.js';
 
 /**
  * Get currently installed version from .openpackage/formulas/<formula>/formula.yml
  */
-async function getInstalledFormulaVersion(cwd: string, formulaName: string): Promise<string | undefined> {
+async function getInstalledPackageVersion(cwd: string, formulaName: string): Promise<string | undefined> {
   try {
-    const formulaDir = getLocalFormulaDir(cwd, formulaName);
+    const formulaDir = getLocalPackageDir(cwd, formulaName);
     const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
     if (await exists(formulaYmlPath)) {
-      const config = await parseFormulaYml(formulaYmlPath);
+      const config = await parsePackageYml(formulaYmlPath);
       return config.version;
     }
   } catch {
@@ -30,16 +30,16 @@ async function getInstalledFormulaVersion(cwd: string, formulaName: string): Pro
 /**
  * Check for existing formula and handle conflict resolution
  */
-export async function checkAndHandleFormulaConflict(
+export async function checkAndHandlePackageConflict(
   formulaName: string,
   newVersion: string,
-  resolvedFormulas: ResolvedFormula[],
+  resolvedPackages: ResolvedPackage[],
   options: InstallOptions
 ): Promise<{ shouldProceed: boolean; action: 'keep' | 'latest' | 'exact' | 'none'; version?: string; forceOverwrite?: boolean }> {
   const cwd = process.cwd();
   
   // Check for existing formula in markdown files
-  const existingCheck = await checkExistingFormulaInMarkdownFiles(cwd, formulaName);
+  const existingCheck = await checkExistingPackageInMarkdownFiles(cwd, formulaName);
   
   if (!existingCheck.found) {
     // No existing formula found, proceed without warning or prompts
@@ -48,8 +48,8 @@ export async function checkAndHandleFormulaConflict(
   }
   
   // Existing formula found, get version info from dependency tree
-  const versionInfo = await getVersionInfoFromDependencyTree(formulaName, resolvedFormulas);
-  const existingVersion = existingCheck.version || await getInstalledFormulaVersion(cwd, formulaName);
+  const versionInfo = await getVersionInfoFromDependencyTree(formulaName, resolvedPackages);
+  const existingVersion = existingCheck.version || await getInstalledPackageVersion(cwd, formulaName);
   
   if (existingVersion) {
     logger.debug(`Found existing formula '${formulaName}' v${existingVersion} in ${existingCheck.location}`);
@@ -76,21 +76,21 @@ export async function checkAndHandleFormulaConflict(
 /**
  * Check for conflicts with all formulas in the dependency tree
  */
-export async function checkAndHandleAllFormulaConflicts(
-  resolvedFormulas: ResolvedFormula[],
+export async function checkAndHandleAllPackageConflicts(
+  resolvedPackages: ResolvedPackage[],
   options: InstallOptions
-): Promise<{ shouldProceed: boolean; skippedFormulas: string[]; forceOverwriteFormulas: Set<string> }> {
+): Promise<{ shouldProceed: boolean; skippedPackages: string[]; forceOverwritePackages: Set<string> }> {
   const cwd = process.cwd();
-  const skippedFormulas: string[] = [];
-  const forceOverwriteFormulas = new Set<string>();
+  const skippedPackages: string[] = [];
+  const forceOverwritePackages = new Set<string>();
   
   // Check each formula in the dependency tree for conflicts
-  for (const resolved of resolvedFormulas) {
-    const existingCheck = await checkExistingFormulaInMarkdownFiles(cwd, resolved.name);
+  for (const resolved of resolvedPackages) {
+    const existingCheck = await checkExistingPackageInMarkdownFiles(cwd, resolved.name);
     
     if (existingCheck.found) {
-      const versionInfo = await getVersionInfoFromDependencyTree(resolved.name, resolvedFormulas);
-      const existingVersion = existingCheck.version || await getInstalledFormulaVersion(cwd, resolved.name);
+      const versionInfo = await getVersionInfoFromDependencyTree(resolved.name, resolvedPackages);
+      const existingVersion = existingCheck.version || await getInstalledPackageVersion(cwd, resolved.name);
       
       if (existingVersion) {
         logger.debug(`Found existing formula '${resolved.name}' v${existingVersion} in ${existingCheck.location}`);
@@ -106,20 +106,20 @@ export async function checkAndHandleAllFormulaConflicts(
       if (options.force) {
         // When --force is used, automatically overwrite all conflicts
         logger.info(`Force flag set - automatically overwriting formula '${resolved.name}' v${existingVersion}`);
-        forceOverwriteFormulas.add(resolved.name);
+        forceOverwritePackages.add(resolved.name);
         continue;
       }
       
       // Prompt per formula overwrite confirmation when existing detected
-      const confirmed = await promptFormulaOverwrite(resolved.name, existingVersion);
+      const confirmed = await promptPackageOverwrite(resolved.name, existingVersion);
       if (confirmed) {
-        forceOverwriteFormulas.add(resolved.name);
+        forceOverwritePackages.add(resolved.name);
       } else {
-        skippedFormulas.push(resolved.name);
+        skippedPackages.push(resolved.name);
       }
       continue;
     }
   }
   
-  return { shouldProceed: true, skippedFormulas, forceOverwriteFormulas };
+  return { shouldProceed: true, skippedPackages, forceOverwritePackages };
 }

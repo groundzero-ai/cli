@@ -1,25 +1,25 @@
 import { join, dirname } from 'path';
 import * as yaml from 'js-yaml';
 import { exists, readTextFile, writeTextFile, ensureDir } from './fs.js';
-import { getLocalFormulaDir } from './paths.js';
+import { getLocalPackageDir } from './paths.js';
 import { normalizePathForProcessing } from './path-normalization.js';
 import { logger } from './logger.js';
 
 export const FORMULA_INDEX_FILENAME = 'formula.index.yml';
 const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
-export interface FormulaIndexData {
+export interface PackageIndexData {
   version: string;
   files: Record<string, string[]>;
 }
 
-export interface FormulaIndexRecord extends FormulaIndexData {
+export interface PackageIndexRecord extends PackageIndexData {
   path: string;
   formulaName: string;
 }
 
-export function getFormulaIndexPath(cwd: string, formulaName: string): string {
-  const formulaDir = getLocalFormulaDir(cwd, formulaName);
+export function getPackageIndexPath(cwd: string, formulaName: string): string {
+  const formulaDir = getLocalPackageDir(cwd, formulaName);
   return join(formulaDir, FORMULA_INDEX_FILENAME);
 }
 
@@ -38,7 +38,7 @@ export function sortMapping(record: Record<string, string[]>): Record<string, st
   return normalized;
 }
 
-export function sanitizeIndexData(data: any): FormulaIndexData | null {
+export function sanitizeIndexData(data: any): PackageIndexData | null {
   if (!data || typeof data !== 'object') return null;
   const { version, files } = data as { version?: unknown; files?: unknown };
   if (typeof version !== 'string') return null;
@@ -62,8 +62,8 @@ export function sanitizeIndexData(data: any): FormulaIndexData | null {
   };
 }
 
-export async function readFormulaIndex(cwd: string, formulaName: string): Promise<FormulaIndexRecord | null> {
-  const indexPath = getFormulaIndexPath(cwd, formulaName);
+export async function readPackageIndex(cwd: string, formulaName: string): Promise<PackageIndexRecord | null> {
+  const indexPath = getPackageIndexPath(cwd, formulaName);
   if (!(await exists(indexPath))) {
     return null;
   }
@@ -98,7 +98,7 @@ export async function readFormulaIndex(cwd: string, formulaName: string): Promis
   }
 }
 
-export async function writeFormulaIndex(record: FormulaIndexRecord): Promise<void> {
+export async function writePackageIndex(record: PackageIndexRecord): Promise<void> {
   const { path: indexPath, version, files } = record;
   await ensureDir(dirname(indexPath));
 

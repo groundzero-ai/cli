@@ -1,14 +1,14 @@
 import * as yaml from 'js-yaml';
-import { FormulaYml } from '../types/index.js';
+import { PackageYml } from '../types/index.js';
 import { readTextFile, writeTextFile } from './fs.js';
 
 /**
  * Parse formula.yml file with validation
  */
-export async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYml> {
+export async function parsePackageYml(formulaYmlPath: string): Promise<PackageYml> {
   try {
     const content = await readTextFile(formulaYmlPath);
-    const parsed = yaml.load(content) as FormulaYml;
+    const parsed = yaml.load(content) as PackageYml;
     
     // Validate required fields
     if (!parsed.name || !parsed.version) {
@@ -24,7 +24,7 @@ export async function parseFormulaYml(formulaYmlPath: string): Promise<FormulaYm
 /**
  * Write formula.yml file with consistent formatting
  */
-export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml): Promise<void> {
+export async function writePackageYml(formulaYmlPath: string, config: PackageYml): Promise<void> {
   // First generate YAML with default block style
   let content = yaml.dump(config, {
     indent: 2,
@@ -59,7 +59,7 @@ export async function writeFormulaYml(formulaYmlPath: string, config: FormulaYml
   const flowStyleArrays = ['keywords'];
   
   for (const arrayField of flowStyleArrays) {
-    const arrayValue = config[arrayField as keyof FormulaYml];
+    const arrayValue = config[arrayField as keyof PackageYml];
     if (Array.isArray(arrayValue) && arrayValue.length > 0) {
       // Split content into lines for easier processing
       const lines = content.split('\n');

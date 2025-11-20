@@ -1,10 +1,10 @@
 
 /**
- * Utility for extracting and handling formula-specific content markers
+ * Utility for extracting and handling package-specific content markers
  * for root files (AGENTS.md, CLAUDE.md, etc.).
  *
  * Marker format:
- *   <!-- formula: <formula-name> --> ... <!-- -->
+ *   <!-- formula: <package-name> --> ... <!-- -->
  */
 
 /**
@@ -62,7 +62,7 @@ export function isMarkerWrappedContent(content: string, formulaName?: string): b
  *
  * Returns null if no matching section is found.
  */
-export function extractFormulaContentFromRootFile(content: string, formulaName: string): string | null {
+export function extractPackageContentFromRootFile(content: string, formulaName: string): string | null {
   if (!content || !formulaName) return null;
 
   const openRe = buildOpenMarkerRegex(formulaName);
@@ -87,7 +87,7 @@ export function extractFormulaContentFromRootFile(content: string, formulaName: 
  *   <!-- formula: <name> --> ... <!-- -->
  * Returns null if no section is found.
  */
-export function extractFormulaSection(
+export function extractPackageSection(
   content: string,
   formulaName: string
 ): { sectionBody: string } | null {
@@ -113,7 +113,7 @@ export function extractFormulaSection(
  * Extract all formula sections from a root file content.
  * Returns a map of formulaName → content.
  */
-export function extractAllFormulaSections(content: string): Map<string, string> {
+export function extractAllPackageSections(content: string): Map<string, string> {
   const sections = new Map<string, string>();
   
   if (!content) {

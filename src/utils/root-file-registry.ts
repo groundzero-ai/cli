@@ -4,7 +4,7 @@
  */
 
 import { join } from 'path';
-import { getFormulaVersionPath } from '../core/directory.js';
+import { getPackageVersionPath } from '../core/directory.js';
 import { exists, readTextFile } from './fs.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
 import { logger } from './logger.js';
@@ -23,10 +23,10 @@ export async function getRootFilesFromRegistry(
   version: string
 ): Promise<Map<string, string>> {
   const rootFiles = new Map<string, string>();
-  const versionPath = getFormulaVersionPath(formulaName, version);
+  const versionPath = getPackageVersionPath(formulaName, version);
 
   if (!(await exists(versionPath))) {
-    logger.debug(`Formula version path does not exist: ${versionPath}`);
+    logger.debug(`Package version path does not exist: ${versionPath}`);
     return rootFiles;
   }
 

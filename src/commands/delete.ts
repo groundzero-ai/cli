@@ -1,12 +1,12 @@
 import { Command } from 'commander';
 import { DeleteOptions, CommandResult } from '../types/index.js';
-import { ensureRegistryDirectories, listFormulaVersions, hasFormulaVersion } from '../core/directory.js';
-import { formulaManager } from '../core/formula.js';
+import { ensureRegistryDirectories, listPackageVersions, hasPackageVersion } from '../core/directory.js';
+import { packageManager } from '../core/package.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling, UserCancellationError, FormulaNotFoundError } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError, PackageNotFoundError } from '../utils/errors.js';
 import { promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, promptPrereleaseVersionsDelete } from '../utils/prompts.js';
 import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
-import { parseFormulaInput } from '../utils/formula-name.js';
+import { parsePackageInput } from '../utils/package-name.js';
 
 /**
  * Get prerelease versions for a specific base version
@@ -26,9 +26,9 @@ async function determineDeletionScope(
   options: DeleteOptions
 ): Promise<{ type: 'all' | 'specific' | 'prerelease'; version?: string; baseVersion?: string; versions?: string[] }> {
   // Get versions once and reuse
-  const versions = await listFormulaVersions(formulaName);
+  const versions = await listPackageVersions(formulaName);
   if (versions.length === 0) {
-    throw new FormulaNotFoundError(formulaName);
+    throw new PackageNotFoundError(formulaName);
   }
   
   // If version is specified in input
@@ -36,7 +36,7 @@ async function determineDeletionScope(
     // Check if it's a specific prerelease version
     if (isLocalVersion(version)) {
       if (!versions.includes(version)) {
-        throw new FormulaNotFoundError(`${formulaName}@${version}`);
+        throw new PackageNotFoundError(`${formulaName}@${version}`);
       }
       return { type: 'specific', version, versions };
     }
@@ -49,7 +49,7 @@ async function determineDeletionScope(
     
     // Regular version - delete specific version
     if (!versions.includes(version)) {
-      throw new FormulaNotFoundError(`${formulaName}@${version}`);
+      throw new PackageNotFoundError(`${formulaName}@${version}`);
     }
     return { type: 'specific', version, versions };
   }
@@ -77,19 +77,19 @@ async function validateDeletionTarget(
 ): Promise<void> {
   if (deletionScope.type === 'specific') {
     // Check if specific version exists
-    if (!(await hasFormulaVersion(formulaName, deletionScope.version!))) {
-      throw new FormulaNotFoundError(`${formulaName}@${deletionScope.version}`);
+    if (!(await hasPackageVersion(formulaName, deletionScope.version!))) {
+      throw new PackageNotFoundError(`${formulaName}@${deletionScope.version}`);
     }
   } else if (deletionScope.type === 'prerelease') {
     // Check if any prerelease versions exist for the base version
     const prereleaseVersions = getPrereleaseVersionsForBase(deletionScope.versions!, deletionScope.baseVersion!);
     if (prereleaseVersions.length === 0) {
-      throw new FormulaNotFoundError(`${formulaName}@${deletionScope.baseVersion} (no prerelease versions found)`);
+      throw new PackageNotFoundError(`${formulaName}@${deletionScope.baseVersion} (no prerelease versions found)`);
     }
   } else {
     // Check if formula exists (any version)
-    if (!(await formulaManager.formulaExists(formulaName))) {
-      throw new FormulaNotFoundError(formulaName);
+    if (!(await packageManager.packageExists(formulaName))) {
+      throw new PackageNotFoundError(formulaName);
     }
   }
 }
@@ -97,7 +97,7 @@ async function validateDeletionTarget(
 /**
  * Delete formula command implementation
  */
-async function deleteFormulaCommand(
+async function deletePackageCommand(
   formulaInput: string, 
   options: DeleteOptions
 ): Promise<CommandResult> {
@@ -107,7 +107,7 @@ async function deleteFormulaCommand(
   await ensureRegistryDirectories();
   
   // Parse formula input
-  const { name: formulaName, version: inputVersion } = parseFormulaInput(formulaInput);
+  const { name: formulaName, version: inputVersion } = parsePackageInput(formulaInput);
   
   // Determine what to delete
   const deletionScope = await determineDeletionScope(formulaName, inputVersion, options);
@@ -137,20 +137,20 @@ async function deleteFormulaCommand(
   // Execute deletion
   try {
     if (deletionScope.type === 'specific') {
-      await formulaManager.deleteFormulaVersion(formulaName, deletionScope.version!);
+      await packageManager.deletePackageVersion(formulaName, deletionScope.version!);
       console.log(`✓ Version '${deletionScope.version}' of formula '${formulaName}' deleted successfully`);
     } else if (deletionScope.type === 'prerelease') {
       const prereleaseVersions = getPrereleaseVersionsForBase(deletionScope.versions!, deletionScope.baseVersion!);
       
       // Delete all prerelease versions
       for (const version of prereleaseVersions) {
-        await formulaManager.deleteFormulaVersion(formulaName, version);
+        await packageManager.deletePackageVersion(formulaName, version);
       }
       
       const versionText = prereleaseVersions.length === 1 ? 'version' : 'versions';
       console.log(`✓ ${prereleaseVersions.length} prerelease ${versionText} of '${formulaName}@${deletionScope.baseVersion}' deleted successfully`);
     } else {
-      await formulaManager.deleteFormula(formulaName);
+      await packageManager.deletePackage(formulaName);
       console.log(`✓ All versions of formula '${formulaName}' deleted successfully`);
     }
     
@@ -184,7 +184,7 @@ export function setupDeleteCommand(program: Command): void {
     .option('-f, --force', 'skip confirmation prompt')
     .option('-i, --interactive', 'interactively select version to delete')
     .action(withErrorHandling(async (formula: string, options: DeleteOptions) => {
-      const result = await deleteFormulaCommand(formula, options);
+      const result = await deletePackageCommand(formula, options);
       if (!result.success) {
         throw new Error(result.error || 'Delete operation failed');
       }

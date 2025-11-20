@@ -1,13 +1,13 @@
-import type { FormulaFile } from '../../types/index.js';
-import type { FormulaYmlInfo } from './formula-yml-generator.js';
+import type { PackageFile } from '../../types/index.js';
+import type { PackageYmlInfo } from './package-yml-generator.js';
 import {
-  resolveFormulaFilesWithConflicts,
+  resolvePackageFilesWithConflicts,
   type SaveConflictResolutionOptions
 } from './save-conflict-resolution.js';
 
-export async function discoverFormulaFilesForSave(
-  formulaInfo: FormulaYmlInfo,
+export async function discoverPackageFilesForSave(
+  formulaInfo: PackageYmlInfo,
   options: SaveConflictResolutionOptions = {}
-): Promise<FormulaFile[]> {
-  return await resolveFormulaFilesWithConflicts(formulaInfo, options);
+): Promise<PackageFile[]> {
+  return await resolvePackageFilesWithConflicts(formulaInfo, options);
 }

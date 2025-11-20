@@ -1,15 +1,15 @@
 import { Command } from 'commander';
 import { PushOptions, CommandResult } from '../types/index.js';
-import { PushFormulaResponse } from '../types/api.js';
-import { formulaManager } from '../core/formula.js';
+import { PushPackageResponse } from '../types/api.js';
+import { packageManager } from '../core/package.js';
 import { ensureRegistryDirectories } from '../core/directory.js';
 import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
-import { createTarballFromFormula, createFormDataForUpload } from '../utils/tarball.js';
+import { createTarballFromPackage, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
-import { parseFormulaInput } from '../utils/formula-name.js';
+import { parsePackageInput } from '../utils/package-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { UserCancellationError } from '../utils/errors.js';
@@ -17,43 +17,43 @@ import { formatFileSize } from '../utils/formatters.js';
 import { Spinner } from '../utils/spinner.js';
 import { 
   computeStableVersion, 
-  transformFormulaFilesForVersionChange,
+  transformPackageFilesForVersionChange,
   formulaVersionExists 
-} from '../utils/formula-versioning.js';
+} from '../utils/package-versioning.js';
 
 /**
  * Push formula command implementation
  */
-async function createStableFormulaVersion(formula: any, stableVersion: string): Promise<any> {
+async function createStablePackageVersion(pkg: any, stableVersion: string): Promise<any> {
   // Abort if target stable version already exists
-  if (await formulaVersionExists(formula.metadata.name, stableVersion)) {
-    throw new Error(`Stable version already exists: ${formula.metadata.name}@${stableVersion}`);
+  if (await formulaVersionExists(pkg.metadata.name, stableVersion)) {
+    throw new Error(`Stable version already exists: ${pkg.metadata.name}@${stableVersion}`);
   }
 
-  const transformedFiles = transformFormulaFilesForVersionChange(
-    formula.files,
+  const transformedFiles = transformPackageFilesForVersionChange(
+    pkg.files,
     stableVersion,
-    formula.metadata.name
+    pkg.metadata.name
   );
 
-  const newFormula = {
+  const newPackage = {
     metadata: {
-      ...formula.metadata,
+      ...pkg.metadata,
       version: stableVersion
     },
     files: transformedFiles
   };
 
-  await formulaManager.saveFormula(newFormula);
-  return newFormula;
+  await packageManager.savePackage(newPackage);
+  return newPackage;
 }
 
-async function pushFormulaCommand(
+async function pushPackageCommand(
   formulaInput: string,
   options: PushOptions
 ): Promise<CommandResult> {
   logger.info(`Pushing formula '${formulaInput}' to remote registry`, { options });
-  const { name: parsedName, version: parsedVersion } = parseFormulaInput(formulaInput);
+  const { name: parsedName, version: parsedVersion } = parsePackageInput(formulaInput);
   let attemptedVersion: string | undefined;
 
   showBetaRegistryMessage();
@@ -63,14 +63,14 @@ async function pushFormulaCommand(
     await ensureRegistryDirectories();
     
     // Verify formula exists locally
-    const exists = await formulaManager.formulaExists(parsedName);
+    const exists = await packageManager.packageExists(parsedName);
     if (!exists) {
-      console.error(`❌ Formula '${parsedName}' not found in local registry`);
-      return { success: false, error: 'Formula not found' };
+      console.error(`❌ Package '${parsedName}' not found in local registry`);
+      return { success: false, error: 'Package not found' };
     }
     
     // Load formula and determine version
-    let formula = await formulaManager.loadFormula(parsedName, parsedVersion);
+    let formula = await packageManager.loadPackage(parsedName, parsedVersion);
     let versionToPush = parsedVersion || formula.metadata.version;
     attemptedVersion = versionToPush;
 
@@ -95,7 +95,7 @@ async function pushFormulaCommand(
 
         const stableVersion = computeStableVersion(versionToPush);
         console.log(`Converting to stable '${stableVersion}' and pushing...`);
-        formula = await createStableFormulaVersion(formula, stableVersion);
+        formula = await createStablePackageVersion(formula, stableVersion);
         versionToPush = stableVersion;
         attemptedVersion = versionToPush;
       }
@@ -121,7 +121,7 @@ async function pushFormulaCommand(
     console.log('');
     
     // Step 1: Validate formula completeness
-    console.log('✓ Formula validation complete');
+    console.log('✓ Package validation complete');
     console.log(`  • Name: ${formula.metadata.name}`);
     console.log(`  • Version: ${versionToPush}`);
     console.log(`  • Description: ${formula.metadata.description || '(no description)'}`);
@@ -129,7 +129,7 @@ async function pushFormulaCommand(
     
     // Step 2: Create tarball
     console.log('✓ Creating tarball...');
-    const tarballInfo = await createTarballFromFormula(formula);
+    const tarballInfo = await createTarballFromPackage(formula);
     console.log(`✓ Created tarball (${formula.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
     // Step 3: Prepare upload data
@@ -139,9 +139,9 @@ async function pushFormulaCommand(
     const uploadSpinner = new Spinner('Uploading to registry...');
     uploadSpinner.start();
     
-    let response: PushFormulaResponse;
+    let response: PushPackageResponse;
     try {
-      response = await httpClient.uploadFormData<PushFormulaResponse>(
+      response = await httpClient.uploadFormData<PushPackageResponse>(
         '/formulas/push',
         formData
       );
@@ -154,21 +154,21 @@ async function pushFormulaCommand(
     // Step 5: Success!
     console.log('✓ Push successful');
     console.log('');
-    console.log('✓ Formula Details:');
-    console.log(`  • Name: ${response.formula.name}`);
+    console.log('✓ Package Details:');
+    console.log(`  • Name: ${response.package.name}`);
     console.log(`  • Version: ${response.version.version}`);
     console.log(`  • Size: ${formatFileSize(tarballInfo.size)}`);
-    const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
+    const keywords = Array.isArray(response.package.keywords) ? response.package.keywords : [];
     if (keywords.length > 0) {
       console.log(`  • Keywords: ${keywords.join(', ')}`);
     }
-    console.log(`  • Private: ${response.formula.isPrivate ? 'Yes' : 'No'}`);
+    console.log(`  • Private: ${response.package.isPrivate ? 'Yes' : 'No'}`);
     console.log(`  • Created: ${new Date(response.version.createdAt).toLocaleString()}`);
     
     return {
       success: true,
       data: {
-        formulaName: response.formula.name,
+        formulaName: response.package.name,
         version: response.version.version,
         size: tarballInfo.size,
         checksum: tarballInfo.checksum,
@@ -214,7 +214,7 @@ async function pushFormulaCommand(
       }
       
       if (apiError?.statusCode === 422) {
-        console.error(`❌ Formula validation failed: ${error.message}`);
+        console.error(`❌ Package validation failed: ${error.message}`);
         if (apiError.details) {
           console.log('');
           console.log('Validation errors:');
@@ -253,11 +253,11 @@ export function setupPushCommand(program: Command): void {
   program
     .command('push')
     .description('Push a formula to remote registry. Supports formula@version syntax.')
-    .argument('<formula-name>', 'name of the formula to push. Supports formula@version syntax.')
+    .argument('<package-name>', 'name of the formula to push. Supports formula@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (formulaName: string, options: PushOptions) => {
-      const result = await pushFormulaCommand(formulaName, options);
+      const result = await pushPackageCommand(formulaName, options);
       if (!result.success) {
         throw new Error(result.error || 'Push operation failed');
       }

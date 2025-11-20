@@ -1,29 +1,29 @@
 import { join } from "path";
 import { FILE_PATTERNS } from "../../constants/index.js";
-import { FormulaYml } from "../../types";
-import { normalizeFormulaName } from "../../utils/formula-name.js";
-import { parseFormulaYml, writeFormulaYml } from "../../utils/formula-yml.js";
+import { PackageYml } from "../../types";
+import { normalizePackageName } from "../../utils/package-name.js";
+import { parsePackageYml, writePackageYml } from "../../utils/package-yml.js";
 import { ensureDir, exists, isDirectory } from "../../utils/fs.js";
 import { logger } from "../../utils/logger.js";
-import { getLocalFormulaDir } from "../../utils/paths.js";
+import { getLocalPackageDir } from "../../utils/paths.js";
 import { ValidationError } from "../../utils/errors.js";
-import { ensureLocalOpenPackageStructure } from "../../utils/formula-management.js";
-import { hasFormulaVersion } from "../directory.js";
+import { ensureLocalOpenPackageStructure } from "../../utils/package-management.js";
+import { hasPackageVersion } from "../directory.js";
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES, WIP_SUFFIX } from "./constants.js";
-import { determineTargetVersion } from "./formula-yml-versioning.js";
+import { determineTargetVersion } from "./package-yml-versioning.js";
 
-export type FormulaYmlInfo = {
+export type PackageYmlInfo = {
   fullPath: string;
-  config: FormulaYml;
-  isNewFormula: boolean;
-  isRootFormula: boolean;
+  config: PackageYml;
+  isNewPackage: boolean;
+  isRootPackage: boolean;
 };
 
 /**
  * Create formula.yml automatically in a directory without user prompts
  * Reuses init command logic but makes it non-interactive
  */
-async function createFormulaYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: FormulaYml; isNewFormula: boolean }> {
+async function createPackageYmlInDirectory(formulaDir: string, formulaName: string): Promise<{ fullPath: string; config: PackageYml; isNewPackage: boolean }> {
   const cwd = process.cwd();
   
   // Ensure the target directory exists (including formulas subdirectory)
@@ -34,13 +34,13 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
   
   // Create default formula config
-  const formulaConfig: FormulaYml = {
-    name: normalizeFormulaName(formulaName),
+  const formulaConfig: PackageYml = {
+    name: normalizePackageName(formulaName),
     version: DEFAULT_VERSION
   };
   
   // Create the formula.yml file
-  await writeFormulaYml(formulaYmlPath, formulaConfig);
+  await writePackageYml(formulaYmlPath, formulaConfig);
   console.log(`${LOG_PREFIXES.CREATED} ${formulaDir}`);
   console.log(`${LOG_PREFIXES.NAME} ${formulaConfig.name}`);
   console.log(`${LOG_PREFIXES.VERSION} ${formulaConfig.version}`);
@@ -48,37 +48,37 @@ async function createFormulaYmlInDirectory(formulaDir: string, formulaName: stri
   return {
     fullPath: formulaYmlPath,
     config: formulaConfig,
-    isNewFormula: true
+    isNewPackage: true
   };
 }
 
-export async function getOrCreateFormulaYml(
+export async function getOrCreatePackageYml(
   cwd: string,
   name: string,
   explicitVersion?: string,
   versionType?: string,
   bump?: "patch" | "minor" | "major",
   force?: boolean
-): Promise<FormulaYmlInfo> {
+): Promise<PackageYmlInfo> {
   await ensureLocalOpenPackageStructure(cwd);
 
-  const formulaDir = getLocalFormulaDir(cwd, name);
+  const formulaDir = getLocalPackageDir(cwd, name);
   if (!(await exists(formulaDir)) || !(await isDirectory(formulaDir))) {
     // Create the formula directory if it doesn't exist
     await ensureDir(formulaDir);
     logger.debug("Created formula directory for save", { path: formulaDir });
   }
 
-  const normalizedName = normalizeFormulaName(name);
+  const normalizedName = normalizePackageName(name);
   const formulaYmlPath = join(formulaDir, FILE_PATTERNS.FORMULA_YML);
 
-  let formulaConfig: FormulaYml;
-  let isNewFormula = false;
+  let formulaConfig: PackageYml;
+  let isNewPackage = false;
 
   if (await exists(formulaYmlPath)) {
     logger.debug("Found existing formula.yml for save", { path: formulaYmlPath });
     try {
-      formulaConfig = await parseFormulaYml(formulaYmlPath);
+      formulaConfig = await parsePackageYml(formulaYmlPath);
       console.log(`✓ Found existing formula ${formulaConfig.name}@${formulaConfig.version}`);
     } catch (error) {
       throw new ValidationError(
@@ -87,39 +87,39 @@ export async function getOrCreateFormulaYml(
     }
   } else {
     logger.debug("No formula.yml found for save, creating", { dir: formulaDir });
-    const created = await createFormulaYmlInDirectory(formulaDir, normalizedName);
+    const created = await createPackageYmlInDirectory(formulaDir, normalizedName);
     formulaConfig = created.config;
-    isNewFormula = true;
+    isNewPackage = true;
   }
 
   const targetVersion = await determineTargetVersion(
     explicitVersion,
     versionType,
     bump,
-    isNewFormula ? undefined : formulaConfig.version
+    isNewPackage ? undefined : formulaConfig.version
   );
 
   const allowOverwrite = force || targetVersion.endsWith(WIP_SUFFIX);
 
   if (!allowOverwrite) {
-    const versionExists = await hasFormulaVersion(normalizedName, targetVersion);
+    const versionExists = await hasPackageVersion(normalizedName, targetVersion);
     if (versionExists) {
       throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace("%s", targetVersion));
     }
   }
 
-  const updatedConfig: FormulaYml = {
+  const updatedConfig: PackageYml = {
     ...formulaConfig,
     name: normalizedName,
     version: targetVersion
   };
 
-  await writeFormulaYml(formulaYmlPath, updatedConfig);
+  await writePackageYml(formulaYmlPath, updatedConfig);
 
   return {
     fullPath: formulaYmlPath,
     config: updatedConfig,
-    isNewFormula,
-    isRootFormula: false
+    isNewPackage,
+    isRootPackage: false
   };
 }

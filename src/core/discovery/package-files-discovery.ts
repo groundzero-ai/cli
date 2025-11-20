@@ -1,8 +1,8 @@
 import { DiscoveredFile } from "../../types";
-import { discoverAllRootFiles } from "../../utils/formula-discovery.js";
+import { discoverAllRootFiles } from "../../utils/package-discovery.js";
 import { discoverPlatformFilesUnified } from "./platform-files-discovery.js";
 
-export async function discoverFormulaFiles(
+export async function discoverPackageFiles(
   formulaName: string,
 ): Promise<DiscoveredFile[]> {
 

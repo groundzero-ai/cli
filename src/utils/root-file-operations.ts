@@ -3,8 +3,8 @@
  * Utility functions for operating on root files (AGENTS.md, CLAUDE.md, etc.)
  */
 
-import { extractFormulaContentFromRootFile } from './root-file-extractor.js';
-import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
+import { extractPackageContentFromRootFile } from './root-file-extractor.js';
+import { mergePackageContentIntoRootFile } from './root-file-merger.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import { logger } from './logger.js';
 import { getPathLeaf } from './path-normalization.js';
@@ -24,7 +24,7 @@ export interface RootFileProcessResult {
  * @param formulaName - Name of the formula to add
  * @returns Result indicating if the file was processed and why
  */
-export async function addFormulaToRootFile(
+export async function addPackageToRootFile(
   filePath: string,
   formulaName: string
 ): Promise<RootFileProcessResult> {
@@ -34,14 +34,14 @@ export async function addFormulaToRootFile(
     const content = await readTextFile(filePath);
 
     // Check if formula marker already exists
-    const existingContent = extractFormulaContentFromRootFile(content, formulaName);
+    const existingContent = extractPackageContentFromRootFile(content, formulaName);
     if (existingContent !== null) {
-      console.log(`✓ Formula '${formulaName}' is already added to ${getPathLeaf(filePath)}`);
+      console.log(`✓ Package '${formulaName}' is already added to ${getPathLeaf(filePath)}`);
       return { processed: false, reason: 'already_exists' };
     }
 
     // Add empty marker section at the end
-    const updatedContent = mergeFormulaContentIntoRootFile(content, formulaName, '');
+    const updatedContent = mergePackageContentIntoRootFile(content, formulaName, '');
     await writeTextFile(filePath, updatedContent);
 
     console.log(`✓ Added formula marker for '${formulaName}' to ${getPathLeaf(filePath)}`);

@@ -102,6 +102,6 @@ export type Platform = typeof PLATFORMS[keyof typeof PLATFORMS];
 export type PlatformDir = typeof PLATFORM_DIRS[keyof typeof PLATFORM_DIRS];
 export type FilePattern = typeof FILE_PATTERNS[keyof typeof FILE_PATTERNS];
 export type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
-export type FormulaDir = typeof FORMULA_DIRS[keyof typeof FORMULA_DIRS];
+export type PackageDir = typeof FORMULA_DIRS[keyof typeof FORMULA_DIRS];
 export type DependencyArray = typeof DEPENDENCY_ARRAYS[keyof typeof DEPENDENCY_ARRAYS];
 export type ConflictResolution = typeof CONFLICT_RESOLUTION[keyof typeof CONFLICT_RESOLUTION];

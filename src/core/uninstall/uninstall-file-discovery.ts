@@ -3,8 +3,8 @@ import { PLATFORM_DIRS } from '../../constants/index.js';
 import { type UninstallDiscoveredFile } from '../../types/index.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { exists, isDirectory, walkFiles, readTextFile } from '../../utils/fs.js';
-import { extractFormulaContentFromRootFile } from '../../utils/root-file-extractor.js';
-import { readFormulaIndex, type FormulaIndexRecord, isDirKey } from '../../utils/formula-index-yml.js';
+import { extractPackageContentFromRootFile } from '../../utils/root-file-extractor.js';
+import { readPackageIndex, type PackageIndexRecord, isDirKey } from '../../utils/package-index-yml.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 
 async function collectFilesUnderDirectory(cwd: string, dirRel: string): Promise<string[]> {
@@ -21,7 +21,7 @@ async function collectFilesUnderDirectory(cwd: string, dirRel: string): Promise<
 
 async function expandIndexToFilePaths(
   cwd: string,
-  index: FormulaIndexRecord | null
+  index: PackageIndexRecord | null
 ): Promise<Set<string>> {
   const owned = new Set<string>();
   if (!index) return owned;
@@ -52,7 +52,7 @@ async function discoverViaIndex(
   formulaName: string
 ): Promise<UninstallDiscoveredFile[]> {
   const cwd = process.cwd();
-  const index = await readFormulaIndex(cwd, formulaName);
+  const index = await readPackageIndex(cwd, formulaName);
   const owned = await expandIndexToFilePaths(cwd, index);
   const results: UninstallDiscoveredFile[] = [];
 
@@ -82,7 +82,7 @@ async function discoverLightweightRootFiles(cwd: string, formulaName: string): P
     if (!(await exists(absPath))) continue;
     try {
       const content = await readTextFile(absPath);
-      const extracted = extractFormulaContentFromRootFile(content, formulaName);
+      const extracted = extractPackageContentFromRootFile(content, formulaName);
       if (!extracted) continue;
       results.push({ fullPath: absPath, sourceDir: platform, isRootFile: true });
     } catch {
@@ -93,7 +93,7 @@ async function discoverLightweightRootFiles(cwd: string, formulaName: string): P
   return results;
 }
 
-export async function discoverFormulaFilesForUninstall(formulaName: string): Promise<UninstallDiscoveredFile[]> {
+export async function discoverPackageFilesForUninstall(formulaName: string): Promise<UninstallDiscoveredFile[]> {
   const cwd = process.cwd();
   const results: UninstallDiscoveredFile[] = [];
 

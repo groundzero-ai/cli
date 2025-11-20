@@ -5,8 +5,8 @@
  */
 
 import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
-import type { FormulaFile } from '../types/index.js';
-import { formulaManager } from '../core/formula.js';
+import type { PackageFile } from '../types/index.js';
+import { packageManager } from '../core/package.js';
 import * as yaml from 'js-yaml';
 
 function isPlainObject(value: unknown): value is Record<string, any> {
@@ -104,7 +104,7 @@ export function mergePlatformYamlOverride(
   targetPlatform: Platform,
   universalSubdir: string,
   relPath: string,
-  formulaFiles: FormulaFile[]
+  formulaFiles: PackageFile[]
 ): string {
   try {
     if (!relPath.endsWith(FILE_PATTERNS.MD_FILES)) return universalContent;
@@ -155,11 +155,11 @@ export function mergePlatformYamlOverride(
 export async function loadRegistryYamlOverrides(
   formulaName: string,
   version: string
-): Promise<FormulaFile[]> {
-  const overrides: FormulaFile[] = [];
+): Promise<PackageFile[]> {
+  const overrides: PackageFile[] = [];
 
   // Load formula from registry
-  const formula = await formulaManager.loadFormula(formulaName, version);
+  const formula = await packageManager.loadPackage(formulaName, version);
 
   // Known platforms for suffix matching
   const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);

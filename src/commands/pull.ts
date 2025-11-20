@@ -1,33 +1,33 @@
 import { Command } from 'commander';
 import { PullOptions, CommandResult } from '../types/index.js';
-import { formulaManager } from '../core/formula.js';
-import { hasFormulaVersion } from '../core/directory.js';
+import { packageManager } from '../core/package.js';
+import { hasPackageVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
-import { parseFormulaInput } from '../utils/formula-name.js';
+import { parsePackageInput } from '../utils/package-name.js';
 import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formatFileSize } from '../utils/formatters.js';
-import { fetchRemoteFormulaMetadata, pullFormulaFromRemote, pullDownloadsBatchFromRemote, RemotePullFailure } from '../core/remote-pull.js';
-import { RemoteFormulaMetadataResult, RemotePullContext } from '../core/remote-pull.js';
-import { PullFormulaResponse } from '../types/api.js';
+import { fetchRemotePackageMetadata, pullPackageFromRemote, pullDownloadsBatchFromRemote, RemotePullFailure } from '../core/remote-pull.js';
+import { RemotePackageMetadataResult, RemotePullContext } from '../core/remote-pull.js';
+import { PullPackageResponse } from '../types/api.js';
 import { Spinner } from '../utils/spinner.js';
-import { planRemoteDownloadsForFormula } from '../core/install/remote-flow.js';
+import { planRemoteDownloadsForPackage } from '../core/install/remote-flow.js';
 import { recordBatchOutcome } from '../core/install/remote-reporting.js';
 
 /**
- * Fetch formula metadata with spinner and error handling
+ * Fetch package metadata with spinner and error handling
  */
-async function fetchFormulaMetadata(
+async function fetchPackageMetadata(
   parsedName: string,
   parsedVersion: string | undefined,
   pullOptions: { profile?: string; apiKey?: string; recursive: boolean }
-): Promise<RemoteFormulaMetadataResult> {
-  const metadataSpinner = new Spinner('Querying registry for formula...');
+): Promise<RemotePackageMetadataResult> {
+  const metadataSpinner = new Spinner('Querying registry for package...');
   metadataSpinner.start();
 
   try {
-    const result = await fetchRemoteFormulaMetadata(parsedName, parsedVersion, pullOptions);
+    const result = await fetchRemotePackageMetadata(parsedName, parsedVersion, pullOptions);
     metadataSpinner.stop();
     return result;
   } catch (error) {
@@ -37,10 +37,10 @@ async function fetchFormulaMetadata(
 }
 
 /**
- * Display formula information and warnings
+ * Display package information and warnings
  */
-function displayFormulaInfo(
-  response: PullFormulaResponse,
+function displayPackageInfo(
+  response: PullPackageResponse,
   parsedVersion: string | undefined,
   versionToPull: string,
   profile: string
@@ -54,7 +54,7 @@ function displayFormulaInfo(
     console.log('');
   }
 
-  console.log('✓ Formula found in registry');
+  console.log('✓ Package found in registry');
   console.log(`✓ Version: ${parsedVersion ?? 'latest'} (resolved: ${versionToPull})`);
   console.log(`✓ Profile: ${profile}`);
   console.log('');
@@ -67,22 +67,22 @@ async function handleVersionChecks(
   parsedName: string,
   versionToPull: string
 ): Promise<void> {
-  const localVersionExists = await hasFormulaVersion(parsedName, versionToPull);
+  const localVersionExists = await hasPackageVersion(parsedName, versionToPull);
   if (localVersionExists) {
-    console.log(`⚠️  Version '${versionToPull}' of formula '${parsedName}' already exists locally`);
+    console.log(`⚠️  Version '${versionToPull}' of package '${parsedName}' already exists locally`);
     console.log('');
 
     const shouldProceed = await promptOverwriteConfirmation(parsedName, versionToPull);
     if (!shouldProceed) {
-      throw new UserCancellationError('User declined to overwrite existing formula version');
+      throw new UserCancellationError('User declined to overwrite existing package version');
     }
     console.log('');
   }
 
-  // Check if any version of the formula exists (for informational purposes)
-  const localExists = await formulaManager.formulaExists(parsedName);
+  // Check if any version of the package exists (for informational purposes)
+  const localExists = await packageManager.packageExists(parsedName);
   if (localExists && !localVersionExists) {
-    console.log(`✓ Formula '${parsedName}' has other versions locally`);
+    console.log(`✓ Package '${parsedName}' has other versions locally`);
     console.log('Pulling will add a new version.');
     console.log('');
   }
@@ -94,12 +94,12 @@ async function handleVersionChecks(
 async function performRecursivePull(
   parsedName: string,
   versionToPull: string,
-  response: PullFormulaResponse,
+  response: PullPackageResponse,
   context: RemotePullContext,
   registryUrl: string,
   profile: string
-): Promise<{ formulaName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string }> {
-  const { downloadKeys, warnings: planWarnings } = await planRemoteDownloadsForFormula({ success: true, context, response }, { forceRemote: true, dryRun: false });
+): Promise<{ packageName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string }> {
+  const { downloadKeys, warnings: planWarnings } = await planRemoteDownloadsForPackage({ success: true, context, response }, { forceRemote: true, dryRun: false });
 
   if (planWarnings.length > 0) {
     planWarnings.forEach(warning => console.log(`⚠️  ${warning}`));
@@ -107,23 +107,23 @@ async function performRecursivePull(
   }
 
   if (downloadKeys.size === 0) {
-    console.log('✓ All formulas already exist locally, nothing to pull');
+    console.log('✓ All packages already exist locally, nothing to pull');
     console.log('');
     return {
-      formulaName: parsedName,
+      packageName: parsedName,
       version: versionToPull,
       files: 0,
       size: 0,
       checksum: '',
       registry: registryUrl,
       profile,
-      isPrivate: response.formula.isPrivate,
+      isPrivate: response.package.isPrivate,
       downloadUrl: '',
-      message: 'All formulas already exist locally'
+      message: 'All packages already exist locally'
     };
   }
 
-  const downloadSpinner = new Spinner(`Downloading ${downloadKeys.size} formula(s) from remote registry...`);
+  const downloadSpinner = new Spinner(`Downloading ${downloadKeys.size} package(s) from remote registry...`);
   downloadSpinner.start();
 
   try {
@@ -138,29 +138,29 @@ async function performRecursivePull(
     });
     downloadSpinner.stop();
 
-    recordBatchOutcome('Pulled formulas', batchResult, [], false);
+    recordBatchOutcome('Pulled packages', batchResult, [], false);
 
     if (!batchResult.success) {
       throw {
         success: false,
         reason: 'network',
-        message: `Failed to pull ${batchResult.failed.length} formula(s)`
+        message: `Failed to pull ${batchResult.failed.length} package(s)`
       } as RemotePullFailure;
     }
 
-    const mainFormulaResult = batchResult.pulled.find(item => item.name === parsedName && item.version === versionToPull);
+    const mainPackageResult = batchResult.pulled.find(item => item.name === parsedName && item.version === versionToPull);
 
     return {
-      formulaName: parsedName,
+      packageName: parsedName,
       version: versionToPull,
-      files: mainFormulaResult ? 0 : 0,
+      files: mainPackageResult ? 0 : 0,
       size: response.version.tarballSize,
       checksum: '',
       registry: registryUrl,
       profile,
-      isPrivate: response.formula.isPrivate,
-      downloadUrl: mainFormulaResult?.downloadUrl || '',
-      message: `Successfully pulled ${batchResult.pulled.length} formula(s) (${batchResult.failed.length} failed)`
+      isPrivate: response.package.isPrivate,
+      downloadUrl: mainPackageResult?.downloadUrl || '',
+      message: `Successfully pulled ${batchResult.pulled.length} package(s) (${batchResult.failed.length} failed)`
     };
   } catch (error) {
     downloadSpinner.stop();
@@ -169,22 +169,22 @@ async function performRecursivePull(
 }
 
 /**
- * Perform single formula pull
+ * Perform single package pull
  */
 async function performSinglePull(
   parsedName: string,
   parsedVersion: string | undefined,
-  response: PullFormulaResponse,
+  response: PullPackageResponse,
   context: RemotePullContext,
   pullOptions: { profile?: string; apiKey?: string; recursive: boolean },
   registryUrl: string,
   profile: string
-): Promise<{ formulaName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string }> {
-  const downloadSpinner = new Spinner('Downloading formula tarball...');
+): Promise<{ packageName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string }> {
+  const downloadSpinner = new Spinner('Downloading package tarball...');
   downloadSpinner.start();
 
   try {
-    const pullResult = await pullFormulaFromRemote(parsedName, parsedVersion, {
+    const pullResult = await pullPackageFromRemote(parsedName, parsedVersion, {
       ...pullOptions,
       preFetchedResponse: response,
       httpClient: context.httpClient
@@ -198,16 +198,16 @@ async function performSinglePull(
     const extracted = pullResult.extracted;
 
     return {
-      formulaName: pullResult.response.formula.name,
+      packageName: pullResult.response.package.name,
       version: pullResult.response.version.version,
       files: extracted.files.length,
       size: pullResult.response.version.tarballSize,
       checksum: extracted.checksum,
       registry: registryUrl,
       profile,
-      isPrivate: pullResult.response.formula.isPrivate,
+      isPrivate: pullResult.response.package.isPrivate,
       downloadUrl: pullResult.downloadUrl,
-      message: 'Formula pulled and installed successfully'
+      message: 'Package pulled and installed successfully'
     };
   } catch (error) {
     downloadSpinner.stop();
@@ -219,17 +219,17 @@ async function performSinglePull(
  * Display pull results
  */
 function displayPullResults(
-  result: { formulaName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string },
-  response: PullFormulaResponse
+  result: { packageName: string; version: string; files: number; size: number; checksum: string; registry: string; profile: string; isPrivate: boolean; downloadUrl: string; message: string },
+  response: PullPackageResponse
 ): void {
   console.log('✓ Pull successful');
   console.log('');
-  console.log('✓ Formula Details:');
-  console.log(`  • Name: ${result.formulaName}`);
+  console.log('✓ Package Details:');
+  console.log(`  • Name: ${result.packageName}`);
   console.log(`  • Version: ${result.version}`);
-  console.log(`  • Description: ${response.formula.description || '(no description)'}`);
+  console.log(`  • Description: ${response.package.description || '(no description)'}`);
   console.log(`  • Size: ${formatFileSize(result.size)}`);
-  const keywords = Array.isArray(response.formula.keywords) ? response.formula.keywords : [];
+  const keywords = Array.isArray(response.package.keywords) ? response.package.keywords : [];
   if (keywords.length > 0) {
     console.log(`  • Keywords: ${keywords.join(', ')}`);
   }
@@ -240,19 +240,19 @@ function displayPullResults(
   }
   console.log('');
   console.log('✓ Next steps:');
-  console.log(`  opn show ${result.formulaName}         # View formula details`);
-  console.log(`  opn install ${result.formulaName}     # Install formula to current project`);
+  console.log(`  opn show ${result.packageName}         # View package details`);
+  console.log(`  opn install ${result.packageName}     # Install package to current project`);
 }
 
 /**
- * Pull formula command implementation
+ * Pull package command implementation
  */
-async function pullFormulaCommand(
-  formulaInput: string,
+async function pullPackageCommand(
+  packageInput: string,
   options: PullOptions
 ): Promise<CommandResult> {
-  const { name: parsedName, version: parsedVersion } = parseFormulaInput(formulaInput);
-  logger.info(`Pulling formula '${parsedName}' from remote registry`, { options });
+  const { name: parsedName, version: parsedVersion } = parsePackageInput(packageInput);
+  logger.info(`Pulling package '${parsedName}' from remote registry`, { options });
 
   showBetaRegistryMessage();
 
@@ -263,12 +263,12 @@ async function pullFormulaCommand(
       recursive: !!options.recursive,
     };
 
-    console.log(`✓ Pulling formula '${parsedName}' from remote registry...`);
+    console.log(`✓ Pulling package '${parsedName}' from remote registry...`);
     console.log(`✓ Version: ${parsedVersion ?? 'latest'}`);
     console.log('');
 
-    // Fetch formula metadata
-    const metadataResult = await fetchFormulaMetadata(parsedName, parsedVersion, pullOptions);
+    // Fetch package metadata
+    const metadataResult = await fetchPackageMetadata(parsedName, parsedVersion, pullOptions);
 
     if (!metadataResult.success) {
       return handleMetadataFailure(metadataResult, parsedName, parsedVersion);
@@ -279,8 +279,8 @@ async function pullFormulaCommand(
     const profile = context.profile;
     const versionToPull = response.version.version;
 
-    // Display formula information
-    displayFormulaInfo(response, parsedVersion, versionToPull, profile);
+    // Display package information
+    displayPackageInfo(response, parsedVersion, versionToPull, profile);
 
     // Handle version checks and overwrite confirmation (only for non-recursive pulls)
     if (!options.recursive) {
@@ -300,7 +300,7 @@ async function pullFormulaCommand(
       data: result
     };
   } catch (error) {
-    logger.debug('Pull command failed', { error, formulaName: parsedName });
+    logger.debug('Pull command failed', { error, packageName: parsedName });
 
     return handleUnexpectedError(error, parsedName, parsedVersion);
   }
@@ -312,13 +312,13 @@ async function pullFormulaCommand(
 export function setupPullCommand(program: Command): void {
   program
     .command('pull')
-    .description('Pull a formula from remote registry. Supports formula@version syntax.')
-    .argument('<formula-name>', 'name of the formula to pull. Supports formula@version syntax.')
+    .description('Pull a package from remote registry. Supports package@version syntax.')
+    .argument('<package-name>', 'name of the package to pull. Supports package@version syntax.')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .option('--recursive', 'include dependency metadata (no additional downloads)')
-    .action(withErrorHandling(async (formulaName: string, options: PullOptions) => {
-      const result = await pullFormulaCommand(formulaName, options);
+    .action(withErrorHandling(async (packageName: string, options: PullOptions) => {
+      const result = await pullPackageCommand(packageName, options);
       if (!result.success) {
         throw new Error(result.error || 'Pull operation failed');
       }
@@ -327,28 +327,28 @@ export function setupPullCommand(program: Command): void {
 
 function handleMetadataFailure(
   failure: RemotePullFailure,
-  formulaName: string,
+  packageName: string,
   requestedVersion?: string
 ): CommandResult {
   switch (failure.reason) {
     case 'not-found':
-      console.error(`❌ Formula '${formulaName}' not found in registry`);
+      console.error(`❌ Package '${packageName}' not found in registry`);
       if (requestedVersion) {
         console.log(`Version '${requestedVersion}' does not exist.`);
       } else {
-        console.log('Formula does not exist in the registry.');
+        console.log('Package does not exist in the registry.');
       }
       console.log('');
       console.log('💡 Try one of these options:');
-      console.log('  • Check the formula name spelling');
-      console.log('  • Use opn search to find available formulas');
-      console.log('  • Verify you have access to this formula if it\'s private');
-      return { success: false, error: 'Formula not found' };
+      console.log('  • Check the package name spelling');
+      console.log('  • Use opn search to find available packages');
+      console.log('  • Verify you have access to this package if it\'s private');
+      return { success: false, error: 'Package not found' };
     case 'access-denied':
       console.error(failure.message);
       console.log('');
       if (failure.statusCode === 403) {
-        console.log('💡 This may be a private formula. Ensure you have VIEWER permissions.');
+        console.log('💡 This may be a private package. Ensure you have VIEWER permissions.');
       }
       console.log('💡 To configure authentication:');
       console.log('  opn configure');
@@ -362,18 +362,18 @@ function handleMetadataFailure(
       console.log('  • Set OPENPACKAGEAPI_TIMEOUT environment variable for longer timeout');
       return { success: false, error: 'Download failed' };
     case 'integrity':
-      console.error(`❌ Formula integrity verification failed: ${failure.message}`);
+      console.error(`❌ Package integrity verification failed: ${failure.message}`);
       console.log('');
-      console.log('💡 The downloaded formula may be corrupted. Try pulling again.');
+      console.log('💡 The downloaded package may be corrupted. Try pulling again.');
       return { success: false, error: 'Integrity verification failed' };
     default:
       return { success: false, error: failure.message };
   }
 }
 
-function handleUnexpectedError(error: unknown, formulaName: string, requestedVersion?: string): CommandResult {
+function handleUnexpectedError(error: unknown, packageName: string, requestedVersion?: string): CommandResult {
   if (error && typeof error === 'object' && 'success' in error) {
-    return handleMetadataFailure(error as RemotePullFailure, formulaName, requestedVersion);
+    return handleMetadataFailure(error as RemotePullFailure, packageName, requestedVersion);
   }
 
   if (error instanceof Error) {
@@ -382,7 +382,7 @@ function handleUnexpectedError(error: unknown, formulaName: string, requestedVer
       reason: 'unknown',
       message: error.message,
       error
-    }, formulaName, requestedVersion);
+    }, packageName, requestedVersion);
   }
 
   return handleMetadataFailure({
@@ -390,5 +390,5 @@ function handleUnexpectedError(error: unknown, formulaName: string, requestedVer
     reason: 'unknown',
     message: 'Unknown error occurred',
     error
-  }, formulaName, requestedVersion);
+  }, packageName, requestedVersion);
 }

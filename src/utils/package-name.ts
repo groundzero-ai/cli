@@ -1,5 +1,5 @@
 import { ValidationError } from './errors.js';
-import { FormulaDependency } from '../types/index.js';
+import { PackageDependency } from '../types/index.js';
 
 /**
  * Regex pattern for scoped formula names (@scope/name)
@@ -10,7 +10,7 @@ export const SCOPED_FORMULA_REGEX = /^@([^\/]+)\/(.+)$/;
  * Error messages for formula name validation
  */
 const ERROR_MESSAGES = {
-  INVALID_FORMULA_NAME: 'Invalid formula name: %s. Formula names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Formula names are case-insensitive and will be normalized to lowercase.'
+  INVALID_FORMULA_NAME: 'Invalid formula name: %s. Package names must be 1-214 characters, contain only letters, numbers, hyphens, underscores, and dots. Cannot start with a number, dot, or hyphen. Cannot have consecutive dots, underscores, or hyphens. Scoped names must be in format @<scope>/<name>. Package names are case-insensitive and will be normalized to lowercase.'
 } as const;
 
 /**
@@ -18,7 +18,7 @@ const ERROR_MESSAGES = {
  * @param name - The formula name to validate
  * @throws ValidationError if the name is invalid
  */
-export function validateFormulaName(name: string): void {
+export function validatePackageName(name: string): void {
   // Check length
   if (name.length === 0 || name.length > 214) {
     throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', name));
@@ -35,16 +35,16 @@ export function validateFormulaName(name: string): void {
     const [, scope, localName] = scopedMatch;
 
     // Validate scope part
-    validateFormulaNamePart(scope, name);
+    validatePackageNamePart(scope, name);
 
     // Validate local name part
-    validateFormulaNamePart(localName, name);
+    validatePackageNamePart(localName, name);
 
     return;
   }
 
   // Validate as regular name
-  validateFormulaNamePart(name, name);
+  validatePackageNamePart(name, name);
 }
 
 /**
@@ -53,7 +53,7 @@ export function validateFormulaName(name: string): void {
  * @param fullName - The full original name for error messages
  * @throws ValidationError if the part is invalid
  */
-function validateFormulaNamePart(part: string, fullName: string): void {
+function validatePackageNamePart(part: string, fullName: string): void {
   // Check first character
   if (/^[0-9.\-]/.test(part)) {
     throw new ValidationError(ERROR_MESSAGES.INVALID_FORMULA_NAME.replace('%s', fullName));
@@ -74,14 +74,14 @@ function validateFormulaNamePart(part: string, fullName: string): void {
  * Parse formula input supporting both scoped names (@scope/name) and version specifications (name@version)
  * Returns normalized name and optional version
  */
-export function parseFormulaInput(formulaInput: string): { name: string; version?: string } {
-  // Formula name with optional version
+export function parsePackageInput(formulaInput: string): { name: string; version?: string } {
+  // Package name with optional version
   const atIndex = formulaInput.lastIndexOf('@');
 
   if (atIndex === -1 || atIndex === 0) {
-    validateFormulaName(formulaInput);
+    validatePackageName(formulaInput);
     return {
-      name: normalizeFormulaName(formulaInput)
+      name: normalizePackageName(formulaInput)
     };
   }
 
@@ -92,10 +92,10 @@ export function parseFormulaInput(formulaInput: string): { name: string; version
     throw new ValidationError(`Invalid formula syntax: ${formulaInput}. Use 'formula' or 'formula@version'`);
   }
 
-  validateFormulaName(name);
+  validatePackageName(name);
 
   return {
-    name: normalizeFormulaName(name),
+    name: normalizePackageName(name),
     version
   };
 }
@@ -103,9 +103,9 @@ export function parseFormulaInput(formulaInput: string): { name: string; version
 /**
  * Normalize a formula name to lowercase, handling scoped names properly.
  * Scoped names like @Scope/Name become @scope/name.
- * Regular names like MyFormula become myformula.
+ * Regular names like MyPackage become myformula.
  */
-export function normalizeFormulaName(name: string): string {
+export function normalizePackageName(name: string): string {
   return name.toLowerCase();
 }
 
@@ -113,6 +113,6 @@ export function normalizeFormulaName(name: string): string {
 /**
  * Check if two formula names are equivalent (case-insensitive).
  */
-export function areFormulaNamesEquivalent(name1: string, name2: string): boolean {
-  return normalizeFormulaName(name1) === normalizeFormulaName(name2);
+export function arePackageNamesEquivalent(name1: string, name2: string): boolean {
+  return normalizePackageName(name1) === normalizePackageName(name2);
 }

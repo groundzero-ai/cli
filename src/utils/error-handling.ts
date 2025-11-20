@@ -37,34 +37,34 @@ export async function withOperationErrorHandling<T>(
 /**
  * Handle user cancellation errors consistently
  */
-export function handleUserCancellation(error: unknown): { shouldProceed: boolean; skippedFormulas: string[]; versionOverrides: Map<string, string>; forceOverwriteFormulas: Set<string> } {
+export function handleUserCancellation(error: unknown): { shouldProceed: boolean; skippedPackages: string[]; versionOverrides: Map<string, string>; forceOverwritePackages: Set<string> } {
   logger.warn(`User cancelled operation: ${error}`);
   return {
     shouldProceed: false,
-    skippedFormulas: [],
+    skippedPackages: [],
     versionOverrides: new Map(),
-    forceOverwriteFormulas: new Set()
+    forceOverwritePackages: new Set()
   };
 }
 
 /**
  * Create consistent error messages for formula operations
  */
-export function createFormulaError(formulaName: string, operation: string, error: unknown): string {
+export function createPackageError(formulaName: string, operation: string, error: unknown): string {
   return `${operation} failed for formula '${formulaName}': ${error}`;
 }
 
 /**
  * Wrap formula installation with error handling
  */
-export async function withFormulaInstallationErrorHandling<T>(
+export async function withPackageInstallationErrorHandling<T>(
   operation: () => Promise<T>,
   formulaName: string
 ): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    const errorMessage = createFormulaError(formulaName, 'Installation', error);
+    const errorMessage = createPackageError(formulaName, 'Installation', error);
     logger.error(errorMessage, { error });
     throw new Error(errorMessage);
   }

@@ -6,7 +6,7 @@
 import { join } from 'path';
 import { exists, readTextFile, writeTextFile } from './fs.js';
 import { getRootFilesFromRegistry } from './root-file-registry.js';
-import { mergeFormulaContentIntoRootFile } from './root-file-merger.js';
+import { mergePackageContentIntoRootFile } from './root-file-merger.js';
 import { logger } from './logger.js';
 import { FILE_PATTERNS, type Platform } from '../constants/index.js';
 import { getPlatformDefinition } from '../core/platforms.js';
@@ -91,7 +91,7 @@ async function installSingleRootFile(
   const sectionBody = registryContent.trim();
 
   // Merge formula content into the file
-  const mergedContent = mergeFormulaContentIntoRootFile(
+  const mergedContent = mergePackageContentIntoRootFile(
     existingContent,
     formulaName,
     sectionBody

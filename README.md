@@ -15,7 +15,7 @@ Build reusable packages for use across multiple projects and AI coding platforms
 
 Learn more in the official docs: [openpackage.dev/docs](https://openpackage.dev/docs).
 
-Looking to discover, download, or publish formulas?  
+Looking to discover, download, or publish packages?  
 Check out the official OpenPackage registry: [openpackage.dev/packages](https://openpackage.dev/packages). 
 
 > [!NOTE]  
@@ -59,21 +59,21 @@ opn save essentials .cursor/commands/essentials
 ```  
 
 ### Modular management of files
-Create domain specific formulas for modular reuse.
+Create domain specific packages for modular reuse.
 ```bash title="Terminal"
-# Create typescript formula
+# Create typescript package
 opn add typescript .cursor/rules/typescript
 opn save typescript
 
-# Create scalable-nextjs formula
+# Create scalable-nextjs package
 opn add scalable-nextjs .cursor/rules/nextjs
 opn save scalable-nextjs
 
-# Create scalable-nestjs formula
+# Create scalable-nestjs package
 opn add scalable-nestjs .cursor/rules/nestjs
 opn save scalable-nestjs
 
-# Create mongodb formula
+# Create mongodb package
 opn add mongodb .cursor/rules/mongodb
 opn save mongodb
 
@@ -90,43 +90,43 @@ opn install mongodb
 ## Usage
 
 > [!TIP]  
-> Formulas are essential to how OpenPackage works. We highly recommend reading [What are Formulas?](https://openpackage.dev/docs/what-are-formulas) to understand how formulas work.
+> Formulas are essential to how OpenPackage works. We highly recommend reading [What are Formulas?](https://openpackage.dev/docs/what-are-packages) to understand how packages work.
 
-### Add files/dirs to formula
+### Add files/dirs to package
 ```bash title="Terminal"
-opn add <formula-name> <path-to-dir-or-file>
+opn add <package-name> <path-to-dir-or-file>
 ```  
-Adds dirs or files to the formula.  
+Adds dirs or files to the package.  
 
-### Save a formula
+### Save a package
 ```bash title="Terminal"
-opn save <formula-name>
+opn save <package-name>
 ```  
-Save the set of dirs and files as a formula for reuse and cross-platform sync.
+Save the set of dirs and files as a package for reuse and cross-platform sync.
 
-### List formulas
+### List packages
 ```bash title="Terminal"
 opn list
 ```  
-Use the list command to show all formulas currently saved to the local registry.  
+Use the list command to show all packages currently saved to the local registry.  
 
-### Show formula details
+### Show package details
 ```bash title="Terminal"
-opn show <formula-name>
+opn show <package-name>
 ```  
-The show command outputs the details of the formula and lists all included files.
+The show command outputs the details of the package and lists all included files.
 
-### Install a formula
+### Install a package
 ```bash title="Terminal"
-opn install <formula-name>
+opn install <package-name>
 ```  
-Use the install command to add all files under the specified formula to the codebase at cwd.
+Use the install command to add all files under the specified package to the codebase at cwd.
 
-### Uninstall a formula
+### Uninstall a package
 ```bash title="Terminal"
-opn uninstall <formula-name>
+opn uninstall <package-name>
 ```  
-Use the uninstall command to remove all files for the specified formula from the codebase at cwd.
+Use the uninstall command to remove all files for the specified package from the codebase at cwd.
 
 > [!TIP]  
 > Learn more by heading over to the [official docs](https://openpackage.dev/docs).

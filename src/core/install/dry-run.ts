@@ -1,5 +1,5 @@
 import type { InstallOptions, CommandResult } from '../../types/index.js';
-import type { ResolvedFormula } from '../dependency-resolver.js';
+import type { ResolvedPackage } from '../dependency-resolver.js';
 import { CONFLICT_RESOLUTION } from '../../constants/index.js';
 import { installAiFiles } from '../../utils/install-orchestrator.js';
 
@@ -7,7 +7,7 @@ import { installAiFiles } from '../../utils/install-orchestrator.js';
  * Handle dry run mode for formula installation
  */
 export async function handleDryRunMode(
-  resolvedFormulas: ResolvedFormula[],
+  resolvedPackages: ResolvedPackage[],
   formulaName: string,
   targetDir: string,
   options: InstallOptions,
@@ -15,17 +15,17 @@ export async function handleDryRunMode(
 ): Promise<CommandResult> {
   console.log(`✓ Dry run - showing what would be installed:\n`);
 
-  const mainFormula = resolvedFormulas.find(f => f.isRoot);
-  if (mainFormula) {
-    console.log(`Formula: ${mainFormula.name} v${mainFormula.version}`);
-    if (mainFormula.formula.metadata.description) {
-      console.log(`Description: ${mainFormula.formula.metadata.description}`);
+  const mainPackage = resolvedPackages.find(f => f.isRoot);
+  if (mainPackage) {
+    console.log(`Package: ${mainPackage.name} v${mainPackage.version}`);
+    if (mainPackage.formula.metadata.description) {
+      console.log(`Description: ${mainPackage.formula.metadata.description}`);
     }
     console.log('');
   }
 
   // Show what would be installed to ai
-  for (const resolved of resolvedFormulas) {
+  for (const resolved of resolvedPackages) {
     if (resolved.conflictResolution === CONFLICT_RESOLUTION.SKIPPED) {
       console.log(`✓ Would skip ${resolved.name}@${resolved.version} (user would decline overwrite)`);
       continue;
@@ -52,7 +52,7 @@ export async function handleDryRunMode(
 
   // Show formula.yml update
   if (formulaYmlExists) {
-    console.log(`\n✓ Would add to .openpackage/formula.yml: ${formulaName}@${resolvedFormulas.find(f => f.isRoot)?.version}`);
+    console.log(`\n✓ Would add to .openpackage/formula.yml: ${formulaName}@${resolvedPackages.find(f => f.isRoot)?.version}`);
   } else {
     console.log('\nNo .openpackage/formula.yml found - skipping dependency addition');
   }
@@ -61,8 +61,8 @@ export async function handleDryRunMode(
     success: true,
     data: {
       dryRun: true,
-      resolvedFormulas,
-      totalFormulas: resolvedFormulas.length
+      resolvedPackages,
+      totalPackages: resolvedPackages.length
     }
   };
 }
