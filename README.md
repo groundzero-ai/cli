@@ -154,6 +154,24 @@ Files and paths will be automatically converted to platform specific designation
 | Warp | .warp/ | WARP.md | | | |
 | Windsurf | .windsurf/ | | rules/ | | | |
 
+## Configuration
+
+OpenPackage stores CLI configuration in `~/.openpackage/config.json`.  
+Profiles can now specify a `defaultScope` value:
+
+```jsonc
+{
+  "profiles": {
+    "work": {
+      "description": "Company registry",
+      "defaultScope": "@acme"
+    }
+  }
+}
+```
+
+When you run `opkg save` or `opkg push` for an unscoped package, the CLI will use the profile's `defaultScope` as the suggested scope and require choosing a scoped name before pushing to the remote registry.
+
 ## Contributing
 
 We would love your help building the future of package management for AI coding.  

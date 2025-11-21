@@ -82,8 +82,8 @@ class AuthManager {
    * Get registry URL
    */
   getRegistryUrl(): string {
-    const registryUrl = "https://backend.openpackage.dev/v1";
-    // const registryUrl = "http://localhost:3000/v1";
+    // const registryUrl = "https://backend.openpackage.dev/v1";
+    const registryUrl = "http://localhost:3000/v1";
     logger.debug(`Using registry URL: ${registryUrl}`);
     return registryUrl;
   }

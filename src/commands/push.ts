@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { join } from 'path';
 import { PushOptions, CommandResult } from '../types/index.js';
 import { PushPackageResponse } from '../types/api.js';
 import { packageManager } from '../core/package.js';
@@ -20,6 +21,14 @@ import {
   packageVersionExists 
 } from '../utils/package-versioning.js';
 import { showApiKeySignupMessage } from '../utils/messages.js';
+import { resolveScopedNameForPush, isScopedName } from '../core/scoping/package-scoping.js';
+import { renameRegistryPackage } from '../core/registry/registry-rename.js';
+import { getLocalPackageDir } from '../utils/paths.js';
+import { FILE_PATTERNS } from '../constants/index.js';
+import { exists } from '../utils/fs.js';
+import { parsePackageYml } from '../utils/package-yml.js';
+import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
+import type { PackageYmlInfo } from '../core/save/package-yml-generator.js';
 
 /**
  * Push package command implementation
@@ -48,12 +57,46 @@ async function createStablePackageVersion(pkg: any, stableVersion: string): Prom
   return newPackage;
 }
 
+async function tryRenameWorkspacePackage(
+  cwd: string,
+  oldName: string,
+  newName: string
+): Promise<void> {
+  try {
+    const packageDir = getLocalPackageDir(cwd, oldName);
+    const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
+
+    if (!(await exists(packageYmlPath))) {
+      return;
+    }
+
+    const config = await parsePackageYml(packageYmlPath);
+    const packageInfo: PackageYmlInfo = {
+      fullPath: packageYmlPath,
+      config,
+      isNewPackage: false,
+      isRootPackage: false
+    };
+
+    await applyWorkspacePackageRename(cwd, packageInfo, newName);
+    console.log(`✓ Updated workspace package name: ${oldName} → ${newName}`);
+  } catch (error) {
+    logger.debug('Workspace package rename skipped', {
+      oldName,
+      newName,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 async function pushPackageCommand(
   packageInput: string,
   options: PushOptions
 ): Promise<CommandResult> {
   logger.info(`Pushing package '${packageInput}' to remote registry`, { options });
+  const cwd = process.cwd();
   const { name: parsedName, version: parsedVersion } = parsePackageInput(packageInput);
+  let packageNameToPush = parsedName;
   let attemptedVersion: string | undefined;
 
   showApiKeySignupMessage();
@@ -61,16 +104,23 @@ async function pushPackageCommand(
   try {
     // Ensure registry directories exist
     await ensureRegistryDirectories();
-    
+
     // Verify package exists locally
-    const exists = await packageManager.packageExists(parsedName);
-    if (!exists) {
-      console.error(`❌ Package '${parsedName}' not found in local registry`);
+    const packageExists = await packageManager.packageExists(packageNameToPush);
+    if (!packageExists) {
+      console.error(`❌ Package '${packageNameToPush}' not found in local registry`);
       return { success: false, error: 'Package not found' };
     }
-    
+
+    if (!isScopedName(packageNameToPush)) {
+      const scopedName = await resolveScopedNameForPush(packageNameToPush, options.profile);
+      await renameRegistryPackage(packageNameToPush, scopedName);
+      await tryRenameWorkspacePackage(cwd, packageNameToPush, scopedName);
+      packageNameToPush = scopedName;
+    }
+
     // Load package and determine version
-    let pkg = await packageManager.loadPackage(parsedName, parsedVersion);
+    let pkg = await packageManager.loadPackage(packageNameToPush, parsedVersion);
     let versionToPush = parsedVersion || pkg.metadata.version;
     attemptedVersion = versionToPush;
 
@@ -115,7 +165,7 @@ async function pushPackageCommand(
     const registryUrl = authManager.getRegistryUrl();
     const profile = authManager.getCurrentProfile(authOptions);
     
-    console.log(`✓ Pushing package '${parsedName}' to remote registry...`);
+    console.log(`✓ Pushing package '${packageNameToPush}' to remote registry...`);
     console.log(`✓ Version: ${versionToPush}`);
     console.log(`✓ Profile: ${profile}`);
     console.log('');
@@ -133,7 +183,7 @@ async function pushPackageCommand(
     console.log(`✓ Created tarball (${pkg.files.length} files, ${formatFileSize(tarballInfo.size)})`);
     
     // Step 3: Prepare upload data
-    const formData = createFormDataForUpload(parsedName, versionToPush, tarballInfo);
+    const formData = createFormDataForUpload(packageNameToPush, versionToPush, tarballInfo);
     
     // Step 4: Upload to registry
     const uploadSpinner = new Spinner('Uploading to registry...');
@@ -179,14 +229,14 @@ async function pushPackageCommand(
     };
     
   } catch (error) {
-    logger.debug('Push command failed', { error, packageName: parsedName });
+    logger.debug('Push command failed', { error, packageName: packageNameToPush });
     
     // Handle specific error cases
     if (error instanceof Error) {
       const apiError = (error as any).apiError;
       
       if (apiError?.statusCode === 409) {
-        console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for package '${parsedName}'`);
+        console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for package '${packageNameToPush}'`);
         console.log('');
         console.log('💡 Try one of these options:');
         console.log('  • Increment version with command "opkg save <package> stable"');

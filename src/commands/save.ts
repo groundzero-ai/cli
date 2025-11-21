@@ -14,6 +14,7 @@ import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { packageVersionExists } from '../utils/package-versioning.js';
 import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
 import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
+import { resolveEffectiveNameForSave } from '../core/scoping/package-scoping.js';
 
 /**
  * Main implementation of the save package command
@@ -35,6 +36,8 @@ async function savePackageCommand(
 
   // Parse inputs to determine the pattern being used
   const { name, version: explicitVersion } = parsePackageInput(packageName);
+  const nameResolution = await resolveEffectiveNameForSave(name);
+  const resolvedName = nameResolution.effectiveName;
 
   const renameInput = options?.rename?.trim();
   let renameTarget: string | undefined;
@@ -48,9 +51,13 @@ async function savePackageCommand(
       renameVersion = renameVer;
       logger.debug(`Renaming package during save`, { from: name, to: renameTarget, version: renameVersion });
     }
+  } else if (nameResolution.nameChanged) {
+    renameTarget = resolvedName;
+    logger.debug(`Applying scoped name resolution for save`, { from: name, to: renameTarget });
+    console.log(`✓ Using scoped package name '${renameTarget}' for save operation`);
   }
 
-  logger.debug(`Saving package with name: ${name}`, { explicitVersion, options });
+  logger.debug(`Saving package with name: ${resolvedName}`, { explicitVersion, options });
 
   // Initialize package environment
   await ensureRegistryDirectories();

@@ -20,6 +20,7 @@ export interface OpenPackageConfig {
 
 export interface ProfileConfig {
   description?: string;
+  defaultScope?: string;
 }
 
 export interface ProfileCredentials {
