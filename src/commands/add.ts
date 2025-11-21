@@ -103,8 +103,7 @@ export function setupAddCommand(program: Command): void {
 async function runAddCommand(packageName: string, inputPath: string, options: AddCommandOptions = {}): Promise<CommandResult<void>> {
   const cwd = process.cwd();
 
-  const ensuredPackage = await ensurePackageExists(cwd, packageName);
-
+  // Validate and inspect the input path first
   const resolvedInputPath = resolve(cwd, inputPath);
   await validateSourcePath(resolvedInputPath, cwd);
 
@@ -127,6 +126,9 @@ async function runAddCommand(packageName: string, inputPath: string, options: Ad
       }
     );
   }
+
+  // Only now ensure/create the package & package.yml
+  const ensuredPackage = await ensurePackageExists(cwd, packageName);
 
   const changedFiles = await copyWithConflictResolution(
     ensuredPackage,
