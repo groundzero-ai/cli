@@ -8,7 +8,7 @@ import { addPackageToYml, createBasicPackageYml } from '../utils/package-managem
 import { performPlatformSync } from '../core/sync/platform-sync.js';
 import { parsePackageInput, normalizePackageName } from '../utils/package-name.js';
 import { discoverPackageFilesForSave } from '../core/save/save-file-discovery.js';
-import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
+import { ERROR_MESSAGES, LOG_PREFIXES } from '../core/save/constants.js';
 import { getOrCreatePackageYml } from '../core/save/package-yml-generator.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { packageVersionExists } from '../utils/package-versioning.js';

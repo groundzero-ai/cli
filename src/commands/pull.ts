@@ -5,7 +5,6 @@ import { hasPackageVersion } from '../core/directory.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { parsePackageInput } from '../utils/package-name.js';
-import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptOverwriteConfirmation } from '../utils/prompts.js';
 import { formatFileSize } from '../utils/formatters.js';
 import { fetchRemotePackageMetadata, pullPackageFromRemote, pullDownloadsBatchFromRemote, RemotePullFailure } from '../core/remote-pull.js';
@@ -253,8 +252,6 @@ async function pullPackageCommand(
 ): Promise<CommandResult> {
   const { name: parsedName, version: parsedVersion } = parsePackageInput(packageInput);
   logger.info(`Pulling package '${parsedName}' from remote registry`, { options });
-
-  showBetaRegistryMessage();
 
   try {
     const pullOptions = {

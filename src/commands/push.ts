@@ -10,7 +10,6 @@ import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromPackage, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
 import { parsePackageInput } from '../utils/package-name.js';
-import { showBetaRegistryMessage } from '../utils/messages.js';
 import { promptConfirmation } from '../utils/prompts.js';
 import { UserCancellationError } from '../utils/errors.js';
 import { formatFileSize } from '../utils/formatters.js';
@@ -20,6 +19,7 @@ import {
   transformPackageFilesForVersionChange,
   packageVersionExists 
 } from '../utils/package-versioning.js';
+import { showApiKeySignupMessage } from '../utils/messages.js';
 
 /**
  * Push package command implementation
@@ -56,8 +56,8 @@ async function pushPackageCommand(
   const { name: parsedName, version: parsedVersion } = parsePackageInput(packageInput);
   let attemptedVersion: string | undefined;
 
-  showBetaRegistryMessage();
-  
+  showApiKeySignupMessage();
+
   try {
     // Ensure registry directories exist
     await ensureRegistryDirectories();
