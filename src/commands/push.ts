@@ -21,7 +21,7 @@ import {
   packageVersionExists 
 } from '../utils/package-versioning.js';
 import { showApiKeySignupMessage } from '../utils/messages.js';
-import { resolveScopedNameForPush, isScopedName } from '../core/scoping/package-scoping.js';
+import { resolveScopedNameForPushWithUserScope, isScopedName } from '../core/scoping/package-scoping.js';
 import { renameRegistryPackage } from '../core/registry/registry-rename.js';
 import { getLocalPackageDir } from '../utils/paths.js';
 import { FILE_PATTERNS } from '../constants/index.js';
@@ -29,6 +29,7 @@ import { exists } from '../utils/fs.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
 import type { PackageYmlInfo } from '../core/save/package-yml-generator.js';
+import { getCurrentUsername } from '../core/api-keys.js';
 
 /**
  * Push package command implementation
@@ -112,8 +113,21 @@ async function pushPackageCommand(
       return { success: false, error: 'Package not found' };
     }
 
+    const authOptions = {
+      profile: options.profile,
+      apiKey: options.apiKey
+    };
+
+    // Authentication required for push operation (also needed for scope resolution)
+    await authManager.validateAuth(authOptions);
+
     if (!isScopedName(packageNameToPush)) {
-      const scopedName = await resolveScopedNameForPush(packageNameToPush, options.profile);
+      const username = await getCurrentUsername(authOptions);
+      const scopedName = await resolveScopedNameForPushWithUserScope(
+        packageNameToPush,
+        username,
+        options.profile
+      );
       await renameRegistryPackage(packageNameToPush, scopedName);
       await tryRenameWorkspacePackage(cwd, packageNameToPush, scopedName);
       packageNameToPush = scopedName;
@@ -137,7 +151,7 @@ async function pushPackageCommand(
         // Latest is prerelease and no version was specified -> prompt to convert
         const proceed = await promptConfirmation(
           `Latest version '${versionToPush}' is a prerelease. Convert to stable and push?`,
-          false
+          true
         );
         if (!proceed) {
           throw new UserCancellationError('User declined prerelease to stable conversion');
@@ -152,14 +166,6 @@ async function pushPackageCommand(
     }
     
     // Authenticate and create HTTP client
-    const authOptions = {
-      profile: options.profile,
-      apiKey: options.apiKey
-    };
-
-    // Authentication required for push operation
-    await authManager.validateAuth(authOptions);
-    
     const httpClient = await createHttpClient(authOptions);
     
     const registryUrl = authManager.getRegistryUrl();

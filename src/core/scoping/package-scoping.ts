@@ -42,6 +42,30 @@ async function isPackageNameTaken(name: string): Promise<boolean> {
   return await exists(getPackagePath(normalized));
 }
 
+function buildScopedNameFromScope(unscopedName: string, scope: string): string {
+  const normalizedScope = normalizePackageName(scope.replace(/^@/, ''));
+  const normalizedName = normalizePackageName(unscopedName);
+  return `@${normalizedScope}/${normalizedName}`;
+}
+
+async function ensureScopedNameAvailable(name: string): Promise<void> {
+  try {
+    validatePackageName(name);
+  } catch (error) {
+    throw new Error((error as Error).message.replace('%s', name));
+  }
+
+  if (!isScopedName(name)) {
+    throw new Error('Name must be scoped (e.g. @scope/name)');
+  }
+
+  if (await isPackageNameTaken(name)) {
+    throw new Error(
+      `Package '${name}' already exists in local registry. Choose a different scoped name.`
+    );
+  }
+}
+
 /**
  * Fetch the configured default scope for a given profile (if any).
  */
@@ -90,17 +114,11 @@ export async function promptForNewScopedName(
     validate: async (value: string) => {
       if (!value) return 'Name is required';
       try {
-        validatePackageName(value);
+        await ensureScopedNameAvailable(value);
+        return true;
       } catch (error) {
-        return (error as Error).message.replace('%s', value);
+        return (error as Error).message;
       }
-      if (!isScopedName(value)) {
-        return 'Name must be scoped (e.g. @scope/name)';
-      }
-      if (await isPackageNameTaken(value)) {
-        return `Package '${value}' already exists in local registry. Choose a different scoped name.`;
-      }
-      return true;
     }
   });
 
@@ -128,6 +146,81 @@ export async function resolveScopedNameForPush(
     profileName,
     `Remote registry requires a scope. Enter a scoped name for '${unscopedName}' (format @scope/${unscopedName}):`
   );
+}
+
+export async function resolveScopedNameForPushWithUserScope(
+  unscopedName: string,
+  username: string,
+  profileName?: string
+): Promise<string> {
+  if (isScopedName(unscopedName)) {
+    throw new Error(`Expected unscoped name, received '${unscopedName}'`);
+  }
+
+  if (!username?.trim()) {
+    throw new Error('Username is required to apply default scope.');
+  }
+
+  const normalizedName = normalizePackageName(unscopedName);
+
+  const selection = await safePrompts({
+    type: 'select',
+    name: 'choice',
+    message: `Package '${normalizedName}' must be scoped before pushing. Choose a scope:`,
+    choices: [
+      {
+        title: `Use default scope @${username}`,
+        value: 'default',
+        description: `Renames to @${username}/${normalizedName}`
+      },
+      {
+        title: 'Enter scope...',
+        value: 'custom',
+        description: `Enter a custom scope for ${normalizedName}`
+      }
+    ],
+    hint: 'Use arrow keys to select, Enter to confirm'
+  });
+
+  const choice = (selection as any).choice as 'default' | 'custom' | undefined;
+  if (!choice) {
+    throw new UserCancellationError('Operation cancelled by user');
+  }
+
+  let scope = username;
+  if (choice === 'custom') {
+    const profileScope = await getDefaultScopeForProfile(profileName);
+    const initialScope = profileScope?.replace(/^@/, '') || username;
+
+    const scopeResponse = await safePrompts({
+      type: 'text',
+      name: 'scope',
+      message: `Enter a scope (without @) for '${normalizedName}':`,
+      initial: initialScope,
+      validate: async (value: string) => {
+        if (!value) return 'Scope is required';
+
+        const candidate = buildScopedNameFromScope(normalizedName, value);
+        try {
+          await ensureScopedNameAvailable(candidate);
+          return true;
+        } catch (error) {
+          return (error as Error).message;
+        }
+      }
+    });
+
+    const enteredScope = (scopeResponse as any).scope as string | undefined;
+    if (!enteredScope) {
+      throw new UserCancellationError('Operation cancelled by user');
+    }
+
+    scope = enteredScope;
+  }
+
+  const scopedName = buildScopedNameFromScope(normalizedName, scope);
+  await ensureScopedNameAvailable(scopedName);
+  return scopedName;
 }
 
 export interface SaveNameResolution {
