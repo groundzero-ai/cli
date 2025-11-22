@@ -80,7 +80,8 @@ export const UNIVERSAL_SUBDIRS = {
   SKILLS: 'skills'
 } as const;
 
-export const PACKAGE_DIRS = {
+export const OPENPACKAGE_DIRS = {
+  REGISTRY: 'registry',
   PACKAGES: 'packages',
   CACHE: 'cache',
   RUNTIME: 'runtime'
@@ -102,6 +103,6 @@ export type Platform = typeof PLATFORMS[keyof typeof PLATFORMS];
 export type PlatformDir = typeof PLATFORM_DIRS[keyof typeof PLATFORM_DIRS];
 export type FilePattern = typeof FILE_PATTERNS[keyof typeof FILE_PATTERNS];
 export type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
-export type PackageDir = typeof PACKAGE_DIRS[keyof typeof PACKAGE_DIRS];
+export type OpenPackageDir = typeof OPENPACKAGE_DIRS[keyof typeof OPENPACKAGE_DIRS];
 export type DependencyArray = typeof DEPENDENCY_ARRAYS[keyof typeof DEPENDENCY_ARRAYS];
 export type ConflictResolution = typeof CONFLICT_RESOLUTION[keyof typeof CONFLICT_RESOLUTION];

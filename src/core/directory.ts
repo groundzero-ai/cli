@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
 import { OpenPackageDirectories } from '../types/index.js';
-import { PLATFORM_DIRS, PACKAGE_DIRS } from '../constants/index.js';
+import { PLATFORM_DIRS, OPENPACKAGE_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { normalizePackageName } from '../utils/package-name.js';
@@ -23,7 +23,7 @@ export function getOpenPackageDirectories(): OpenPackageDirectories {
   return {
     config: openPackageDir,
     data: openPackageDir,  // Same directory - follows dotfile convention
-    cache: path.join(openPackageDir, PACKAGE_DIRS.CACHE),
+    cache: path.join(openPackageDir, OPENPACKAGE_DIRS.CACHE),
     runtime: path.join(os.tmpdir(), 'openpackage')
   };
 }
@@ -55,10 +55,10 @@ export async function ensureOpenPackageDirectories(): Promise<OpenPackageDirecto
  */
 export function getRegistryDirectories(): { packages: string } {
   const openPackageDirs = getOpenPackageDirectories();
-  const registryDir = path.join(openPackageDirs.data, 'registry');
-  
+  const registryDir = path.join(openPackageDirs.data, OPENPACKAGE_DIRS.REGISTRY);
+
   return {
-    packages: path.join(registryDir, PACKAGE_DIRS.PACKAGES)
+    packages: registryDir
   };
 }
 

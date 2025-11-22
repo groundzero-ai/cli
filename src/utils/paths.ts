@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { PLATFORM_DIRS, FILE_PATTERNS, PACKAGE_DIRS } from '../constants/index.js';
+import { PLATFORM_DIRS, FILE_PATTERNS, OPENPACKAGE_DIRS } from '../constants/index.js';
 import { exists } from './fs.js';
 import { arePackageNamesEquivalent, SCOPED_PACKAGE_REGEX } from './package-name.js';
 import { parsePackageYml } from './package-yml.js';
@@ -44,7 +44,7 @@ export function getLocalOpenPackageDir(cwd: string): string {
  * Get the local packages directory path
  */
 export function getLocalPackagesDir(cwd: string): string {
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, OPENPACKAGE_DIRS.PACKAGES);
 }
 
 /**
@@ -55,9 +55,9 @@ export function getLocalPackageDir(cwd: string, packageName: string): string {
   const scopedMatch = packageName.match(SCOPED_PACKAGE_REGEX);
   if (scopedMatch) {
     const [, scope, localName] = scopedMatch;
-    return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES, '@' + scope, localName);
+    return join(cwd, PLATFORM_DIRS.OPENPACKAGE, OPENPACKAGE_DIRS.PACKAGES, '@' + scope, localName);
   }
-  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, PACKAGE_DIRS.PACKAGES, packageName);
+  return join(cwd, PLATFORM_DIRS.OPENPACKAGE, OPENPACKAGE_DIRS.PACKAGES, packageName);
 }
 
 /**
