@@ -135,9 +135,8 @@ class AuthManager {
    */
   async getAuthHeaders(options: AuthOptions = {}): Promise<Record<string, string>> {
     const { apiKey } = await this.validateAuth(options);
-    
     return {
-      'Authorization': `Bearer ${apiKey}`,
+      'X-API-Key': apiKey,
       'User-Agent': `openpackage-cli/${getVersion()}`
     };
   }
