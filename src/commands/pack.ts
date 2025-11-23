@@ -17,7 +17,7 @@ import { createWorkspaceHash } from '../utils/version-generator.js';
 import { computePackTargetVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { packageVersionExists } from '../utils/package-versioning.js';
-import { deleteWorkspaceLinks } from '../utils/package-link-yml.js';
+import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
 import { writePackageYml } from '../utils/package-yml.js';
 
 async function packPackageCommand(
@@ -106,6 +106,8 @@ async function packPackageCommand(
     return { success: false, error: registrySave.error || 'Pack operation failed' };
   }
 
+  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceHash);
+
   const syncResult = await performPlatformSync(
     cwd,
     effectiveConfig.name,
@@ -132,8 +134,6 @@ async function packPackageCommand(
       logger.debug(`Skipping addition of ${effectiveConfig.name} to package.yml; already covered transitively.`);
     }
   }
-
-  await deleteWorkspaceLinks(effectiveConfig.name, workspaceHash);
 
   // Update package.index.yml workspace.version to the just-packed stable version
   if (indexRecord) {

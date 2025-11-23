@@ -43,18 +43,17 @@ This plan refactors the existing `save` command into two orthogonal ones, minimi
    - Where read base for `save` bump? Staging `package.yml`? Registry latest stable? User arg?
    - Confirm: Staging `package.yml` stays unchanged (e.g., always `1.0.0`), full WIP only in registry `index.yml`?
 2. **Platform sync details**: What does "platform sync" entail exactly? Run `platform-sync.ts` + `root-files-sync.ts` always pre-save/pack? Any pkg-specific?
-3. **Local staging after save**: Keep files at `packages/<pkg>` (pointer to it), or rename/symlink to `pkg@wip.<ver>`? (Affects sourcePath.)
+3. **Local staging after save**: Keep files at `packages/<pkg>` (source for full copy), no special renaming needed.
 4. **Current save bumps?**: Does existing `save` auto-bump versions (how)? Bump minor/patch? Need to read `save/package-yml-versioning.ts`?
 5. **Pack cleanup**: Auto-rm this WS's WIP on pack? Or flag?
 6. **CLI syntax**: `save [pkg]` (infer from cwd)? `save --base 1.0.1`? `pack --force`?
 7. **WIP promotion**: Typical flow `save` → iterate → `pack`? Any `save --pack` shortcut?
 8. **Multi-pkg**: Commands handle one `<pkg>` or all?
-9. **Errors**: If sourcePath invalid on install, fallback to what? Tarball auto-gen?
+9. **Errors**: If registry copy is corrupted on install, fallback to what? (Registry copies should be self-contained.)
 10. **wsHash precision**: 8 chars enough (1-in-10^15 collision)? Full SHA if paranoid.
 
 Feedback:
 - Completely remove `save --stable` stable option, no backwards compatability, `pack` command onwards
-- In registry for wip linking, use `package.link.yml` instead of `index.yml`, and only write `sourcePath` (version info is in parent directory name)
 Clarification:
 1. Read base for save bump using staging ws .openpackage/packages/<pkg>/package.yml. There is an existing .openpackage/packages/<pkg>/package.index.yml file with version and files fields. For WIP builds, package.yml version will always show base version, the package.index.yml version will show/be updated to exact version, whether stable or wip.
 2. Please take a look at the current implementation of save.ts, it should include both platform-sync and root-files-sync. Basically any existing functionality should remain intact, and be used for both save and pack, only changes are the ones I mentioned explicitly.

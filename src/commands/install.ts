@@ -147,7 +147,7 @@ async function installAllPackagesCommand(
       console.log('\nTips:');
       console.log('• Root packages cannot be installed as dependencies');
       console.log('• Use "opkg install <package-name>" to install external packages');
-      console.log('• Use "opkg save" to save your root package to the registry');
+      console.log('• Use "opkg save" to create a WIP copy of your root package in the registry');
     } else {
       console.log('⚠️ No packages found in package.yml');
       console.log('\nTips:');
@@ -924,7 +924,7 @@ export function setupInstallCommand(program: Command): void {
   program
     .command('install')
     .alias('i')
-    .description('Install packages from local registry to codebase at cwd. Supports versioning with package@version syntax.')
+    .description('Install packages from the local (and optional remote) registry into this workspace. Works with WIP copies from `opkg save` and stable releases from `opkg pack`.')
     .argument('[package-name]', 'name of the package to install (optional - installs all from package.yml if not specified). Supports package@version syntax.')
     .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')
     .option('--dry-run', 'preview changes without applying them')

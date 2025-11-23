@@ -15,8 +15,8 @@ import { resolveEffectiveNameForSave } from '../core/scoping/package-scoping.js'
 import { readPackageIndex } from '../utils/package-index-yml.js';
 import { createWorkspaceHash } from '../utils/version-generator.js';
 import { computeWipVersion } from '../core/save/save-versioning.js';
-import { writePackageLink, deleteWorkspaceLinks } from '../utils/package-link-yml.js';
-import { getLocalPackageDir } from '../utils/paths.js';
+import { savePackageToRegistry } from '../core/save/package-saver.js';
+import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
 
 /**
  * Main implementation of the save package command
@@ -111,11 +111,15 @@ async function savePackageCommand(
     }
   );
 
-  const sourcePath = getLocalPackageDir(cwd, effectiveConfig.name);
-  await writePackageLink(effectiveConfig.name, effectiveConfig.version, {
-    sourcePath
-  });
-  await deleteWorkspaceLinks(effectiveConfig.name, workspaceHash, {
+  const registrySave = await savePackageToRegistry(
+    { ...packageInfo, config: effectiveConfig },
+    packageFiles
+  );
+  if (!registrySave.success) {
+    return { success: false, error: registrySave.error || 'Save operation failed' };
+  }
+
+  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceHash, {
     keepVersion: effectiveConfig.version
   });
 

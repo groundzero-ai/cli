@@ -30,7 +30,7 @@ This document captures the agreed behavior for versioning when splitting `save` 
       - After `pack`: the **exact stable version** that was packed (e.g. `1.2.3`).
     - `workspace.hash`:
       - 8-character hash derived from the current workspace path (`cwd`).
-      - Used to scope cleanup of WIP link entries to this workspace.
+      - Used to scope cleanup of WIP registry directories to this workspace.
     - `files`: last saved file mapping snapshot.
   - **Priority vs `package.yml`**:
     - **Advisory only** for continuity (e.g. showing last WIP or stable).
@@ -108,8 +108,8 @@ Behavior:
 - Effect:
   - `package.yml.version` **remains `S`** (e.g. `1.2.3`).
   - `package.index.yml.workspace.version` is set to the new `wipVersion`.
-  - A new `package.link.yml` is written for this WIP version.
-  - Older WIPs for the **same `workspaceHash`** are cleaned up (registry link entries).
+  - A new WIP copy is saved to the registry at `<pkg>/<wipVersion>/...`.
+  - Older WIP copies for the **same `workspaceHash`** are cleaned up (registry directories).
 
 #### 3.3 Out-of-sync case: user manually changes `package.yml.version`
 
@@ -133,7 +133,7 @@ Behavior:
 - Writes:
   - `package.yml.version` stays at the user-specified `3.0.0`.
   - `package.index.yml.workspace.version` becomes `3.0.0-wip.*`.
-  - Registry link file is updated accordingly, with old WIPs for this `workspaceHash` cleaned up.
+  - Registry WIP copy is created accordingly, with old WIPs for this `workspaceHash` cleaned up.
 
 - This rule is **the same** whether the old `lastWorkspaceVersion` was WIP or stable:
   - In all mismatched cases, `package.yml` wins and the WIP stream restarts from `package.yml.version`.
@@ -164,7 +164,7 @@ Behavior:
     - Sets `package.index.yml.workspace.version` to that stable version `S`.
     - Refreshes `files` mapping based on the just-packed snapshot.
   - **WIP cleanup**:
-    - Removes this workspace’s WIP link entries (`package.link.yml`) for that package, using `workspaceHash`.
+    - Removes this workspace’s WIP registry directories for that package, using `workspaceHash`.
 
 - `package.yml.version` after `pack`:
   - After a successful `pack` of `S`:
