@@ -1,3 +1,4 @@
+import * as semver from 'semver';
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, PackageYml } from '../types/index.js';
 import { ResolvedPackage } from '../core/dependency-resolver.js';
@@ -38,10 +39,16 @@ import {
 } from '../utils/error-handling.js';
 import { extractPackagesFromConfig } from '../utils/install-helpers.js';
 import { parsePackageYml } from '../utils/package-yml.js';
-import { parsePackageInput } from '../utils/package-name.js';
+import { parsePackageInput, arePackageNamesEquivalent } from '../utils/package-name.js';
 import { packageManager } from '../core/package.js';
 import { safePrompts } from '../utils/prompts.js';
-import { isExactVersion, resolveVersionRange } from '../utils/version-ranges.js';
+import {
+  createCaretRange,
+  isExactVersion,
+  isPrereleaseVersion,
+  parseVersionRange,
+  resolveVersionRange
+} from '../utils/version-ranges.js';
 import {
   fetchRemotePackageMetadata,
   pullDownloadsBatchFromRemote,
@@ -53,8 +60,46 @@ import { createDownloadKey, computeMissingDownloadKeys } from '../core/install/d
 import { fetchMissingDependencyMetadata, pullMissingDependencies, planRemoteDownloadsForPackage } from '../core/install/remote-flow.js';
 import { recordBatchOutcome, describeRemoteFailure } from '../core/install/remote-reporting.js';
 import { handleDryRunMode } from '../core/install/dry-run.js';
-import { InstallScenario } from '../core/install/types.js';
-import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
+import { InstallScenario, InstallResolutionMode } from '../core/install/types.js';
+import { selectVersionForInstall } from '../core/install/version-selection.js';
+import type { InstallVersionSelectionResult } from '../core/install/version-selection';
+
+export function determineResolutionMode(options: InstallOptions & { local?: boolean; resolutionMode?: InstallResolutionMode }): InstallResolutionMode {
+  if (options.resolutionMode) {
+    return options.resolutionMode;
+  }
+
+  if (options.remote) {
+    return 'remote-primary';
+  }
+
+  if (options.local) {
+    return 'local-only';
+  }
+
+  return 'default';
+}
+
+export function validateResolutionFlags(options: InstallOptions & { local?: boolean; remote?: boolean }): void {
+  if (options.remote && options.local) {
+    throw new Error('--remote and --local cannot be used together. Choose one resolution mode.');
+  }
+}
+
+export function selectInstallScenario(
+  resolutionMode: InstallResolutionMode,
+  mainPackageAvailableLocally: boolean
+): InstallScenario {
+  if (resolutionMode === 'remote-primary') {
+    return 'force-remote';
+  }
+
+  if (resolutionMode === 'local-only') {
+    return 'local-primary';
+  }
+
+  return mainPackageAvailableLocally ? 'local-primary' : 'remote-primary';
+}
 
 /**
  * Install all packages from CWD package.yml file
@@ -301,6 +346,8 @@ async function installPackageCommand(
 ): Promise<CommandResult> {
   const cwd = process.cwd();
 
+  const resolutionMode: InstallResolutionMode = options.resolutionMode ?? determineResolutionMode(options);
+
   // 1) Validate root package and early return
   if (await isRootPackage(cwd, packageName)) {
     console.log(`⚠️  Cannot install ${packageName} - it matches your project's root package name`);
@@ -316,31 +363,58 @@ async function installPackageCommand(
   logger.debug(`Installing package '${packageName}' with dependencies to: ${getAIDir(cwd)}`, { options });
 
   const dryRun = !!options.dryRun;
-  const forceRemote = !!options.remote;
+  const forceRemote = resolutionMode === 'remote-primary';
   const warnings: string[] = [];
 
-  const versionConstraint = version;
+  const canonicalPlan = await determineCanonicalInstallPlan({
+    cwd,
+    packageName,
+    cliSpec: version,
+    devFlag: options.dev ?? false
+  });
 
-  let downloadVersion = versionConstraint;
-  if (versionConstraint && !isExactVersion(versionConstraint)) {
-    try {
-      const localVersions = await listPackageVersions(packageName);
-      downloadVersion = resolveVersionRange(versionConstraint, localVersions) ?? undefined;
-    } catch {
-      downloadVersion = undefined;
-    }
+  if (canonicalPlan.compatibilityMessage) {
+    console.log(`ℹ️  ${canonicalPlan.compatibilityMessage}`);
   }
+
+  let versionConstraint = canonicalPlan.effectiveRange;
+
+  const preselection = await selectVersionForInstall({
+    packageName,
+    constraint: versionConstraint,
+    mode: resolutionMode,
+    profile: options.profile,
+    apiKey: options.apiKey
+  });
+
+  if (preselection.sources.warnings.length > 0) {
+    preselection.sources.warnings.forEach(message => {
+      warnings.push(message);
+      console.log(`⚠️  ${message}`);
+    });
+  }
+
+  const selectedRootVersion = preselection.selectedVersion;
+  if (!selectedRootVersion) {
+    const constraintLabel =
+      canonicalPlan.dependencyState === 'existing' && canonicalPlan.canonicalRange
+        ? canonicalPlan.canonicalRange
+        : versionConstraint;
+    throw buildNoVersionFoundError(packageName, constraintLabel, preselection.selection, resolutionMode);
+  }
+
+  if (preselection.selection.isPrerelease) {
+    console.log(`ℹ️  Selected pre-release version ${selectedRootVersion} for ${packageName}`);
+  }
+
+  let downloadVersion = selectedRootVersion;
 
   const mainPackageAvailableLocally = downloadVersion
     ? await hasPackageVersion(packageName, downloadVersion)
     : await packageManager.packageExists(packageName);
 
   // 2) Determine install scenario
-  const scenario: InstallScenario = forceRemote
-    ? 'force-remote'
-    : mainPackageAvailableLocally
-      ? 'local-primary'
-      : 'remote-primary';
+  const scenario = selectInstallScenario(resolutionMode, mainPackageAvailableLocally);
 
   // 3) Prepare env via prepareInstallEnvironment
   const { specifiedPlatforms } = await prepareInstallEnvironment(cwd, options);
@@ -354,6 +428,9 @@ async function installPackageCommand(
   > => {
     try {
       const data = await resolveDependenciesForInstall(packageName, cwd, versionConstraint, options);
+      if (data.warnings && data.warnings.length > 0) {
+        data.warnings.forEach(message => warnings.push(message));
+      }
       return { success: true, data };
     } catch (error) {
       if (error instanceof VersionResolutionAbortError) {
@@ -386,7 +463,7 @@ async function installPackageCommand(
     resolvedPackages = initialResolution.data.resolvedPackages;
     missingPackages = initialResolution.data.missingPackages;
 
-    if (missingPackages.length > 0) {
+    if (missingPackages.length > 0 && resolutionMode !== 'local-only') {
 
       // Fetch metadata via fetchMissingDependencyMetadata
       const metadataResults = await fetchMissingDependencyMetadata(missingPackages, resolvedPackages, { dryRun, profile: options.profile, apiKey: options.apiKey });
@@ -415,6 +492,10 @@ async function installPackageCommand(
         resolvedPackages = refreshedResolution.data.resolvedPackages;
         missingPackages = refreshedResolution.data.missingPackages;
       }
+    } else if (missingPackages.length > 0 && resolutionMode === 'local-only') {
+      logger.info('Local-only mode: missing dependencies will not be pulled from remote', {
+        missingPackages: Array.from(new Set(missingPackages))
+      });
     }
   } else {
     // 6) Else (remote-primary / force-remote)
@@ -545,11 +626,16 @@ async function installPackageCommand(
   }
 
   if (packageYmlExists && mainPackage) {
-    const transitivelyCovered = await isPackageTransitivelyCovered(cwd, mainPackage.name);
-    if (!transitivelyCovered) {
-      await addPackageToYml(cwd, packageName, mainPackage.version, options.dev || false, version, true);
-    } else {
-      logger.debug(`Skipping addition of ${mainPackage.name} to package.yml; already covered transitively.`);
+    const persistTarget = resolvePersistRange(canonicalPlan.persistDecision, mainPackage.version);
+    if (persistTarget) {
+      await addPackageToYml(
+        cwd,
+        packageName,
+        mainPackage.version,
+        persistTarget.target === 'dev-packages',
+        persistTarget.range,
+        true
+      );
     }
   }
 
@@ -581,6 +667,227 @@ async function installPackageCommand(
 }
 
 
+type DependencyTarget = 'packages' | 'dev-packages';
+
+type PersistDecision =
+  | { type: 'none' }
+  | { type: 'explicit'; target: DependencyTarget; range: string }
+  | { type: 'derive'; target: DependencyTarget; mode: 'caret-or-exact' };
+
+interface CanonicalInstallPlan {
+  effectiveRange: string;
+  dependencyState: 'fresh' | 'existing';
+  canonicalRange?: string;
+  canonicalTarget?: DependencyTarget;
+  persistDecision: PersistDecision;
+  compatibilityMessage?: string;
+}
+
+interface CanonicalPlanArgs {
+  cwd: string;
+  packageName: string;
+  cliSpec?: string;
+  devFlag: boolean;
+}
+
+interface ParsedConstraint {
+  resolverRange: string;
+  displayRange: string;
+}
+
+async function determineCanonicalInstallPlan(args: CanonicalPlanArgs): Promise<CanonicalInstallPlan> {
+  const normalizedCliSpec = args.cliSpec?.trim() || undefined;
+  const existing = await findCanonicalDependency(args.cwd, args.packageName);
+
+  const target: DependencyTarget = args.devFlag ? 'dev-packages' : 'packages';
+
+  if (existing) {
+    const canonicalConstraint = parseConstraintOrThrow('package', existing.range, args.packageName);
+
+    if (normalizedCliSpec) {
+      const cliConstraint = parseConstraintOrThrow('cli', normalizedCliSpec, args.packageName);
+      if (!isRangeSubset(cliConstraint.resolverRange, canonicalConstraint.resolverRange)) {
+        throw buildCanonicalConflictError(args.packageName, cliConstraint.displayRange, existing.range);
+      }
+
+      return {
+        effectiveRange: canonicalConstraint.resolverRange,
+        dependencyState: 'existing',
+        canonicalRange: existing.range,
+        canonicalTarget: existing.target,
+        persistDecision: { type: 'none' },
+        compatibilityMessage: `Using version range from package.yml (${existing.range}); CLI spec '${cliConstraint.displayRange}' is compatible.`
+      };
+    }
+
+    return {
+      effectiveRange: canonicalConstraint.resolverRange,
+      dependencyState: 'existing',
+      canonicalRange: existing.range,
+      canonicalTarget: existing.target,
+      persistDecision: { type: 'none' }
+    };
+  }
+
+  if (normalizedCliSpec) {
+    const cliConstraint = parseConstraintOrThrow('cli', normalizedCliSpec, args.packageName);
+    return {
+      effectiveRange: cliConstraint.resolverRange,
+      dependencyState: 'fresh',
+      persistDecision: {
+        type: 'explicit',
+        target,
+        range: cliConstraint.displayRange
+      }
+    };
+  }
+
+  return {
+    effectiveRange: '*',
+    dependencyState: 'fresh',
+    persistDecision: {
+      type: 'derive',
+      target,
+      mode: 'caret-or-exact'
+    }
+  };
+}
+
+async function findCanonicalDependency(
+  cwd: string,
+  packageName: string
+): Promise<{ range: string; target: DependencyTarget } | null> {
+  const packageYmlPath = getLocalPackageYmlPath(cwd);
+  if (!(await exists(packageYmlPath))) {
+    return null;
+  }
+
+  try {
+    const config = await parsePackageYml(packageYmlPath);
+    const match =
+      locateDependencyInArray(config.packages, packageName, 'packages') ||
+      locateDependencyInArray(config['dev-packages'], packageName, 'dev-packages');
+    return match;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse ${packageYmlPath}: ${detail}`);
+  }
+}
+
+function locateDependencyInArray(
+  deps: PackageYml['packages'],
+  packageName: string,
+  target: DependencyTarget
+): { range: string; target: DependencyTarget } | null {
+  if (!deps) {
+    return null;
+  }
+
+  const entry = deps.find(dep => arePackageNamesEquivalent(dep.name, packageName));
+  if (!entry) {
+    return null;
+  }
+
+  if (!entry.version || !entry.version.trim()) {
+    throw new Error(
+      `Dependency '${packageName}' in .openpackage/package.yml must declare a version range. Edit the file and try again.`
+    );
+  }
+
+  return {
+    range: entry.version.trim(),
+    target
+  };
+}
+
+function parseConstraintOrThrow(source: 'cli' | 'package', raw: string, packageName: string): ParsedConstraint {
+  try {
+    const parsed = parseVersionRange(raw);
+    return { resolverRange: parsed.range, displayRange: parsed.original };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (source === 'cli') {
+      throw new Error(
+        `Invalid version spec '${raw}' provided via CLI for '${packageName}'. ${message}. Adjust the CLI input and try again.`
+      );
+    }
+
+    throw new Error(
+      `Dependency '${packageName}' in .openpackage/package.yml has invalid version '${raw}'. ${message}. Edit the file and try again.`
+    );
+  }
+}
+
+function isRangeSubset(candidate: string, canonical: string): boolean {
+  try {
+    return semver.subset(candidate, canonical, { includePrerelease: true });
+  } catch {
+    return false;
+  }
+}
+
+function buildCanonicalConflictError(packageName: string, cliSpec: string, canonicalRange: string): Error {
+  return new Error(
+    `Requested '${packageName}@${cliSpec}', but .openpackage/package.yml declares '${packageName}' with range '${canonicalRange}'. Edit package.yml to change the dependency line, then re-run opkg install.`
+  );
+}
+
+function resolvePersistRange(
+  decision: PersistDecision,
+  selectedVersion: string
+): { range: string; target: DependencyTarget } | null {
+  if (decision.type === 'none') {
+    return null;
+  }
+
+  if (decision.type === 'explicit') {
+    return { range: decision.range, target: decision.target };
+  }
+
+  let derivedRange = selectedVersion;
+  if (!(decision.mode === 'caret-or-exact' && isPrereleaseVersion(selectedVersion))) {
+    derivedRange = createCaretRange(selectedVersion);
+  }
+
+  return { range: derivedRange, target: decision.target };
+}
+
+function buildNoVersionFoundError(
+  packageName: string,
+  constraint: string,
+  selection: InstallVersionSelectionResult['selection'],
+  mode: InstallResolutionMode
+): Error {
+  const stableList = formatVersionList(selection.availableStable);
+  const prereleaseList = formatVersionList(selection.availablePrerelease);
+  const suggestions = [
+    'Edit .openpackage/package.yml or adjust the CLI range, then retry.',
+    'Use opkg save/pack to create a compatible version in the local registry.'
+  ];
+
+  if (mode === 'local-only') {
+    suggestions.push('Re-run without --local to include remote versions in resolution.');
+  }
+
+  const message = [
+    `No version of '${packageName}' satisfies '${constraint}'.`,
+    `Available stable versions: ${stableList}`,
+    `Available WIP/pre-release versions: ${prereleaseList}`,
+    'Suggested next steps:',
+    ...suggestions.map(suggestion => `  • ${suggestion}`)
+  ].join('\n');
+
+  return new Error(message);
+}
+
+function formatVersionList(versions: string[]): string {
+  if (!versions || versions.length === 0) {
+    return 'none';
+  }
+  return versions.join(', ');
+}
+
+
 /**
  * Main install command router - handles both individual and bulk install
  * @param packageName - Name of package to install (optional, installs all if not provided)
@@ -593,6 +900,10 @@ async function installCommand(
   targetDir: string,
   options: InstallOptions
 ): Promise<CommandResult> {
+  const mode = determineResolutionMode(options);
+  options.resolutionMode = mode;
+  logger.debug('Install resolution mode selected', { mode });
+
   // If no package name provided, install all from package.yml
   if (!packageName) {
     return await installAllPackagesCommand(targetDir, options);
@@ -622,6 +933,7 @@ export function setupInstallCommand(program: Command): void {
     .option('--dev', 'add package to dev-packages instead of packages')
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .option('--remote', 'pull and install from remote registry, ignoring local versions')
+    .option('--local', 'resolve and install using only local registry versions, skipping remote metadata and pulls')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (packageName: string | undefined, targetDir: string, options: InstallOptions) => {
@@ -638,6 +950,10 @@ export function setupInstallCommand(program: Command): void {
         }
         options.conflictStrategy = normalizedStrategy as InstallOptions['conflictStrategy'];
       }
+
+      validateResolutionFlags(options);
+
+      options.resolutionMode = determineResolutionMode(options);
 
       const result = await installCommand(packageName, targetDir, options);
       if (!result.success) {

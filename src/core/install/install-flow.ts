@@ -5,12 +5,11 @@ import { ensureRegistryDirectories } from '../directory.js';
 import { createPlatformDirectories } from '../platforms.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../openpackage.js';
 import { resolveDependencies } from '../dependency-resolver.js';
-import { resolveDependenciesWithOverrides } from '../../utils/install-helpers.js';
 import { logger } from '../../utils/logger.js';
 import { VersionConflictError, UserCancellationError } from '../../utils/errors.js';
 import type { Platform } from '../../constants/index.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
-import { createBasicPackageYml, addPackageToYml } from '../../utils/package-management.js';
+import { createBasicPackageYml } from '../../utils/package-management.js';
 import { checkAndHandleAllPackageConflicts } from '../../utils/install-conflict-handler.js';
 import { discoverAndCategorizeFiles } from '../../utils/install-file-discovery.js';
 import { installAiFilesFromList } from '../../utils/install-orchestrator.js';
@@ -21,6 +20,7 @@ import { promptVersionSelection } from '../../utils/prompts.js';
 export interface DependencyResolutionResult {
   resolvedPackages: ResolvedPackage[];
   missingPackages: string[];
+  warnings?: string[];
 }
 
 export class VersionResolutionAbortError extends Error {
@@ -98,9 +98,22 @@ export async function resolveDependenciesForInstall(
 ): Promise<DependencyResolutionResult> {
   const globalConstraints = await gatherGlobalVersionConstraints(cwd);
   const rootConstraints = await gatherRootVersionConstraints(cwd);
+  const rootOverrides = new Map(rootConstraints);
+  const resolverWarnings = new Set<string>();
 
-  try {
-    const result = await resolveDependencies(
+  const resolverOptions = {
+    mode: options.resolutionMode ?? 'default',
+    profile: options.profile,
+    apiKey: options.apiKey,
+    onWarning: (message: string) => {
+      if (!resolverWarnings.has(message)) {
+        resolverWarnings.add(message);
+      }
+    }
+  };
+
+  const runResolution = async () => {
+    return await resolveDependencies(
       packageName,
       cwd,
       true,
@@ -109,12 +122,17 @@ export async function resolveDependenciesForInstall(
       version,
       new Map(),
       globalConstraints,
-      rootConstraints
+      rootOverrides,
+      resolverOptions
     );
+  };
 
+  try {
+    const result = await runResolution();
     return {
       resolvedPackages: result.resolvedPackages,
-      missingPackages: result.missingPackages
+      missingPackages: result.missingPackages,
+      warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined
     };
   } catch (error) {
     if (error instanceof VersionConflictError) {
@@ -133,20 +151,12 @@ export async function resolveDependenciesForInstall(
         throw new VersionResolutionAbortError(conflictName);
       }
 
-      await addPackageToYml(cwd, conflictName, chosenVersion, false, chosenVersion, true);
-
-      const updatedConstraints = await gatherGlobalVersionConstraints(cwd);
-      const overrideResult = await resolveDependenciesWithOverrides(
-        packageName,
-        cwd,
-        [],
-        updatedConstraints,
-        version
-      );
-
+      rootOverrides.set(conflictName, [chosenVersion]);
+      const retryResult = await runResolution();
       return {
-        resolvedPackages: overrideResult.resolvedPackages,
-        missingPackages: overrideResult.missingPackages
+        resolvedPackages: retryResult.resolvedPackages,
+        missingPackages: retryResult.missingPackages,
+        warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined
       };
     }
 

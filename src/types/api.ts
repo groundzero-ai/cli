@@ -9,6 +9,7 @@ export interface ApiPackage {
   isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
+  versions?: Array<ApiPackageVersion | string>;
 }
 
 export interface ApiPackageVersion {
@@ -33,6 +34,8 @@ export interface PullPackageResponse {
   package: ApiPackage;
   version: ApiPackageVersion;
   downloads: PullPackageDownload[];
+  versions?: Array<ApiPackageVersion | string>;
+  availableVersions?: string[];
 }
 
 export interface ApiError {

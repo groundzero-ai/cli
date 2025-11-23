@@ -40,7 +40,7 @@
     "dev:watch": "nodemon --exec ts-node src/index.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "test": "node --loader ts-node/esm tests/save-pack-versioning.test.ts"
+    "test": "node --loader ts-node/esm tests/save-pack-versioning.test.ts && node --loader ts-node/esm tests/install-cli-modes.test.ts && node --loader ts-node/esm tests/version-selection.test.ts"
   },
   "dependencies": {
     "commander": "^14.0.0",

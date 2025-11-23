@@ -126,10 +126,12 @@ export interface InstallOptions {
   platforms?: string[];
   resolvedPlatforms?: Platform[];
   remote?: boolean;
+  local?: boolean;
   profile?: string;
   apiKey?: string;
   conflictStrategy?: 'ask' | 'keep-both' | 'overwrite' | 'skip';
   conflictDecisions?: Record<string, 'keep-both' | 'overwrite' | 'skip'>;
+  resolutionMode?: 'default' | 'remote-primary' | 'local-only';
 }
 
 export interface UninstallOptions {

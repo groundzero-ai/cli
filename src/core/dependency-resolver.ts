@@ -6,9 +6,11 @@ import { packageManager } from './package.js';
 import { getInstalledPackageVersion, scanGroundzeroPackages } from './openpackage.js';
 import { logger } from '../utils/logger.js';
 import { PackageNotFoundError, PackageVersionNotFoundError, VersionConflictError } from '../utils/errors.js';
-import { isExactVersion } from '../utils/version-ranges.js';
+import { hasExplicitPrereleaseIntent, isExactVersion, selectVersionWithWipPolicy } from '../utils/version-ranges.js';
 import { listPackageVersions } from './directory.js';
 import { registryManager } from './registry.js';
+import { gatherVersionSourcesForInstall } from './install/version-selection.js';
+import { InstallResolutionMode } from './install/types.js';
 
 /**
  * Resolved package interface for dependency resolution
@@ -32,6 +34,13 @@ export interface DependencyNode {
   dependencies: Set<string>;
   dependents: Set<string>;
   isProtected: boolean; // Listed in cwd package.yml
+}
+
+interface DependencyResolverOptions {
+  mode?: InstallResolutionMode;
+  profile?: string;
+  apiKey?: string;
+  onWarning?: (message: string) => void;
 }
 
 /**
@@ -60,10 +69,12 @@ export async function resolveDependencies(
   version?: string,
   requiredVersions: Map<string, string[]> = new Map(),
   globalConstraints?: Map<string, string[]>,
-  rootOverrides?: Map<string, string[]>
+  rootOverrides?: Map<string, string[]>,
+  resolverOptions: DependencyResolverOptions = {}
 ): Promise<{ resolvedPackages: ResolvedPackage[]; missingPackages: string[] }> {
   // Track missing dependencies for this invocation subtree
   const missing = new Set<string>();
+  const resolutionMode: InstallResolutionMode = resolverOptions.mode ?? 'local-only';
 
   // 1. Cycle detection
   if (visitedStack.has(packageName)) {
@@ -104,10 +115,21 @@ export async function resolveDependencies(
     resolvedVersion = allRanges[0];
     versionRange = allRanges[0];
   } else {
-    // Intersect ranges by filtering available versions
-    const availableVersions = await listPackageVersions(packageName);
+    const localVersions = await listPackageVersions(packageName);
+    const versionSources = await gatherVersionSourcesForInstall({
+      packageName,
+      mode: resolutionMode,
+      localVersions,
+      profile: resolverOptions.profile,
+      apiKey: resolverOptions.apiKey
+    });
+
+    if (versionSources.warnings.length > 0 && resolverOptions.onWarning) {
+      versionSources.warnings.forEach(resolverOptions.onWarning);
+    }
+
+    const availableVersions = versionSources.availableVersions;
     if (availableVersions.length === 0) {
-      // Treat as missing dependency rather than hard error
       missing.add(packageName);
       return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
     }
@@ -115,7 +137,6 @@ export async function resolveDependencies(
     const satisfying = availableVersions.filter(versionCandidate => {
       return allRanges.every(range => {
         try {
-          // Always include prerelease versions when evaluating satisfaction
           return semver.satisfies(versionCandidate, range, { includePrerelease: true });
         } catch (error) {
           logger.debug(`Failed to evaluate semver for ${packageName}@${versionCandidate} against range '${range}': ${error}`);
@@ -131,7 +152,17 @@ export async function resolveDependencies(
       });
     }
 
-    resolvedVersion = satisfying[0];
+    const explicitPrereleaseIntent = allRanges.some(range => hasExplicitPrereleaseIntent(range));
+    const selection = selectVersionWithWipPolicy(satisfying, '*', { explicitPrereleaseIntent });
+
+    if (!selection.version) {
+      throw new VersionConflictError(packageName, {
+        ranges: allRanges,
+        availableVersions
+      });
+    }
+
+    resolvedVersion = selection.version;
     const deduped = Array.from(new Set(allRanges));
     versionRange = deduped.join(' & ');
     logger.debug(`Resolved constraints [${deduped.join(', ')}] to '${resolvedVersion}' for package '${packageName}'`);
@@ -301,7 +332,18 @@ export async function resolveDependencies(
     
     for (const dep of dependencies) {
       // Pass the required version from the dependency specification
-      const child = await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedPackages, dep.version, requiredVersions, globalConstraints, rootOverrides);
+      const child = await resolveDependencies(
+        dep.name,
+        targetDir,
+        false,
+        visitedStack,
+        resolvedPackages,
+        dep.version,
+        requiredVersions,
+        globalConstraints,
+        rootOverrides,
+        resolverOptions
+      );
       for (const m of child.missingPackages) missing.add(m);
     }
     
@@ -310,7 +352,18 @@ export async function resolveDependencies(
       const devDependencies = config['dev-packages'] || [];
       for (const dep of devDependencies) {
         // Pass the required version from the dev dependency specification
-        const child = await resolveDependencies(dep.name, targetDir, false, visitedStack, resolvedPackages, dep.version, requiredVersions, globalConstraints, rootOverrides);
+        const child = await resolveDependencies(
+          dep.name,
+          targetDir,
+          false,
+          visitedStack,
+          resolvedPackages,
+          dep.version,
+          requiredVersions,
+          globalConstraints,
+          rootOverrides,
+          resolverOptions
+        );
         for (const m of child.missingPackages) missing.add(m);
       }
     }

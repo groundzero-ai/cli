@@ -220,3 +220,225 @@ export function resolveVersionRange(version: string, availableVersions: string[]
     return null;
   }
 }
+
+/**
+ * Determine if a version string is a prerelease (includes WIP versions)
+ */
+export function isPrereleaseVersion(version: string): boolean {
+  const parsed = semver.parse(version);
+  return Boolean(parsed && parsed.prerelease.length > 0);
+}
+
+/**
+ * Determine if a version string follows the WIP naming convention
+ */
+export function isWipVersion(version: string): boolean {
+  if (!isPrereleaseVersion(version)) {
+    return false;
+  }
+
+  const prerelease = semver.prerelease(version);
+  if (!prerelease) {
+    return false;
+  }
+
+  return prerelease.some(token => typeof token === 'string' && token.toLowerCase().startsWith('wip'));
+}
+
+/**
+ * Returns the stable base (major.minor.patch) portion of a version string.
+ */
+export function getStableBaseVersion(version: string): string | null {
+  const parsed = semver.parse(version);
+  if (!parsed) {
+    return null;
+  }
+
+  return `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+}
+
+export interface VersionClassification {
+  stable: string[];
+  prerelease: string[];
+  wip: string[];
+}
+
+export function classifyVersions(versions: string[]): VersionClassification {
+  const deduped = dedupeValidVersions(versions);
+  const stable: string[] = [];
+  const prerelease: string[] = [];
+  const wip: string[] = [];
+
+  for (const version of deduped) {
+    if (isPrereleaseVersion(version)) {
+      prerelease.push(version);
+      if (isWipVersion(version)) {
+        wip.push(version);
+      }
+    } else {
+      stable.push(version);
+    }
+  }
+
+  return {
+    stable: sortVersionsDesc(stable),
+    prerelease: sortVersionsDesc(prerelease),
+    wip: sortVersionsDesc(wip)
+  };
+}
+
+export interface VersionSelectionOptions {
+  explicitPrereleaseIntent?: boolean;
+}
+
+export interface VersionSelectionResult {
+  version: string | null;
+  isPrerelease: boolean;
+  satisfyingStable: string[];
+  satisfyingPrerelease: string[];
+  availableStable: string[];
+  availablePrerelease: string[];
+  reason: 'exact' | 'wildcard' | 'range' | 'none';
+}
+
+/**
+ * Determine whether a range explicitly references prerelease intent.
+ */
+export function hasExplicitPrereleaseIntent(range: string): boolean {
+  const trimmed = range.trim();
+  if (!trimmed || trimmed === '*' || trimmed.toLowerCase() === 'latest') {
+    return false;
+  }
+
+  if (/-wip/i.test(trimmed)) {
+    return true;
+  }
+
+  try {
+    const parsedRange = new semver.Range(trimmed, { includePrerelease: true });
+    for (const comparatorSet of parsedRange.set) {
+      for (const comparator of comparatorSet) {
+        if (comparator.semver.prerelease.length > 0) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Select the most appropriate version according to WIP vs stable policy.
+ */
+export function selectVersionWithWipPolicy(
+  availableVersions: string[],
+  range: string,
+  options?: VersionSelectionOptions
+): VersionSelectionResult {
+  const parsedRange = parseVersionRange(range);
+  const deduped = dedupeValidVersions(availableVersions);
+  const availableStable = sortVersionsDesc(deduped.filter(version => !isPrereleaseVersion(version)));
+  const availablePrerelease = sortVersionsDesc(deduped.filter(version => isPrereleaseVersion(version)));
+  const satisfyingStable: string[] = [];
+  const satisfyingPrerelease: string[] = [];
+
+  const result: VersionSelectionResult = {
+    version: null,
+    isPrerelease: false,
+    satisfyingStable,
+    satisfyingPrerelease,
+    availableStable,
+    availablePrerelease,
+    reason: 'none'
+  };
+
+  if (parsedRange.type === 'exact') {
+    result.reason = 'exact';
+    const exactMatch = deduped.find(version => semver.eq(version, parsedRange.baseVersion));
+    if (exactMatch) {
+      if (isPrereleaseVersion(exactMatch)) {
+        satisfyingPrerelease.push(exactMatch);
+        result.isPrerelease = true;
+      } else {
+        satisfyingStable.push(exactMatch);
+      }
+      result.version = exactMatch;
+    }
+    return result;
+  }
+
+  const normalizedRange = parsedRange.type === 'wildcard' ? '*' : parsedRange.range;
+  satisfyingStable.push(
+    ...filterSatisfying(availableStable, normalizedRange, false)
+  );
+  satisfyingPrerelease.push(
+    ...filterSatisfying(availablePrerelease, normalizedRange, true)
+  );
+
+  if (parsedRange.type === 'wildcard') {
+    result.reason = 'wildcard';
+    if (satisfyingStable.length > 0) {
+      result.version = satisfyingStable[0];
+      return result;
+    }
+    if (satisfyingPrerelease.length > 0) {
+      result.version = satisfyingPrerelease[0];
+      result.isPrerelease = true;
+    }
+    return result;
+  }
+
+  result.reason = 'range';
+  if (satisfyingStable.length > 0) {
+    result.version = satisfyingStable[0];
+    return result;
+  }
+
+  if (satisfyingPrerelease.length === 0) {
+    return result;
+  }
+
+  const explicitIntent =
+    options?.explicitPrereleaseIntent ??
+    hasExplicitPrereleaseIntent(parsedRange.original);
+  const stableExistsAnywhere = availableStable.length > 0;
+
+  if (explicitIntent || !stableExistsAnywhere) {
+    result.version = satisfyingPrerelease[0];
+    result.isPrerelease = true;
+  }
+
+  return result;
+}
+
+function dedupeValidVersions(versions: string[]): string[] {
+  const seen = new Set<string>();
+  for (const version of versions) {
+    if (!version || !semver.valid(version) || seen.has(version)) {
+      continue;
+    }
+    seen.add(version);
+  }
+  return Array.from(seen);
+}
+
+function sortVersionsDesc(versions: string[]): string[] {
+  return versions.slice().sort(semver.rcompare);
+}
+
+function filterSatisfying(
+  versions: string[],
+  range: string,
+  includePrerelease: boolean
+): string[] {
+  try {
+    return sortVersionsDesc(
+      versions.filter(version => semver.satisfies(version, range, { includePrerelease }))
+    );
+  } catch {
+    return [];
+  }
+}

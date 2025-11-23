@@ -1,11 +1,11 @@
 import { join, relative, dirname, basename } from 'path';
 import { isJunk } from 'junk';
 import { Package, PackageFile } from '../types/index.js';
-import { 
-  exists, 
-  walkFiles, 
-  readTextFile, 
-  writeTextFile, 
+import {
+  exists,
+  walkFiles,
+  readTextFile,
+  writeTextFile,
   remove,
   ensureDir
 } from '../utils/fs.js';
@@ -15,17 +15,24 @@ import {
   InvalidPackageError,
 } from '../utils/errors.js';
 import { validatePackageName } from '../utils/package-name.js';
-import { 
-  getPackagePath, 
-  getPackageVersionPath, 
+import {
+  getPackagePath,
+  getPackageVersionPath,
   getLatestPackageVersion,
   listPackageVersions
 } from './directory.js';
 import { parsePackageYml } from '../utils/package-yml.js';
-import { 
-  resolveVersionRange, 
-  isExactVersion, 
+import {
+  resolveVersionRange,
+  isExactVersion,
+  isWipVersion
 } from '../utils/version-ranges.js';
+import {
+  readPackageLink,
+  getPackageLinkPath,
+  type PackageLinkMetadata,
+  PACKAGE_LINK_FILENAME
+} from '../utils/package-link-yml.js';
 
 /**
  * Package management operations
@@ -78,9 +85,23 @@ export class PackageManager {
     }
     
     try {
+      const linkMetadata = await readPackageLink(packageName, targetVersion);
+      if (linkMetadata) {
+        return await this.loadPackageFromLink(packageName, targetVersion, linkMetadata);
+      }
+
       // Load package.yml for metadata
       const packageYmlPath = join(packagePath, 'package.yml');
       if (!(await exists(packageYmlPath))) {
+        if (isWipVersion(targetVersion)) {
+          const linkPath = getPackageLinkPath(packageName, targetVersion);
+          throw createBrokenLinkError(
+            packageName,
+            targetVersion,
+            linkPath,
+            `Expected ${PACKAGE_LINK_FILENAME} pointing to a valid source workspace`
+          );
+        }
         throw new PackageNotFoundError(packageName);
       }
       
@@ -184,6 +205,34 @@ export class PackageManager {
   /**
    * Discover all files in a package directory
    */
+  private async loadPackageFromLink(
+    packageName: string,
+    version: string,
+    metadata: PackageLinkMetadata
+  ): Promise<Package> {
+    const linkPath = getPackageLinkPath(packageName, version);
+    const sourcePath = metadata.sourcePath;
+
+    if (!sourcePath) {
+      throw createBrokenLinkError(packageName, version, linkPath, 'Missing sourcePath in link metadata');
+    }
+
+    if (!(await exists(sourcePath))) {
+      throw createBrokenLinkError(packageName, version, linkPath, `Source path '${sourcePath}' does not exist`);
+    }
+
+    const packageYmlPath = join(sourcePath, 'package.yml');
+    if (!(await exists(packageYmlPath))) {
+      throw createBrokenLinkError(packageName, version, linkPath, `Expected package.yml under '${sourcePath}'`);
+    }
+
+    const linkedMetadata = await parsePackageYml(packageYmlPath);
+    linkedMetadata.version = version;
+    const files = await this.discoverPackageFiles(sourcePath);
+
+    return { metadata: linkedMetadata, files };
+  }
+
   private async discoverPackageFiles(packagePath: string): Promise<PackageFile[]> {
     const files: PackageFile[] = [];
 
@@ -220,3 +269,14 @@ export class PackageManager {
 
 // Create and export a singleton instance
 export const packageManager = new PackageManager();
+
+function createBrokenLinkError(
+  packageName: string,
+  version: string,
+  linkPath: string,
+  reason: string
+): InvalidPackageError {
+  return new InvalidPackageError(
+    `WIP link for ${packageName}@${version} is invalid: ${reason}. Expected metadata at ${linkPath}. Re-run 'opkg save' to regenerate the link or 'opkg pack' to create a stable version.`,
+  );
+}
