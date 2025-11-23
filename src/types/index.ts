@@ -150,11 +150,12 @@ export interface PullOptions {
 
 export interface SaveOptions {
   force?: boolean;
-  version?: string;        // Specify version explicitly
-  setLatest?: boolean;     // Mark this version as latest (for display purposes)
-  bump?: 'patch' | 'minor' | 'major';  // Auto-bump version type
-  rename?: string;         // Rename package during save
-  skipProjectLink?: boolean;
+  rename?: string;
+}
+
+export interface PackOptions {
+  force?: boolean;
+  rename?: string;
 }
 
 // Registry types

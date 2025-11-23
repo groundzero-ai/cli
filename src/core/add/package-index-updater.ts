@@ -26,6 +26,7 @@ import {
   isSkippableRegistryPath,
   isAllowedRegistryPath
 } from '../../utils/registry-entry-filter.js';
+import { createWorkspaceHash } from '../../utils/version-generator.js';
 
 /**
  * Compute the directory key (registry side) to collapse file mappings under.
@@ -175,6 +176,10 @@ export interface BuildIndexOptions {
    * Keeps exact file paths as keys in package.index.yml.
    */
   preserveExactPaths?: boolean;
+  /**
+   * Force the version written to package.index.yml (defaults to previous/index/package.yml resolution).
+   */
+  versionOverride?: string;
 }
 
 /**
@@ -304,7 +309,7 @@ export async function buildMappingAndWriteIndex(
     const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
 
     // Resolve version (prefer previous index; otherwise read from package.yml)
-    let version = previousIndex?.version || '';
+    let version = options.versionOverride || previousIndex?.workspace?.version || '';
     if (!version) {
       const packageDir = getLocalPackageDir(cwd, packageName);
       const packageYmlPath = join(packageDir, 'package.yml');
@@ -360,7 +365,10 @@ export async function buildMappingAndWriteIndex(
     const indexRecord: PackageIndexRecord = {
       path: getPackageIndexPath(cwd, packageName),
       packageName,
-      version,
+      workspace: {
+        hash: createWorkspaceHash(cwd),
+        version
+      },
       files: mergedFiles
     };
     await writePackageIndex(indexRecord);

@@ -123,3 +123,56 @@ export async function getOrCreatePackageYml(
     isRootPackage: false
   };
 }
+
+/**
+ * Read existing package.yml (creating a default one if missing) without mutating the version.
+ * Used by the new save/pack flows where package.yml stays on the user-managed stable line.
+ */
+export async function readOrCreateBasePackageYml(
+  cwd: string,
+  name: string
+): Promise<PackageYmlInfo> {
+  await ensureLocalOpenPackageStructure(cwd);
+
+  const packageDir = getLocalPackageDir(cwd, name);
+  if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
+    await ensureDir(packageDir);
+    logger.debug('Created package directory for save', { path: packageDir });
+  }
+
+  const normalizedName = normalizePackageName(name);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
+
+  let packageConfig: PackageYml;
+  let isNewPackage = false;
+
+  if (await exists(packageYmlPath)) {
+    logger.debug('Found existing package.yml for save', { path: packageYmlPath });
+    try {
+      packageConfig = await parsePackageYml(packageYmlPath);
+      console.log(`✓ Found existing package ${packageConfig.name}@${packageConfig.version}`);
+    } catch (error) {
+      throw new ValidationError(
+        ERROR_MESSAGES.PARSE_PACKAGE_YML_FAILED.replace('%s', packageYmlPath).replace('%s', String(error))
+      );
+    }
+  } else {
+    logger.debug('No package.yml found for save, creating', { dir: packageDir });
+    const created = await createPackageYmlInDirectory(packageDir, normalizedName);
+    packageConfig = created.config;
+    isNewPackage = true;
+  }
+
+  let updatedConfig = packageConfig;
+  if (packageConfig.name !== normalizedName) {
+    updatedConfig = { ...packageConfig, name: normalizedName };
+    await writePackageYml(packageYmlPath, updatedConfig);
+  }
+
+  return {
+    fullPath: packageYmlPath,
+    config: updatedConfig,
+    isNewPackage,
+    isRootPackage: false
+  };
+}

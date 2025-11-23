@@ -46,6 +46,7 @@ import {
   type PackageIndexRecord,
   pruneNestedDirectories
 } from './package-index-yml.js';
+import { createWorkspaceHash } from './version-generator.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -941,10 +942,14 @@ export async function installPackageByIndex(
 
   if (!options.dryRun) {
     const mapping = buildIndexMappingFromPlans(groupPlans);
+    const workspaceHash = previousIndex?.workspace?.hash ?? createWorkspaceHash(cwd);
     const indexRecord: PackageIndexRecord = {
       path: getPackageIndexPath(cwd, packageName),
       packageName,
-      version,
+      workspace: {
+        hash: workspaceHash,
+        version
+      },
       files: mapping
     };
     await writePackageIndex(indexRecord);
@@ -1388,10 +1393,14 @@ export async function applyPlannedSyncForPackageFiles(
   let mapping: Record<string, string[]> = {};
   if (!options.dryRun) {
     mapping = buildIndexMappingFromPlans(groupPlans);
+    const workspaceHash = previousIndex?.workspace?.hash ?? createWorkspaceHash(cwd);
     const indexRecord: PackageIndexRecord = {
       path: getPackageIndexPath(cwd, packageName),
       packageName,
-      version,
+      workspace: {
+        hash: workspaceHash,
+        version
+      },
       files: mapping
     };
     await writePackageIndex(indexRecord);

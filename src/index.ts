@@ -9,6 +9,7 @@ import { getVersion } from './utils/package.js';
 import { setupInitCommand } from './commands/init.js';
 import { setupAddCommand } from './commands/add.js';
 import { setupSaveCommand } from './commands/save.js';
+import { setupPackCommand } from './commands/pack.js';
 import { setupListCommand } from './commands/list.js';
 import { setupDeleteCommand } from './commands/delete.js';
 import { setupPruneCommand } from './commands/prune.js';
@@ -44,6 +45,7 @@ program
 setupInitCommand(program);
 setupAddCommand(program);
 setupSaveCommand(program);
+setupPackCommand(program);
 setupInstallCommand(program);
 setupUninstallCommand(program);
 setupStatusCommand(program);

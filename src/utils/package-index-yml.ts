@@ -8,8 +8,13 @@ import { logger } from './logger.js';
 export const PACKAGE_INDEX_FILENAME = 'package.index.yml';
 const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
-export interface PackageIndexData {
+export interface PackageIndexWorkspace {
+  hash?: string;
   version: string;
+}
+
+export interface PackageIndexData {
+  workspace: PackageIndexWorkspace;
   files: Record<string, string[]>;
 }
 
@@ -40,8 +45,25 @@ export function sortMapping(record: Record<string, string[]>): Record<string, st
 
 export function sanitizeIndexData(data: any): PackageIndexData | null {
   if (!data || typeof data !== 'object') return null;
-  const { version, files } = data as { version?: unknown; files?: unknown };
-  if (typeof version !== 'string') return null;
+
+  let workspaceVer: string | undefined;
+  let workspaceHash: string | undefined;
+
+  const workspaceSection = (data as { workspace?: unknown }).workspace;
+  if (workspaceSection && typeof workspaceSection === 'object') {
+    const maybeVersion = (workspaceSection as { version?: unknown }).version;
+    if (typeof maybeVersion === 'string') {
+      workspaceVer = maybeVersion;
+    }
+    const maybeHash = (workspaceSection as { hash?: unknown }).hash;
+    if (typeof maybeHash === 'string') {
+      workspaceHash = maybeHash;
+    }
+  }
+
+  if (typeof workspaceVer !== 'string') return null;
+
+  const files = (data as { files?: unknown }).files;
   if (!files || typeof files !== 'object') return null;
 
   const entries: Record<string, string[]> = {};
@@ -57,7 +79,10 @@ export function sanitizeIndexData(data: any): PackageIndexData | null {
   }
 
   return {
-    version,
+    workspace: {
+      version: workspaceVer,
+      hash: workspaceHash
+    },
     files: sortMapping(entries)
   };
 }
@@ -77,14 +102,14 @@ export async function readPackageIndex(cwd: string, packageName: string): Promis
       return {
         path: indexPath,
         packageName,
-        version: '',
+        workspace: { version: '', hash: undefined },
         files: {}
       };
     }
     return {
       path: indexPath,
       packageName,
-      version: sanitized.version,
+      workspace: sanitized.workspace,
       files: sanitized.files
     };
   } catch (error) {
@@ -92,20 +117,28 @@ export async function readPackageIndex(cwd: string, packageName: string): Promis
     return {
       path: indexPath,
       packageName,
-      version: '',
+      workspace: { version: '', hash: undefined },
       files: {}
     };
   }
 }
 
 export async function writePackageIndex(record: PackageIndexRecord): Promise<void> {
-  const { path: indexPath, version, files } = record;
+  const { path: indexPath, files } = record;
+  const workspaceVer = record.workspace?.version;
+  if (!workspaceVer) {
+    throw new Error('workspace.version is required when writing package.index.yml');
+  }
+  const workspace: PackageIndexWorkspace = {
+    hash: record.workspace?.hash,
+    version: workspaceVer
+  };
   await ensureDir(dirname(indexPath));
 
   const normalizedFiles = sortMapping(files);
   const body = yaml.dump(
     {
-      version,
+      workspace,
       files: normalizedFiles
     },
     {
