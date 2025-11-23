@@ -36,15 +36,14 @@ This document captures the agreed behavior for versioning when splitting `save` 
     - **Advisory only** for continuity (e.g. showing last WIP or stable).
     - When `package.yml.version` and `package.index.yml.workspace.version` disagree, **`package.yml.version` wins**.
 
-- **Registry layout and `package.link.yml`**
+- **Registry layout (unified for WIP and stable)**
   - Stable copies:
     - Stored under: `~/.openpackage/registry/<pkg>/<version>/...` with full contents.
-  - WIP pointers:
-    - For WIP saves, registry contains **only link metadata**, not a full copy:
-      - Path: `~/.openpackage/registry/<pkg>/<wipVersion>/package.link.yml`.
-      - Fields:
-        - `sourcePath`: absolute path to `.openpackage/packages/<pkg>` in this workspace.
-      - Note: `version` and `workspaceHash` are not stored in the YAML since they're already encoded in the parent directory name (`<wipVersion>`).
+  - WIP copies:
+    - For WIP saves, the registry also contains a **full copy** of the package:
+      - Path: `~/.openpackage/registry/<pkg>/<wipVersion>/...`.
+      - Contents mirror the workspace package at the time of `save`, just like stable copies.
+    - There is **no special `package.link.yml` indirection**; WIP versions are materialized the same way as stable versions, differentiated only by their version strings.
 
 ---
 

@@ -215,23 +215,24 @@ These examples assume remote is reachable.
 
 Version resolution chooses **which version string** to install; this section summarizes how content for **local WIP versions** is sourced, and defers full behavior to `install-behavior.md`.
 
-- **Local WIP versions with `package.link.yml`**:
-  - When the selected version is a WIP that exists locally and the corresponding directory contains a `package.link.yml`:
+- **Local WIP versions as full copies**:
+  - When the selected version is a WIP that exists locally, it is represented as a **full copied package** in the registry:
+    - Path: `~/.openpackage/registry/<pkg>/<wipVersion>/...`.
     - The loader must:
-      - Read `package.link.yml` to obtain `sourcePath`.
-      - Load package files directly from `sourcePath` (the workspace `.openpackage/packages/<pkg>` directory).
+      - Load package files directly from that directory.
+      - Read the `package.yml` from that directory for metadata.
   - The resolved version string (`S-wip.*`) still participates in semver ordering and dependency resolution as specified above.
 
-- **Non-link WIPs and remote WIPs**:
-  - If a WIP version is represented as a **full copied package** (no `package.link.yml`), it is treated like any other registry version.
-  - Remote registries are expected to expose **copied artifacts**; link-based WIPs are a **local optimization only** and are not consumed directly from remote.
+- **Remote WIPs**:
+  - Remote registries are expected to expose **copied artifacts** for any WIP versions they publish.
+  - WIP versions from remote are treated the same as stable versions for content loading (normal registry copies).
 
 - **Error behavior**:
-  - If a WIP version is selected but its `package.link.yml` is missing or malformed:
+  - If a WIP version is selected but its registry directory is missing or malformed:
     - The install operation should fail with a clear error instead of silently falling back to another version.
     - The error should point to:
       - The problematic WIP version string.
-      - The expected link file path.
+      - The expected registry path.
       - Suggested remediation (re-save, pack to stable, or choose a different version).
 
 

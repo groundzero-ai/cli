@@ -149,35 +149,29 @@ High-level rules (details in `version-resolution.md`):
 
 ---
 
-## 7. WIP content resolution via `package.link.yml`
+## 7. WIP content resolution (unified with stable)
 
-This section ties WIP version selection to **how content is loaded** when the selected version is a local WIP pointer rather than a full copied registry tree.
+This section ties WIP version selection to **how content is loaded** when the selected version is a WIP prerelease, assuming both WIP and stable versions are stored as full copies in the local registry.
 
 - **Registry layout for WIP versions**:
-  - For WIP saves, the local registry contains a **link file only**:
-    - Path: `~/.openpackage/registry/<pkg>/<wipVersion>/package.link.yml`.
-    - Fields:
-      - `sourcePath`: absolute path to `.openpackage/packages/<pkg>` in the originating workspace.
-  - No full copy of the package files is stored under the WIP version directory.
+  - For WIP saves, the local registry contains a **full copy** of the package:
+    - Path: `~/.openpackage/registry/<pkg>/<wipVersion>/...`.
+    - Contents mirror the workspace package at the time of `save`, just like stable copies.
 
 - **Install behavior when a WIP version is selected**:
   - When the version resolution layer selects a **WIP version** that exists locally:
     - The package loader (e.g. `packageManager.loadPackage`) MUST:
-      - Read `package.link.yml` for `<pkg>@<wipVersion>`.
-      - Use `sourcePath` as the **source of truth for package files**:
-        - Enumerate files under `sourcePath` as the package contents.
-        - Read the `package.yml` from `sourcePath` for metadata.
-      - Treat this data as if it were coming from a normal registry copy for the purposes of installation and dependency resolution.
-  - If `package.link.yml` is missing or invalid for a selected WIP version:
-    - Install MUST **fail clearly**, indicating the broken WIP link and suggesting:
-      - Re-running `save` to regenerate the link, or
-      - Using a stable version instead.
+      - Load files directly from the WIP registry directory (`~/.openpackage/registry/<pkg>/<wipVersion>/...`).
+      - Read the `package.yml` from that directory for metadata.
+      - Treat this data exactly as it would for a stable registry copy for the purposes of installation and dependency resolution.
+  - If the WIP registry directory is missing or malformed for a selected WIP version:
+    - Install MUST **fail clearly**, indicating the broken WIP copy and suggesting:
+      - Re-running `save`/`pack` to regenerate the version, or
+      - Using a different available version instead.
 
 - **Remote considerations**:
-  - `package.link.yml` is **only meaningful for local registries**, since `sourcePath` is machine-specific.
-  - Remote registries:
-    - Should not expose raw `package.link.yml` entries as installable artifacts.
-    - WIP versions resolved via remote metadata (if supported at all) must behave like **normal copied packages**, not link-based pointers.
+  - Both WIP and stable versions exposed by remote registries are treated as **normal copied packages**.
+  - There is no link-based indirection layer in the registry layout for WIP versions.
 
 ---
 

@@ -1,26 +1,30 @@
-I would like to split the save command into two separate commands: save and pack
-For save command:
-- Only perform platform sync and write lightweight linking metadata to local registry (as discussed)
-- On each save, removes all older same ws versions
-- Would preferably not update the package.yml version number, if we really need to, maybe in package.index.yml?
-- The save command always saves the next prerelease version, bumps to patch if stable, for example: 1.0.0 then  1.0.1-wip.111.aaa, 1.0.1-wip.120.aaa then 1.0.1-wip.130.aaa
-For pack command:
-- This is essentially the same as `save stable`
-- The stable version is basically the current ws version with the prerelease tag removed
-- Entire copy of the package from ws package at .openpackage/packages/<pkg> is copied to the local registry (use exact same existing logic that is already implemented
+I would like to split the `save` command into two separate commands: `save` and `pack`, **but both should use the same “full copy into local registry” model** (no special link-only WIP layout).
+
+For `save` command:
+- Perform platform sync (same as current `save`).
+- Compute the next WIP version (see `save-pack-versioning.md`).
+- **Copy the entire package** from `.openpackage/packages/<pkg>` into the local registry under the computed WIP version (same copy logic as existing `save --stable` / `pack`).
+- On each save, remove older WIP versions for the same workspace (per `workspaceHash`) to keep the registry clean.
+- Prefer not to update the `package.yml` version number; instead, keep WIP/stable details in `package.index.yml` and registry metadata.
+- The `save` command always saves the next prerelease version based on the current stable (for example: `1.0.0` then `1.0.1-wip.111.aaa`, `1.0.1-wip.120.aaa`, `1.0.1-wip.130.aaa`).
+
+For `pack` command:
+- This is essentially the same as “promote current workspace state to a stable version”.
+- The stable version is basically the current workspace version with the prerelease tag removed (the base `package.yml.version`).
+- **Copy the entire package** from `.openpackage/packages/<pkg>` into the local registry under the stable version (use the same copy logic as for `save` WIP copies).
 
 ### Implementation Plan: Split `save` → `save` (WIP Pointer) + `pack` (Stable Copy)
 
 This plan refactors the existing `save` command into two orthogonal ones, minimizing disruption:
-- **`save <pkg>`**: Lightweight WIP (pointer/metadata only, no file copy, auto-next prerelease).
+- **`save <pkg>`**: Create a WIP prerelease version by copying the full package into the registry (auto-next prerelease).
 - **`pack <pkg>`**: Full stable copy (reuse ~90% existing copy logic, strip prerelease).
 
 **Goals Achieved**:
-- `save`: Fast iterative dev (sync + metadata), per-WS cleanup, minimal version coupling.
+- `save`: Fast iterative dev (sync + full copy), per-workspace cleanup, minimal version coupling.
 - `pack`: "Promote" to stable (copy snapshot).
 - Versioning: Auto-bump PATCH on first WIP from stable base; subsequent WIP reuse base.
 - No staging `package.yml` mutation (per pref—version in registry metadata only).
-- Efficiency: `save` <1s, `pack` = current `save --stable`.
+- Registry layout is unified: **both WIP and stable versions are stored as full copies** under `~/.openpackage/registry/<pkg>/<version>/...`.
 
 **Assumptions** (based on codebase snapshot):
 - Pkg staging: `<cwd>/.openpackage/packages/<pkg>/` (files + `package.yml` w/ base version).
