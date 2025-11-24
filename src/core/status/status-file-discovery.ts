@@ -131,7 +131,6 @@ async function discoverRootFilesForPackages(
   packageNames: string[]
 ): Promise<void> {
 
-  console.log('packageNames', packageNames);
   const seen = new Set<string>();
 
   for (const platform of getAllPlatforms()) {
@@ -142,14 +141,11 @@ async function discoverRootFilesForPackages(
     if (seen.has(absPath)) continue;
     seen.add(absPath);
 
-    console.log('absPath', absPath);
-
     if (!(await exists(absPath))) continue;
 
     try {
       const content = await readTextFile(absPath);
       for (const packageName of packageNames) {
-        console.log('packageName', packageName);
         const extracted = extractPackageContentFromRootFile(content, packageName);
         if (extracted) {
           const entry = result.get(packageName)!;

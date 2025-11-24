@@ -24,8 +24,7 @@ import {
 import { parsePackageYml } from '../utils/package-yml.js';
 import {
   resolveVersionRange,
-  isExactVersion,
-  isWipVersion
+  isExactVersion
 } from '../utils/version-ranges.js';
 
 /**

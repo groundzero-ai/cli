@@ -231,13 +231,6 @@ export function isPrereleaseVersion(version: string): boolean {
 }
 
 /**
- * Determine if a version string follows the WIP naming convention
- */
-export function isWipVersion(version: string): boolean {
-  return parseWipVersion(version) !== null;
-}
-
-/**
  * Returns the stable base (major.minor.patch) portion of a version string.
  */
 export function getStableBaseVersion(version: string): string | null {
@@ -264,9 +257,7 @@ export function classifyVersions(versions: string[]): VersionClassification {
   for (const version of deduped) {
     if (isPrereleaseVersion(version)) {
       prerelease.push(version);
-      if (isWipVersion(version)) {
-        wip.push(version);
-      }
+      wip.push(version); // All prerelease versions are treated as WIP
     } else {
       stable.push(version);
     }

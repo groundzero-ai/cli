@@ -5,15 +5,16 @@ import { packageManager } from '../core/package.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, PackageNotFoundError } from '../utils/errors.js';
 import { promptVersionSelection, promptVersionDelete, promptAllVersionsDelete, promptPrereleaseVersionsDelete } from '../utils/prompts.js';
-import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
+import { isPrereleaseVersion } from '../utils/version-ranges.js';
+import { extractBaseVersion } from '../utils/version-generator.js';
 import { parsePackageInput } from '../utils/package-name.js';
 
 /**
  * Get prerelease versions for a specific base version
  */
 function getPrereleaseVersionsForBase(versions: string[], baseVersion: string): string[] {
-  return versions.filter(version => 
-    isLocalVersion(version) && extractBaseVersion(version) === baseVersion
+  return versions.filter(version =>
+    isPrereleaseVersion(version) && extractBaseVersion(version) === baseVersion
   );
 }
 
@@ -34,7 +35,7 @@ async function determineDeletionScope(
   // If version is specified in input
   if (version) {
     // Check if it's a specific prerelease version
-    if (isLocalVersion(version)) {
+    if (isPrereleaseVersion(version)) {
       if (!versions.includes(version)) {
         throw new PackageNotFoundError(`${packageName}@${version}`);
       }

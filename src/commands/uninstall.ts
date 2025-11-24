@@ -112,9 +112,9 @@ async function displayDryRunInfo(
   openpackagePath: string,
   packagesToRemove: string[]
 ): Promise<void> {
-  console.log(`🔍 Dry run - showing what would be uninstalled:\n`);
+  console.log(`✓ Dry run - showing what would be uninstalled:\n`);
 
-  console.log(`📦 Packages to remove: ${packagesToRemove.length}`);
+  console.log(`✓ Packages to remove: ${packagesToRemove.length}`);
   console.log(`├── Main: ${packageName}`);
   if (danglingDependencies.size > 0) {
     for (const dep of danglingDependencies) {
@@ -140,7 +140,7 @@ async function displayDryRunInfo(
 
   const totalMetadataFiles = packageYmlFilesToRemove.length + readmeFilesToRemove.length;
   if (totalMetadataFiles > 0) {
-    console.log(`\n📄 Package metadata to remove (${totalMetadataFiles}):`);
+    console.log(`\n✓ Package metadata to remove (${totalMetadataFiles}):`);
     for (const pkg of packageYmlFilesToRemove) {
       console.log(`├── ${pkg}/package.yml`);
     }
@@ -148,14 +148,14 @@ async function displayDryRunInfo(
       console.log(`├── ${pkg}/README.md`);
     }
   } else {
-    console.log(`\n📄 Package metadata to remove: none`);
+    console.log(`\n✓ Package metadata to remove: none`);
   }
   
   console.log('');
 
   // Root files that would be updated or deleted
   const rootPlan = await computeRootFileRemovalPlan(cwd, packagesToRemove);
-  console.log(`📝 Root files to update: ${rootPlan.toUpdate.length}`);
+  console.log(`✓ Root files to update: ${rootPlan.toUpdate.length}`);
   for (const f of rootPlan.toUpdate.sort((a, b) => a.localeCompare(b))) {
     console.log(`   ├── ${f}`);
   }
@@ -184,7 +184,7 @@ async function displayDryRunInfo(
     allFilesToRemove.push(...platformFiles);
   }
   const sortedAllFilesToRemove = allFilesToRemove.sort((a, b) => a.localeCompare(b));
-  console.log(`🗑️  Files to remove: ${allFilesToRemove.length}`);
+  console.log(`✓ Files to remove: ${allFilesToRemove.length}`);
   for (const file of sortedAllFilesToRemove) {
     console.log(`   ├── ${file}`);
   }
@@ -196,12 +196,12 @@ async function displayDryRunInfo(
 
   const hasConfigFile = await Promise.all(configPaths.map(path => exists(path)));
   if (hasConfigFile.some(exists => exists)) {
-    console.log(`📋 Would attempt to remove packages from package dependencies:`);
+    console.log(`✓ Would attempt to remove packages from package dependencies:`);
     for (const pkg of packagesToRemove) {
       console.log(`├── ${pkg}`);
     }
   } else {
-    console.log('📋 No package.yml file to update');
+    console.log('✓ No package.yml file to update');
   }
 
 }
@@ -221,7 +221,7 @@ function displayUninstallSuccess(
   updatedRootFiles: string[]
 ): void {
   console.log(`✓ Package '${packageName}' uninstalled successfully`);
-  console.log(`📁 Target directory: ${targetDir}`);
+  console.log(`✓ Target directory: ${targetDir}`);
 
   // Collect all removed files
   const allRemovedFiles: string[] = [];
@@ -236,14 +236,14 @@ function displayUninstallSuccess(
 
   // Display removed files count and list
   const sortedRemovedFiles = allRemovedFiles.sort((a, b) => a.localeCompare(b));
-  console.log(`🗑️  Removed files: ${allRemovedFiles.length}`);
+  console.log(`✓ Removed files: ${allRemovedFiles.length}`);
   for (const file of sortedRemovedFiles) {
     console.log(`   ├── ${file}`);
   }
 
   // Display updated root files
   if (updatedRootFiles.length > 0) {
-    console.log(`📝 Updated root files:`);
+    console.log(`✓ Updated root files:`);
     for (const f of updatedRootFiles.sort((a, b) => a.localeCompare(b))) {
       console.log(`   ├── ${f}`);
     }
@@ -254,14 +254,14 @@ function displayUninstallSuccess(
   const failedRemovals = Object.entries(ymlRemovalResults).filter(([, success]) => !success);
 
   if (successfulRemovals.length > 0) {
-    console.log(`📋 Removed from package dependencies:`);
+    console.log(`✓ Removed from package dependencies:`);
     for (const [pkg] of successfulRemovals) {
       console.log(`   ├── ${pkg}`);
     }
   }
 
   if (failedRemovals.length > 0) {
-    console.log(`⚠️  Could not update package.yml for:`);
+    console.log(`⚠️ Could not update package.yml for:`);
     for (const [pkg] of failedRemovals) {
       console.log(`   ├── ${pkg} (not found or not listed)`);
     }
@@ -306,13 +306,13 @@ async function uninstallPackageCommand(
     packagesToRemove = [packageName, ...Array.from(danglingDependencies)];
     
     if (danglingDependencies.size > 0) {
-      console.log(`\n📦 Recursive uninstall mode - found ${danglingDependencies.size} dangling dependencies:`);
+      console.log(`\n✓ Recursive uninstall mode - found ${danglingDependencies.size} dangling dependencies:`);
       for (const dep of danglingDependencies) {
         console.log(`├── ${dep}`);
       }
-      console.log(`\n🔍 Total packages to remove: ${packagesToRemove.length}`);
+      console.log(`\n✓ Total packages to remove: ${packagesToRemove.length}`);
     } else {
-      console.log(`\n📦 Recursive uninstall mode - no dangling dependencies found`);
+      console.log(`\n✓ Recursive uninstall mode - no dangling dependencies found`);
     }
   }
   

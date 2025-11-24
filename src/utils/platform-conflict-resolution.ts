@@ -5,7 +5,7 @@
 
 import { join, basename, dirname } from 'path';
 import { getPlatformNameFromSource } from './platform-utils.js';
-import { isLocalVersion } from '../utils/version-generator.js';
+import { isPrereleaseVersion } from '../utils/version-ranges.js';
 import { promptPlatformSpecificSelection, getContentPreview, safePrompts } from './prompts.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import type { DiscoveredFile, ContentAnalysisResult } from '../types/index.js';
@@ -91,7 +91,7 @@ export async function analyzeContentConflicts(
   };
 
   // Check if this is a stable version (not prerelease)
-  const isStableVersion = targetVersion ? !isLocalVersion(targetVersion) : false;
+  const isStableVersion = targetVersion ? !isPrereleaseVersion(targetVersion) : false;
 
   // Separate platform-specific files from normal files
   const platformSpecificFiles = files.filter(f => f.forcePlatformSpecific);

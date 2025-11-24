@@ -7,14 +7,15 @@ import { packageManager } from '../core/package.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
 import { promptConfirmation } from '../utils/prompts.js';
-import { isLocalVersion, extractBaseVersion } from '../utils/version-generator.js';
+import { isPrereleaseVersion } from '../utils/version-ranges.js';
+import { extractBaseVersion } from '../utils/version-generator.js';
 import { exists, getDirectorySize } from '../utils/fs.js';
 
 /**
  * Extract timestamp from a prerelease version
  */
 function extractTimestamp(version: string): number {
-  if (!isLocalVersion(version)) {
+  if (!isPrereleaseVersion(version)) {
     return 0;
   }
 
@@ -37,7 +38,7 @@ async function findPrereleaseVersions(packageFilter?: string): Promise<Prereleas
       continue;
     }
     
-    if (isLocalVersion(pkg.version)) {
+    if (isPrereleaseVersion(pkg.version)) {
       const baseVersion = extractBaseVersion(pkg.version);
       const timestamp = extractTimestamp(pkg.version);
       const packagePath = getPackageVersionPath(pkg.name, pkg.version);
@@ -65,7 +66,7 @@ async function getLatestBaseVersion(packageName: string): Promise<string | null>
   const baseVersions = new Set<string>();
   
   for (const version of allVersions) {
-    if (isLocalVersion(version)) {
+    if (isPrereleaseVersion(version)) {
       // Extract base version from prerelease version
       const baseVersion = extractBaseVersion(version);
       baseVersions.add(baseVersion);

@@ -3,7 +3,7 @@
  * Utility functions for resolving root file conflicts during package saving
  */
 
-import { isLocalVersion } from '../utils/version-generator.js';
+import { isPrereleaseVersion } from '../utils/version-ranges.js';
 import { safePrompts } from './prompts.js';
 import type { DiscoveredFile } from '../types/index.js';
 import { FILE_PATTERNS } from '../constants/index.js';
@@ -153,7 +153,7 @@ export async function resolveRootFileConflicts(
 
   // Multiple root files - analyze conflicts
   const analysis = analyzeRootFileConflicts(rootFiles);
-  const isStableVersion = targetVersion ? !isLocalVersion(targetVersion) : false;
+  const isStableVersion = targetVersion ? !isPrereleaseVersion(targetVersion) : false;
 
   if (analysis.canResolveToUniversal && analysis.universalFile) {
     // Can resolve to universal AGENTS.md

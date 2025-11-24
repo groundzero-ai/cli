@@ -11,14 +11,6 @@ export const WORKSPACE_HASH_TOKEN_LENGTH = 8;
 export const WIP_WORKSPACE_TAG_LENGTH = 3;
 
 
-/**
- * Check if a version is a local (non-stable) development version.
- * This is now defined as "any semver prerelease", which includes WIP versions.
- */
-export function isLocalVersion(version: string): boolean {
-  const parsed = semver.parse(version);
-  return Boolean(parsed && parsed.prerelease.length > 0);
-}
 
 /**
  * Extract the stable base (major.minor.patch) portion of a version string.
@@ -171,7 +163,7 @@ export function parseWipVersion(version: string): ParsedWipVersion | null {
     }
   }
 
-  return null;
+    return null;
 }
 
 export function extractWorkspaceHashFromVersion(version: string): string | null {

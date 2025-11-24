@@ -577,7 +577,7 @@ function renderTreeView(
   
   // Platform information if requested
   if (options.platforms && projectInfo.platforms.length > 0) {
-    console.log('\n🖥️ Platforms:');
+    console.log('\n✓ Platforms:');
     for (const platform of projectInfo.platforms) {
       const status = platform.detected ? '✅' : '❌';
       console.log(`  ${status} ${platform.name}`);
@@ -589,7 +589,6 @@ function renderTreeView(
     return;
   }
   
-  console.log('');
   packages.forEach((pkg, i) => {
     const isLast = i === packages.length - 1;
     renderPackageTree(pkg, '', isLast, options.depth, 1);
@@ -820,7 +819,6 @@ function calculateStatusCounts(packages: PackageStatusInfo[]) {
 function displayStatusSummary(packages: PackageStatusInfo[], statusCounts: ReturnType<typeof calculateStatusCounts>) {
   const totalPackages = packages.length;
   
-  console.log('');
   console.log(`Summary: ${statusCounts.installed}/${totalPackages} installed`);
   
   if (statusCounts.missing > 0) {
@@ -832,7 +830,7 @@ function displayStatusSummary(packages: PackageStatusInfo[], statusCounts: Retur
   }
   
   if (statusCounts.updateAvailable > 0) {
-    console.log(`🔄 ${statusCounts.updateAvailable} packages have updates available`);
+    console.log(`✓ ${statusCounts.updateAvailable} packages have updates available`);
   }
   
   if (statusCounts.registryUnavailable > 0) {
@@ -894,8 +892,7 @@ async function statusCommand(options: CommandOptions = {}): Promise<CommandResul
     });
     
     // Display results
-    console.log(`📁 Package status for: ${cwd}`);
-    console.log('');
+    console.log(`✓ Package status for: ${cwd}`);
     
     if (options.flat) {
       renderFlatView(packages, { registry: options.registry });
@@ -912,8 +909,7 @@ async function statusCommand(options: CommandOptions = {}): Promise<CommandResul
     
     // Show repair suggestions if requested
     if (options.repair) {
-      console.log('');
-      console.log('🔧 Repair suggestions:');
+      console.log('✓ Repair suggestions:');
       // TODO: Add specific repair recommendations based on issues found
     }
     
