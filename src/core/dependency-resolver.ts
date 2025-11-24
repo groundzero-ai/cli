@@ -41,6 +41,7 @@ interface DependencyResolverOptions {
   profile?: string;
   apiKey?: string;
   onWarning?: (message: string) => void;
+  preferStable?: boolean;
 }
 
 /**
@@ -153,7 +154,10 @@ export async function resolveDependencies(
     }
 
     const explicitPrereleaseIntent = allRanges.some(range => hasExplicitPrereleaseIntent(range));
-    const selection = selectVersionWithWipPolicy(satisfying, '*', { explicitPrereleaseIntent });
+    const selection = selectVersionWithWipPolicy(satisfying, '*', {
+      explicitPrereleaseIntent,
+      preferStable: resolverOptions.preferStable
+    });
 
     if (!selection.version) {
       throw new VersionConflictError(packageName, {

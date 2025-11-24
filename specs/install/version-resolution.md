@@ -68,16 +68,22 @@ Given `available: string[]` and a parsed constraint:
 - **If constraint is `exact`**:
   - **Pick that exact version** if it exists in `available`.
   - Otherwise:
-    - Fail with **“version not found”** and list the nearest available versions (see error UX section).
+    - Fail with **"version not found"** and list the nearest available versions (see error UX section).
 
-- **If constraint is `wildcard` / `latest`**:
-  - **Prefer stable versions**:
-    - If any stable versions exist in `available`, pick the **latest stable**.
-    - If no stable versions exist, pick the **latest available version** (which may be WIP or other pre-release).
+- **If constraint is `wildcard` / `latest`** (default behavior):
+  - Use `semver.maxSatisfying(available, '*', { includePrerelease: true })` to find the **highest semver version**.
+  - **Select the single highest version**, regardless of whether it is stable or WIP/pre-release.
+  - If the selected version is a pre-release/WIP, the CLI should make that explicit in its output.
 
-- **If constraint is `caret`, `tilde`, or `comparison`**:
-  - Use `semver.maxSatisfying(available, range, { includePrerelease: true })` to compute a **candidate**.
-  - Apply the **WIP vs stable policy** in §5 to decide whether to accept that candidate or prefer a different one.
+- **If constraint is `caret`, `tilde`, or `comparison`** (default behavior):
+  - Use `semver.maxSatisfying(available, range, { includePrerelease: true })` to find the **highest satisfying version**.
+  - **Select that version** (stable or pre-release/WIP).
+  - No additional "downgrade WIP to stable" heuristic is applied; WIP/pre-release versions are first-class semver versions for resolution purposes.
+
+- **With `--stable` flag**:
+  - The selection follows the **stable-preferred policy** described in §5.2.
+  - For wildcard/ranges: if any satisfying stable version exists, pick the **latest satisfying stable**.
+  - Only pick prerelease/WIP when **no satisfying stable exists at all**.
 
 If no version satisfies the constraint:
 
@@ -99,7 +105,18 @@ If no version satisfies the constraint:
 - Let **`W(S)`** be the set of WIP versions derived from `S`, e.g.:
   - `1.2.3-<t>.<w>`.
 
-### 5.2 General rules
+### 5.2 Default policy: Latest wins (stable and WIP treated uniformly)
+
+- **Latest-in-range selection**:
+  - Among all versions that satisfy the constraint, **choose the highest semver version** according to normal semver ordering (with pre-releases ordered per semver).
+  - WIP versions (`S-<t>.<w>`) are just a subset of pre-release versions; there is no special demotion to their base stable.
+  - This ensures that `opkg install <name>` naturally selects the newest available version, including WIPs, which is useful for development workflows.
+
+- **Pre-release transparency**:
+  - When the chosen version is a pre-release/WIP, the CLI **surfaces that fact** in messages and summaries, but does not alter the chosen version.
+  - This helps users understand when they're working with pre-release code.
+
+### 5.3 Stable-preferred policy (used with `--stable` flag)
 
 - **Stable dominates WIP for the same base line**:
   - If both:
@@ -109,18 +126,15 @@ If no version satisfies the constraint:
     - **Select `S`**, even if some WIPs have a higher pre-release ordering.
   - Rationale:
     - Matches the mental model that **packed stable** is the canonical release.
-    - Keeps WIPs an explicit opt-in for installs.
+    - Useful for CI/production scenarios where stability is preferred.
 
 - **WIP only when stable is not an option**:
   - If:
     - No stable versions exist in `available` that satisfy the constraint, but
     - One or more WIP (or other pre-release) versions do:
-    - The resolver may pick the **latest WIP** that satisfies the constraint, *if and only if*:
-      - The constraint is **explicit enough** to suggest intentional WIP use:
-        - e.g. an exact WIP version string, or a range that explicitly includes that pre-release.
-  - For implicit “latest” / wildcard constraints without explicit pre-release intent:
-    - If **any stable versions** exist at all for that package (even if outside the requested range), the error should:
-      - Prefer telling the user to **widen the range** rather than silently pulling a WIP.
+    - The resolver picks the **latest WIP** that satisfies the constraint.
+  - For implicit "latest" / wildcard constraints:
+    - If **any stable versions** exist at all for that package (even if outside the requested range), prefer telling the user to **widen the range** rather than silently pulling a WIP.
 
 ---
 
@@ -137,7 +151,12 @@ If no version satisfies the constraint:
 
 ### 6.2 Wildcard / latest (`*`, `latest`)
 
-- Behavior:
+- **Default behavior**:
+  - Use `semver.maxSatisfying(available, '*', { includePrerelease: true })` to find the **highest semver version**.
+  - Select that version (stable or WIP/pre-release).
+  - If the selected version is a pre-release/WIP, the CLI output should make that explicit.
+
+- **With `--stable` flag**:
   - If **stable versions exist** in `available`, select the **latest stable**.
   - If **no stable versions exist**:
     - Select the **latest WIP / pre-release**.
@@ -145,7 +164,11 @@ If no version satisfies the constraint:
 
 ### 6.3 Caret / tilde (`^`, `~`)
 
-- Behavior:
+- **Default behavior**:
+  - Use `maxSatisfying` with `{ includePrerelease: true }` to find the **highest satisfying version**.
+  - Select that version directly (stable or WIP/pre-release).
+
+- **With `--stable` flag**:
   - Use `maxSatisfying` with `{ includePrerelease: true }` to find the **highest satisfying version**.
   - Then:
     - If that best version is **stable**, use it.
@@ -156,9 +179,13 @@ If no version satisfies the constraint:
 
 ### 6.4 Comparison ranges
 
-- Behavior:
-  - Same as caret/tilde, but using the exact comparison string.
-  - The WIP vs stable rules from §5 still apply.
+- **Default behavior**:
+  - Use `semver.maxSatisfying(available, range, { includePrerelease: true })` to find the **highest satisfying version**.
+  - Select that version directly (stable or WIP/pre-release).
+
+- **With `--stable` flag**:
+  - Same as caret/tilde with `--stable`, but using the exact comparison string.
+  - The stable-preferred rules from §5.3 apply.
 
 ---
 
@@ -188,12 +215,21 @@ These examples assume remote is reachable.
   - Remote: `1.3.1`
   - Selected: **`1.3.1`**.
 
-- **Example 2 – WIP and stable**:
+- **Example 2 – WIP and stable (default behavior)**:
   - `package.yml`: `foo: ^1.2.0`
   - Local: `1.2.3-000fz8.a3k`, `1.2.3`, `1.3.0-000fz9.a3k`
   - Remote: `1.3.0`
   - Satisfying: `1.2.3`, `1.3.0-000fz9.a3k`, `1.3.0`
-  - Selected: **`1.3.0`** (stable dominates WIP).
+  - Selected: **`1.3.0`** (highest semver version).
+  - With `--stable`: **`1.3.0`** (same result, stable preferred).
+
+- **Example 2b – WIP and stable (WIP is newer)**:
+  - `package.yml`: `foo: ^1.2.0`
+  - Local: `1.2.3`, `1.3.0-000fz9.a3k`
+  - Remote: `1.3.0`
+  - Satisfying: `1.2.3`, `1.3.0-000fz9.a3k`, `1.3.0`
+  - Selected (default): **`1.3.0-000fz9.a3k`** (highest semver, even though WIP).
+  - With `--stable`: **`1.3.0`** (stable preferred over WIP).
 
 - **Example 3 – No stable exists**:
   - `package.yml`: `foo: ^1.0.0-0` (or explicit WIP version).

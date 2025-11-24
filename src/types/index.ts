@@ -127,6 +127,7 @@ export interface InstallOptions {
   resolvedPlatforms?: Platform[];
   remote?: boolean;
   local?: boolean;
+  stable?: boolean;
   profile?: string;
   apiKey?: string;
   conflictStrategy?: 'ask' | 'keep-both' | 'overwrite' | 'skip';

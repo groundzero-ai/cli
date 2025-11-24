@@ -383,7 +383,8 @@ async function installPackageCommand(
     constraint: versionConstraint,
     mode: resolutionMode,
     profile: options.profile,
-    apiKey: options.apiKey
+    apiKey: options.apiKey,
+    selectionOptions: options.stable ? { preferStable: true } : undefined
   });
 
   if (preselection.sources.warnings.length > 0) {
@@ -408,6 +409,10 @@ async function installPackageCommand(
   const source = isRemote ? 'remote' : 'local';
 
   console.log(`✓ Selected ${source} @${packageName}@${selectedRootVersion}`);
+
+  if (preselection.selection.isPrerelease && !options.stable) {
+    console.log(`ℹ️  Selected version ${selectedRootVersion} is a pre-release/WIP (use --stable to prefer stable releases).`);
+  }
 
   let downloadVersion = selectedRootVersion;
 
@@ -934,6 +939,7 @@ export function setupInstallCommand(program: Command): void {
     .option('--platforms <platforms...>', 'prepare specific platforms (e.g., cursor claudecode opencode)')
     .option('--remote', 'pull and install from remote registry, ignoring local versions')
     .option('--local', 'resolve and install using only local registry versions, skipping remote metadata and pulls')
+    .option('--stable', 'prefer the latest stable version when resolving; ignore newer prerelease/WIP versions if a satisfying stable exists')
     .option('--profile <profile>', 'profile to use for authentication')
     .option('--api-key <key>', 'API key for authentication (overrides profile)')
     .action(withErrorHandling(async (packageName: string | undefined, targetDir: string, options: InstallOptions) => {

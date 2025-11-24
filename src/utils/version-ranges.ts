@@ -281,6 +281,11 @@ export function classifyVersions(versions: string[]): VersionClassification {
 
 export interface VersionSelectionOptions {
   explicitPrereleaseIntent?: boolean;
+  /**
+   * When true, prefer stable versions over prerelease/WIP where possible (stable-preferred policy).
+   * When false or undefined (default), select the highest semver version regardless of stable vs prerelease (latest-wins policy).
+   */
+  preferStable?: boolean;
 }
 
 export interface VersionSelectionResult {
@@ -366,39 +371,63 @@ export function selectVersionWithWipPolicy(
     ...filterSatisfying(availablePrerelease, normalizedRange, true)
   );
 
-  if (parsedRange.type === 'wildcard') {
-    result.reason = 'wildcard';
+  // Stable-preferred policy (used with --stable flag)
+  if (options?.preferStable) {
+    if (parsedRange.type === 'wildcard') {
+      result.reason = 'wildcard';
+      if (satisfyingStable.length > 0) {
+        result.version = satisfyingStable[0];
+        return result;
+      }
+      if (satisfyingPrerelease.length > 0) {
+        result.version = satisfyingPrerelease[0];
+        result.isPrerelease = true;
+      }
+      return result;
+    }
+
+    result.reason = 'range';
     if (satisfyingStable.length > 0) {
       result.version = satisfyingStable[0];
       return result;
     }
-    if (satisfyingPrerelease.length > 0) {
+
+    if (satisfyingPrerelease.length === 0) {
+      return result;
+    }
+
+    const explicitIntent =
+      options?.explicitPrereleaseIntent ??
+      hasExplicitPrereleaseIntent(parsedRange.original);
+    const stableExistsAnywhere = availableStable.length > 0;
+
+    if (explicitIntent || !stableExistsAnywhere) {
       result.version = satisfyingPrerelease[0];
       result.isPrerelease = true;
     }
+
     return result;
   }
 
-  result.reason = 'range';
-  if (satisfyingStable.length > 0) {
-    result.version = satisfyingStable[0];
+  // Default policy: Latest wins (stable and WIP treated uniformly)
+  const allSatisfying = sortVersionsDesc([
+    ...satisfyingStable,
+    ...satisfyingPrerelease
+  ]);
+
+  if (parsedRange.type === 'wildcard') {
+    result.reason = 'wildcard';
+  } else {
+    result.reason = 'range';
+  }
+
+  if (allSatisfying.length === 0) {
     return result;
   }
 
-  if (satisfyingPrerelease.length === 0) {
-    return result;
-  }
-
-  const explicitIntent =
-    options?.explicitPrereleaseIntent ??
-    hasExplicitPrereleaseIntent(parsedRange.original);
-  const stableExistsAnywhere = availableStable.length > 0;
-
-  if (explicitIntent || !stableExistsAnywhere) {
-    result.version = satisfyingPrerelease[0];
-    result.isPrerelease = true;
-  }
-
+  const selected = allSatisfying[0];
+  result.version = selected;
+  result.isPrerelease = isPrereleaseVersion(selected);
   return result;
 }
 

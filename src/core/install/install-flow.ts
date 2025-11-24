@@ -105,6 +105,7 @@ export async function resolveDependenciesForInstall(
     mode: options.resolutionMode ?? 'default',
     profile: options.profile,
     apiKey: options.apiKey,
+    preferStable: options.stable ?? false,
     onWarning: (message: string) => {
       if (!resolverWarnings.has(message)) {
         resolverWarnings.add(message);

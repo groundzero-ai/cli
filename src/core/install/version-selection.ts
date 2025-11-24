@@ -142,10 +142,17 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
 
 export async function selectVersionForInstall(args: InstallVersionSelectionArgs): Promise<InstallVersionSelectionResult> {
   const sources = await gatherVersionSourcesForInstall(args);
+  
+  // Merge preferStable from selectionOptions if provided
+  const selectionOptions: VersionSelectionOptions = {
+    ...(args.selectionOptions ?? {}),
+    ...(args.explicitPrereleaseIntent ? { explicitPrereleaseIntent: true } : {})
+  };
+  
   const selection = selectVersionWithWipPolicy(
     sources.availableVersions,
     args.constraint,
-    args.selectionOptions ?? (args.explicitPrereleaseIntent ? { explicitPrereleaseIntent: true } : undefined)
+    selectionOptions
   );
 
   return {

@@ -23,7 +23,7 @@ This document defines the **user-facing behavior** of the `install` command, ass
     - If `<name>` is **already declared** in `package.yml`: `<spec>` is treated as a **constraint hint** that must be **compatible** with the canonical `package.yml` range (see `package-yml-canonical.md` for rules).
     - If `<name>` is **not declared**: `<spec>` is treated as the **initial version range** to store in `package.yml`, and resolution uses local+remote under that range.
 
-Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, conflicts) keep their existing semantics unless overridden below.
+Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, conflicts) keep their existing semantics unless overridden below.
 
 ---
 
@@ -57,11 +57,11 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, conflicts) keep th
 - **Behavior**:
   - **Case A – `opkg install <name>` (no version spec)**:
     - Compute **available versions** from local+remote.
-    - Select **latest stable** version `S` if any exist.
-      - If only WIP or pre-releases exist, follow policy from `version-resolution.md`.
-    - **Install `<name>@S`**.
+    - **Default behavior**: Select the **latest semver version** that satisfies the internal wildcard range (`*`), **including pre-releases/WIPs**. If the selected version is a pre-release/WIP, the CLI should state that explicitly.
+    - **With `--stable` flag**: Select the **latest stable** version `S` if any exist. If only WIP or pre-releases exist, select the latest WIP/pre-release.
+    - **Install `<name>@<selectedVersion>`**.
     - **Add to `package.yml`**:
-      - Default range is **caret based on `S`** (e.g. `^1.2.3`), unless later overridden by a global policy.
+      - Default range is **caret based on the stable base** of the selected version (e.g. `^1.0.1` for `1.0.1-000fz8.a3k`), unless later overridden by a global policy.
 
   - **Case B – `opkg install <name>@<spec>`**:
     - Treat `<spec>` as the **initial canonical range**:
@@ -136,16 +136,18 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, conflicts) keep th
 
 High-level rules (details in `version-resolution.md`):
 
-- **Stable over WIP**:
+- **Default behavior: Latest-in-range, including WIP**:
+  - For any non-exact constraint (wildcard or range), the resolver chooses the **highest semver version** that satisfies the range, regardless of whether it is stable or WIP/pre-release.
+  - This ensures that `opkg install <name>` naturally selects the newest available version, including WIPs, which is useful for development workflows.
+  - When a WIP/pre-release is selected, `opkg install` output should clearly indicate that the installed version is a pre-release/WIP.
+
+- **With `--stable` flag: Stable-preferred policy**:
   - For a given base stable `S`, if both:
     - Stable `S`, and
     - WIPs `S-<t>.<w>`
     exist and satisfy the range, **prefer `S`**.
-
-- **WIP only when stable absent or explicitly requested**:
-  - If **no stable versions** exist that satisfy the range, WIP or other pre-releases may be selected when:
-    - The range **explicitly allows pre-release** semantics (e.g. exact WIP string), or
-    - A **policy in `version-resolution.md`** allows falling back to WIPs in constrained situations.
+  - WIP/pre-release versions are only selected when **no stable versions** exist that satisfy the range.
+  - This is useful for CI/production scenarios where stability is preferred over the absolute latest version.
 
 ---
 
