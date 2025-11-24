@@ -403,9 +403,12 @@ async function installPackageCommand(
     throw buildNoVersionFoundError(packageName, constraintLabel, preselection.selection, resolutionMode);
   }
 
-  if (preselection.selection.isPrerelease) {
-    console.log(`ℹ️  Selected pre-release version ${selectedRootVersion} for ${packageName}`);
-  }
+  // Determine if version is local or remote
+  const isRemote = preselection.sources.remoteStatus === 'success' && 
+                   preselection.sources.remoteVersions.includes(selectedRootVersion);
+  const source = isRemote ? 'remote' : 'local';
+
+  console.log(`✓ Selected ${source} @${packageName}@${selectedRootVersion}`);
 
   let downloadVersion = selectedRootVersion;
 

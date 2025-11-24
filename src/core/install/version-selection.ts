@@ -128,9 +128,6 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
   }
 
   const fallbackToLocalOnly = remoteStatus !== 'success';
-  if (remoteStatus === 'failed' && remoteError) {
-    warnings.push(`${remoteError}. Falling back to local versions for ${args.packageName}.`);
-  }
 
   return {
     localVersions: normalizedLocal,
