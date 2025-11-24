@@ -11,13 +11,15 @@ This document captures the agreed behavior for versioning when splitting `save` 
   - **Role**: Declares the **next intended stable version** for the package.
   - **Version field semantics**:
     - Before `pack`, represents the **stable version `S` that will be published** (e.g. `1.2.3`, `3.0.0`).
-    - After a successful `pack` of `S`, the CLI automatically bumps this to `patch(S)` (e.g. `1.2.3 → 1.2.4`) to prepare for the next cycle.
+    - After a successful `pack` of `S`, the workspace (and any fresh installs of `<pkg>@S`) typically have `package.yml.version = S` recorded as the last packed stable.
     - Is the **canonical source of truth** any time the CLI must choose a version.
   - **Mutations**:
     - **User** can edit this manually at any time (e.g. jump from `1.2.4` to `2.0.0` for a major).
     - **CLI**:
-      - `save` **never** mutates `package.yml.version`.
-      - `pack` updates `package.yml.version` from `S` to `patch(S)` **only after a successful pack of `S`**.
+      - `pack` **never** mutates `package.yml.version`.
+      - `save` may **optionally auto‑bump** `package.yml.version` from `S` to `patch(S)` when it detects that:
+        - `package.index.yml.workspace.version` is a **non‑prerelease** version, and
+        - Its base stable line matches `package.yml.version`.
 
 - **`<pkg>/package.index.yml`**
   - **Owner**: CLI (tool-managed).
@@ -97,7 +99,13 @@ On each `save <pkg>`:
     - `workspaceHash` derived from `cwd`.
 
 - Compute:
-  - `wipVersion = S-<t>.<w>`, where:
+  - The **effective stable base `S_eff`** to use for WIP:
+    - Normally `S_eff = S`.
+    - If `package.index.yml.workspace.version` is present and:
+      - Is a **non‑prerelease** semver `S_last`, and
+      - `base(S_last) === S`,
+      - then treat this as **“just packed (or installed) `S`”** and set `S_eff = patch(S)`.
+  - `wipVersion = S_eff-<t>.<w>`, where:
     - `t` is computed from current epoch seconds and encoded as **fixed-width base36**.
     - `w` is derived from `workspaceHash` (e.g. 2–3 leading base36 chars).
 
@@ -108,16 +116,23 @@ Examples:
 - `package.yml.version = 1.2.3`, `package.index.yml.workspace.version` is:
   - Missing (first save), or
   - A WIP like `1.2.3-000fz8.a3k`, or
-  - A stable like `1.2.3` from a previous `pack`.
+  - A stable like `1.2.3` from a previous `pack` or install.
 
 Behavior:
 
-- Continue the WIP stream on that same stable line:
-  - Generate a **new WIP version**: `1.2.3-<tNew>.<w>`.
+- If `package.index.yml.workspace.version` is **missing**:
+  - Treat this as the **first save**; generate a WIP on the current line:
+    - `S_eff = S`, `wipVersion = S-<t>.<w>`.
+- If `package.index.yml.workspace.version` is **WIP or other pre-release** derived from `S`:
+  - Continue the WIP stream on that same stable line:
+    - `S_eff = S`, `wipVersion = S-<tNew>.<w>`.
+- If `package.index.yml.workspace.version` is a **stable** `S` whose base matches `package.yml.version`:
+  - Treat this as **“S has been packed/installed; start the next patch line”**:
+    - Compute `Snext = patch(S)`.
+    - Use `S_eff = Snext` and `wipVersion = Snext-<t>.<w>`.
+    - Optionally auto‑bump `package.yml.version` to `Snext` after a successful save to keep the workspace line aligned.
 
 - Effect:
-  - `package.yml.version` **remains `S`** (e.g. `1.2.3`).
-  - `package.index.yml.workspace.version` is set to the new `wipVersion`.
   - A new WIP copy is saved to the registry at `<pkg>/<wipVersion>/...`.
   - Older WIP copies for the **same `workspaceHash`** are cleaned up (registry directories).
 
@@ -141,8 +156,8 @@ Behavior:
 - Generate `wipVersion = 3.0.0-<t>.<w>`.
 
 - Writes:
-  - `package.yml.version` stays at the user-specified `3.0.0`.
-  - `package.index.yml.workspace.version` becomes `3.0.0-<t>.<w>`.
+  - `package.yml.version` stays at the user-specified `3.0.0` (unless a later save cycle triggers an auto‑bump based on a new stable line).
+  - `package.index.yml.workspace.version` becomes `3.0.0-<t>.<w>` (when maintained by the CLI).
   - Registry WIP copy is created accordingly, with old WIPs for this `workspaceHash` cleaned up.
 
 - This rule is **the same** whether the old `lastWorkspaceVersion` was WIP or stable:
@@ -157,7 +172,7 @@ Behavior:
 - Inputs:
   - `package.yml.version = S` (next intended stable).
   - `package.index.yml.workspace.version` (might be WIP or a previous stable).
-  - **No `--bump` option**: version bumping is expressed by the user editing `package.yml.version` directly.
+  - **No `--bump` option**: version bumping is expressed by the user editing `package.yml.version` directly or via the `save` auto‑bump rule.
   - **No `<pkg>@<version>` syntax**: `pack` always uses `package.yml.version` as the target stable version; users change the target by editing `package.yml.version`, not via `@<version>` on the CLI.
 
 - Behavior:
@@ -177,12 +192,14 @@ Behavior:
     - Removes this workspace’s WIP registry directories for that package, using `workspaceHash`.
 
 - `package.yml.version` after `pack`:
+  - `pack` **does not mutate** `package.yml.version`.
   - After a successful `pack` of `S`:
-    - Compute `Snext = patch(S)`.
-    - Automatically update `package.yml.version` to `Snext`, preparing the workspace for the next development cycle.
-    - Log a clear message, for example:
-      - “Packed `<name>@S`. Updated `package.yml.version` to `Snext` for the next cycle.”
-  - If `pack` fails, `package.yml.version` MUST NOT be changed.
+    - The workspace (and any fresh installs of `<pkg>@S`) will typically have `package.yml.version = S` and `package.index.yml.workspace.version = S`.
+    - The transition to the next development cycle (e.g. `Snext = patch(S)`) is handled by the **`save` flow**, which:
+      - Detects when `package.index.yml.workspace.version` is a **non‑prerelease** version whose base equals `package.yml.version`.
+      - Uses `patch(S)` as the base for new WIP versions.
+      - May auto‑bump `package.yml.version` to `patch(S)` as part of that `save` operation.
+  - If `pack` fails, `package.index.yml` and `package.yml.version` MUST NOT be changed.
 
 ---
 
@@ -198,8 +215,8 @@ Behavior:
 
 - **User mental model**:
   - “The version in `package.yml` is the **next stable** I’m working toward.”
-  - “`save` creates WIP versions as pre-releases of that version (`<version>-<t>.<w>`) and keeps index/registry pointers in sync.”
-  - “`pack` publishes that exact version, records it as the last packed stable, and then automatically bumps `package.yml.version` to the next patch so I don’t accidentally keep saving WIPs against an already released version.”
+  - “`save` creates WIP versions as pre-releases of that version (`<version>-<t>.<w>`) and, when the last workspace version is a stable `S`, can auto‑bump the line to `patch(S)` for the next cycle.”
+  - “`pack` publishes that exact version and records it as the last packed stable; it does **not** change `package.yml.version` directly.”
 
 - **Workspace isolation**:
   - WIP registry entries are always scoped by `workspaceHash`, and `save`/`pack` clean up WIPs only for the current workspace.

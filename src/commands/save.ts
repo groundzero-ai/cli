@@ -17,6 +17,7 @@ import { createWorkspaceHash } from '../utils/version-generator.js';
 import { computeWipVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
+import { writePackageYml } from '../utils/package-yml.js';
 
 /**
  * Main implementation of the save package command
@@ -122,6 +123,23 @@ async function savePackageCommand(
   await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceHash, {
     keepVersion: effectiveConfig.version
   });
+
+  // If the last workspace version was a stable S matching package.yml.version,
+  // begin the next development cycle by bumping package.yml.version to patch(S)
+  // after a successful save. This keeps new WIP saves on the next stable line
+  // while leaving freshly installed workspaces at their packed stable until
+  // they perform a save.
+  if (wipVersionInfo.shouldBumpPackageYml && wipVersionInfo.nextStable) {
+    try {
+      const bumpedConfig = { ...packageConfig, version: wipVersionInfo.nextStable };
+      await writePackageYml(packageInfo.fullPath, bumpedConfig);
+      console.log(
+        `✓ Updated package.yml.version to ${wipVersionInfo.nextStable} for the next cycle`
+      );
+    } catch (error) {
+      logger.warn(`Failed to auto-bump package.yml after save: ${String(error)}`);
+    }
+  }
 
   // Finalize the save operation
   // Don't add root package to itself as a dependency

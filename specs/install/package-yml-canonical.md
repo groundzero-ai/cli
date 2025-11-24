@@ -115,6 +115,19 @@ The aim is to make behavior predictable and avoid “CLI overrides” that silen
     - Bumping base versions for stable lines.
   - Therefore, `install` **never auto-bumps** the declared ranges in `package.yml`.
 
+- **Auto-tracking of workspace-owned packages (`save` / `pack`)**:
+  - When a package developed in the current workspace is first added as a dependency:
+    - `save` / `pack` persist a **default caret range** derived from the new stable, e.g. `^1.2.3`.
+  - On subsequent `save` / `pack` operations for that same package:
+    - Let `R_pkg` be the existing range in `package.yml` and `S_new` the new stable base version (e.g. `2.0.0`).
+    - If `S_new` **already satisfies** `R_pkg` (e.g. `R_pkg = ^1.0.0`, `S_new = 1.0.1`):
+      - **The constraint is left unchanged**; `save` / `pack` do not rewrite `R_pkg`.
+    - If `S_new` is **outside** `R_pkg` (e.g. `R_pkg = ^1.0.0`, `S_new = 2.0.0`):
+      - `save` / `pack` may **auto-update** the dependency line in `package.yml` to a new caret range `^S_new` to keep the workspace tracking the new stable line.
+  - This auto-tracking behavior:
+    - Applies only to dependencies managed via `save` / `pack` for workspace-owned packages.
+    - Never changes constraints that already include the new stable version.
+
 ---
 
 ## 5. Conflict scenarios & UX

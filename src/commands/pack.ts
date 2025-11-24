@@ -146,17 +146,6 @@ async function packPackageCommand(
     });
   }
 
-  // Auto-bump package.yml.version to the next patch version for the next development cycle
-  try {
-    const bumpedConfig = { ...packageConfig, version: packVersionInfo.nextStable };
-    await writePackageYml(packageInfo.fullPath, bumpedConfig);
-    console.log(
-      `✓ Updated package.yml.version to ${packVersionInfo.nextStable} for the next cycle`
-    );
-  } catch (error) {
-    logger.warn(`Failed to auto-bump package.yml after pack: ${String(error)}`);
-  }
-
   const packageType = isRootPackage ? 'root package' : 'package';
   console.log(`${LOG_PREFIXES.SAVED} ${effectiveConfig.name}@${effectiveConfig.version} (${packageType}, ${packageFiles.length} files):`);
   if (packageFiles.length > 0) {

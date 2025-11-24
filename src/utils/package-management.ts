@@ -1,4 +1,5 @@
 import { basename, join, relative } from 'path';
+import semver from 'semver';
 import { PackageYml, PackageDependency } from '../types/index.js';
 import { parsePackageYml, writePackageYml } from './package-yml.js';
 import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
@@ -78,26 +79,50 @@ export async function addPackageToYml(
   }
   
   const config = await parsePackageYml(packageYmlPath);
-  
-  // Determine the version to write to package.yml
-  let versionToWrite: string;
-  
-  if (originalVersion) {
-    // If we have the original version/range, use it as-is
-    versionToWrite = originalVersion;
+  if (!config.packages) config.packages = [];
+  if (!config[DEPENDENCY_ARRAYS.DEV_PACKAGES]) config[DEPENDENCY_ARRAYS.DEV_PACKAGES] = [];
+
+  const normalizedPackageName = normalizePackageName(packageName);
+  const packagesArray = config.packages;
+  const devPackagesArray = config[DEPENDENCY_ARRAYS.DEV_PACKAGES]!;
+
+  const findIndex = (arr: PackageDependency[]): number =>
+    arr.findIndex(dep => arePackageNamesEquivalent(dep.name, normalizedPackageName));
+
+  let currentLocation: 'packages' | 'dev-packages' | null = null;
+  let existingIndex = findIndex(packagesArray);
+  if (existingIndex >= 0) {
+    currentLocation = DEPENDENCY_ARRAYS.PACKAGES;
   } else {
-    // For save command, strip prerelease versioning and create caret range
-    const baseVersion = extractBaseVersion(packageVersion);
-    versionToWrite = createCaretRange(baseVersion);
+    existingIndex = findIndex(devPackagesArray);
+    if (existingIndex >= 0) {
+      currentLocation = DEPENDENCY_ARRAYS.DEV_PACKAGES;
+    } else {
+      existingIndex = -1;
+    }
   }
-  
+
+  const existingRange =
+    currentLocation && existingIndex >= 0
+      ? config[currentLocation]![existingIndex]?.version
+      : undefined;
+
+  const baseVersion = extractBaseVersion(packageVersion);
+  const defaultRange = createCaretRange(baseVersion);
+  let versionToWrite = originalVersion ?? defaultRange;
+
+  if (!originalVersion && existingRange) {
+    if (rangeIncludesVersion(existingRange, baseVersion)) {
+      versionToWrite = existingRange;
+    }
+  }
+
   const dependency: PackageDependency = {
-    name: normalizePackageName(packageName),
+    name: normalizedPackageName,
     version: versionToWrite
   };
   
-  // Find current location and determine target location
-  const currentLocation = await findPackageLocation(cwd, packageName);
+  // Determine target location (packages vs dev-packages)
   
   let targetArray: 'packages' | 'dev-packages';
   if (currentLocation === DEPENDENCY_ARRAYS.DEV_PACKAGES && !isDev) {
@@ -110,28 +135,27 @@ export async function addPackageToYml(
     targetArray = isDev ? DEPENDENCY_ARRAYS.DEV_PACKAGES : DEPENDENCY_ARRAYS.PACKAGES;
   }
   
-  // Initialize arrays if they don't exist
-  if (!config.packages) config.packages = [];
-  if (!config[DEPENDENCY_ARRAYS.DEV_PACKAGES]) config[DEPENDENCY_ARRAYS.DEV_PACKAGES] = [];
-  
   // Remove from current location if moving between arrays
-  if (currentLocation && currentLocation !== targetArray) {
-    const currentArray = config[currentLocation]!;
-    const currentIndex = currentArray.findIndex(dep => arePackageNamesEquivalent(dep.name, packageName));
-    if (currentIndex >= 0) {
-      currentArray.splice(currentIndex, 1);
-    }
+  if (currentLocation && currentLocation !== targetArray && existingIndex >= 0) {
+    config[currentLocation]!.splice(existingIndex, 1);
+    existingIndex = -1;
+    currentLocation = null;
   }
   
   // Update or add dependency
   const targetArrayRef = config[targetArray]!;
-  const existingIndex = targetArrayRef.findIndex(dep => arePackageNamesEquivalent(dep.name, packageName));
+  const existingTargetIndex =
+    currentLocation === targetArray ? findIndex(targetArrayRef) : -1;
   
-  if (existingIndex >= 0) {
-    targetArrayRef[existingIndex] = dependency;
-    if (!silent) {
-      logger.info(`Updated existing package dependency: ${packageName}@${packageVersion}`);
-      console.log(`✓ Updated ${packageName}@${packageVersion} in main package.yml`);
+  if (existingTargetIndex >= 0) {
+    const existingDep = targetArrayRef[existingTargetIndex];
+    const versionChanged = existingDep.version !== dependency.version;
+    if (versionChanged) {
+      targetArrayRef[existingTargetIndex] = dependency;
+      if (!silent) {
+        logger.info(`Updated existing package dependency: ${packageName}@${packageVersion}`);
+        console.log(`✓ Updated ${packageName}@${packageVersion} in main package.yml`);
+      }
     }
   } else {
     targetArrayRef.push(dependency);
@@ -198,36 +222,13 @@ export async function writeLocalPackageFromRegistry(
   );
 }
 
-/**
- * Find package location in package.yml
- * Helper function for addPackageToYml
- */
-async function findPackageLocation(
-  cwd: string,
-  packageName: string
-): Promise<'packages' | 'dev-packages' | null> {
-  const packageYmlPath = getLocalPackageYmlPath(cwd);
-  
-  if (!(await exists(packageYmlPath))) {
-    return null;
+function rangeIncludesVersion(range: string, version: string): boolean {
+  if (!range || !version) {
+    return false;
   }
-  
   try {
-    const config = await parsePackageYml(packageYmlPath);
-    
-    // Check in packages array
-    if (config.packages?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
-      return DEPENDENCY_ARRAYS.PACKAGES;
-    }
-
-    // Check in dev-packages array
-    if (config[DEPENDENCY_ARRAYS.DEV_PACKAGES]?.some(dep => arePackageNamesEquivalent(dep.name, packageName))) {
-      return DEPENDENCY_ARRAYS.DEV_PACKAGES;
-    }
-    
-    return null;
-  } catch (error) {
-    logger.warn(`Failed to parse package.yml: ${error}`);
-    return null;
+    return semver.satisfies(version, range, { includePrerelease: true });
+  } catch {
+    return false;
   }
 }
