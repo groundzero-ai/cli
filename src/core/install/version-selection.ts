@@ -13,6 +13,7 @@ import {
   type VersionSelectionOptions,
   type VersionSelectionResult
 } from '../../utils/version-ranges.js';
+import { isScopedName } from '../scoping/package-scoping.js';
 
 export interface VersionSourceSummary {
   localVersions: string[];
@@ -129,8 +130,8 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
 
   const fallbackToLocalOnly = remoteStatus !== 'success';
 
-  if (fallbackToLocalOnly && remoteError) {
-    warnings.push(`Using local version (error: ${remoteError})`);
+  if (fallbackToLocalOnly && remoteError && isScopedName(args.packageName)) {
+    warnings.push(`Using local version (reason: ${remoteError})`);
   }
 
   return {

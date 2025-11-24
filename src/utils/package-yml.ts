@@ -1,6 +1,7 @@
 import * as yaml from 'js-yaml';
 import { PackageYml } from '../types/index.js';
 import { readTextFile, writeTextFile } from './fs.js';
+import { isScopedName } from '../core/scoping/package-scoping.js';
 
 /**
  * Parse package.yml file with validation
@@ -34,8 +35,8 @@ export async function writePackageYml(packageYmlPath: string, config: PackageYml
   });
   
   // Ensure scoped names (starting with @) are quoted
-  const isScopedName = config.name.startsWith('@');
-  if (isScopedName) {
+  const isScoped = isScopedName(config.name);
+  if (isScoped) {
     // Split into lines and process the name line
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {

@@ -1,10 +1,11 @@
 import * as semver from 'semver';
 import yaml from 'js-yaml';
-import { Package, PackageFile, PackageYml } from '../types/index.js';
+import { PackageFile, PackageYml } from '../types/index.js';
 import { extractBaseVersion } from './version-generator.js';
 import { getPackageVersionPath } from '../core/directory.js';
 import { exists } from './fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
+import { isScopedName } from '../core/scoping/package-scoping.js';
 
 /**
  * Compute stable version from a prerelease version
@@ -25,7 +26,7 @@ export function dumpYamlWithScopedQuoting(config: PackageYml, options: yaml.Dump
   let dumped = yaml.dump(config, { ...options, quotingType: '"' });
   
   // Ensure scoped names are quoted
-  if (config.name.startsWith('@')) {
+  if (isScopedName(config.name)) {
     const lines = dumped.split('\n');
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim().startsWith('name:')) {
