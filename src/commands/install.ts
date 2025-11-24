@@ -410,10 +410,6 @@ async function installPackageCommand(
 
   console.log(`✓ Selected ${source} @${packageName}@${selectedRootVersion}`);
 
-  if (preselection.selection.isPrerelease && !options.stable) {
-    console.log(`ℹ️  Selected version ${selectedRootVersion} is a pre-release/WIP (use --stable to prefer stable releases).`);
-  }
-
   let downloadVersion = selectedRootVersion;
 
   const mainPackageAvailableLocally = downloadVersion

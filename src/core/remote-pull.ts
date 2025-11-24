@@ -366,7 +366,7 @@ async function getRemotePackage(
   version?: string,
   recursive?: boolean,
 ): Promise<PullPackageResponse> {
-  const encodedName = name.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  const encodedName = encodeURIComponent(name);
   let endpoint = version && version !== 'latest'
     ? `/packages/pull/by-name/${encodedName}/v/${encodeURIComponent(version)}`
     : `/packages/pull/by-name/${encodedName}`;
