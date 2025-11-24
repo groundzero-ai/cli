@@ -45,7 +45,6 @@ import { safePrompts } from '../utils/prompts.js';
 import {
   createCaretRange,
   isExactVersion,
-  isPrereleaseVersion,
   parseVersionRange,
   resolveVersionRange
 } from '../utils/version-ranges.js';
@@ -847,10 +846,8 @@ function resolvePersistRange(
     return { range: decision.range, target: decision.target };
   }
 
-  let derivedRange = selectedVersion;
-  if (!(decision.mode === 'caret-or-exact' && isPrereleaseVersion(selectedVersion))) {
-    derivedRange = createCaretRange(selectedVersion);
-  }
+  // Create caret range from the selected version
+  const derivedRange = createCaretRange(selectedVersion);
 
   return { range: derivedRange, target: decision.target };
 }
