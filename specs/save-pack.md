@@ -6,7 +6,7 @@ For `save` command:
 - **Copy the entire package** from `.openpackage/packages/<pkg>` into the local registry under the computed WIP version (same copy logic as existing `save --stable` / `pack`).
 - On each save, remove older WIP versions for the same workspace (per `workspaceHash`) to keep the registry clean.
 - Prefer not to update the `package.yml` version number; instead, keep WIP/stable details in `package.index.yml` and registry metadata.
-- The `save` command always saves the next prerelease version based on the current stable (for example: `1.0.0` then `1.0.1-wip.111.aaa`, `1.0.1-wip.120.aaa`, `1.0.1-wip.130.aaa`).
+- The `save` command always saves the next prerelease version based on the current stable (for example: `1.0.0` then `1.0.1-000fz8.a3k`, `1.0.1-000fz9.a3k`, `1.0.1-000fza.a3k`).
 
 For `pack` command:
 - This is essentially the same as “promote current workspace state to a stable version”.
@@ -31,7 +31,7 @@ This plan refactors the existing `save` command into two orthogonal ones, minimi
 - Registry: `~/.openpackage/registry/<pkg>/<full-version>/` (dirs w/ files/index.yml).
 - Existing `save.ts`: Orchestrates sync → version gen → copy → yml.
 - wsHash: 8-char SHA256(cwd) via `hash-utils.ts`.
-- ts: 8-char base62 epoch sec pad via new util.
+- ts: 6-char base36 epoch sec pad via new util.
 - Commands auto-detect `<pkg>` via context/discovery if omitted.
 
 **Migration**:

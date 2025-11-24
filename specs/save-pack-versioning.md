@@ -26,7 +26,7 @@ This document captures the agreed behavior for versioning when splitting `save` 
     - Tracks `files` mapping from registry-like keys to installed workspace paths (same as current behavior).
   - **Fields**:
     - `workspace.version`:
-      - After `save`: the **exact WIP version** (e.g. `1.2.3-wip.<ts>.<ws>`).
+      - After `save`: the **exact WIP version** (e.g. `1.2.3-<t>.<w>`).
       - After `pack`: the **exact stable version** that was packed (e.g. `1.2.3`).
     - `workspace.hash`:
       - 8-character hash derived from the current workspace path (`cwd`).
@@ -60,12 +60,20 @@ This document captures the agreed behavior for versioning when splitting `save` 
 
 - **Definitions**:
   - A **WIP version** is of the form:
-    - `S-wip.<timestamp>.<workspaceHash>`
-    - Example: `1.2.3-wip.20241123a.abc12345`.
+    - `S-<t>.<w>`
+    - `t` (time component):
+      - A **fixed-width, zero-padded base36 encoding of epoch seconds** (or a similar monotonically increasing time base).
+      - Example (illustrative): `000fz8`, `000fz9`, `000fza`, ...
+    - `w` (workspace component):
+      - A **tiny workspace tag** derived from the current workspace path, e.g. the first **3 base36 characters** of an 8-character `workspace.hash`.
+      - Example: `a3k`, `k7p`.
+    - Example full WIP: `1.2.3-000fz8.a3k`.
 
 - **Semver ordering**:
   - For the above:
-    - `S-wip.* < S`.
+    - All `S-<t>.<w>` are **semver pre-releases of `S`**, and:
+      - For a fixed-width base36 `t`, lexicographic order of `<t>` matches time order.
+      - Therefore **`S-<t>.<w> < S`** always holds, and newer saves for the same `S` have larger `<t>` values.
   - This preserves:
     - A clean, user-chosen stable `S` in `package.yml`.
     - WIP versions as **pre-releases of that exact upcoming stable**.
@@ -86,10 +94,12 @@ On each `save <pkg>`:
 - Read:
   - `package.yml.version` → `S` (next intended stable).
   - `package.index.yml.workspace.version` if present → `lastWorkspaceVersion`.
-  - `workspaceHash` derived from `cwd`.
+    - `workspaceHash` derived from `cwd`.
 
 - Compute:
-  - `wipVersion = S-wip.<timestamp>.<workspaceHash>`.
+  - `wipVersion = S-<t>.<w>`, where:
+    - `t` is computed from current epoch seconds and encoded as **fixed-width base36**.
+    - `w` is derived from `workspaceHash` (e.g. 2–3 leading base36 chars).
 
 #### 3.2 Normal case: `package.yml` and index agree on version line
 
@@ -97,13 +107,13 @@ Examples:
 
 - `package.yml.version = 1.2.3`, `package.index.yml.workspace.version` is:
   - Missing (first save), or
-  - A WIP like `1.2.3-wip.123`, or
+  - A WIP like `1.2.3-000fz8.a3k`, or
   - A stable like `1.2.3` from a previous `pack`.
 
 Behavior:
 
 - Continue the WIP stream on that same stable line:
-  - Generate a **new WIP version**: `1.2.3-wip.<newTimestamp>.<workspaceHash>`.
+  - Generate a **new WIP version**: `1.2.3-<tNew>.<w>`.
 
 - Effect:
   - `package.yml.version` **remains `S`** (e.g. `1.2.3`).
@@ -116,7 +126,7 @@ Behavior:
 Scenario:
 
 - Previous state:
-  - `package.index.yml.workspace.version = 1.2.3-wip.123` or `1.2.3`.
+  - `package.index.yml.workspace.version = 1.2.3-000fz8.a3k` or `1.2.3`.
 - User edits:
   - `package.yml.version = 3.0.0` (or any different stable).
 - User runs `save`.
@@ -127,12 +137,12 @@ Behavior:
   - `S = 3.0.0`.
 - Treat this as a **reset to a new version line**.
 - Log a clear message, for example:
-  - “Detected mismatch: `package.yml` version is `3.0.0`, last workspace version was `1.2.3-wip.123`. Starting a new WIP sequence from `3.0.0-wip.*` based on `package.yml`.”
-- Generate `wipVersion = 3.0.0-wip.<timestamp>.<workspaceHash>`.
+  - “Detected mismatch: `package.yml` version is `3.0.0`, last workspace version was `1.2.3-000fz8.a3k`. Starting a new WIP sequence from `3.0.0-<t>.<w>` based on `package.yml`.”
+- Generate `wipVersion = 3.0.0-<t>.<w>`.
 
 - Writes:
   - `package.yml.version` stays at the user-specified `3.0.0`.
-  - `package.index.yml.workspace.version` becomes `3.0.0-wip.*`.
+  - `package.index.yml.workspace.version` becomes `3.0.0-<t>.<w>`.
   - Registry WIP copy is created accordingly, with old WIPs for this `workspaceHash` cleaned up.
 
 - This rule is **the same** whether the old `lastWorkspaceVersion` was WIP or stable:
@@ -155,7 +165,7 @@ Behavior:
     - `pack` **always publishes exactly `S`** as the stable version.
     - Example:
       - `package.yml.version = 1.2.3`.
-      - WIPs are `1.2.3-wip.*`.
+      - WIPs are `1.2.3-<t>.<w>` for various `<t>`/`<w>`.
       - `pack` publishes `1.2.3` as stable.
     - If there is no existing WIP stream, `pack` still publishes `S` directly from the current workspace files.
   - **Registry**:
@@ -184,11 +194,11 @@ Behavior:
 
 - **Semver correctness**:
   - For any stable `S` and its associated WIP stream:
-    - `S-wip.* < S` always holds.
+    - `S-<t>.<w> < S` always holds for all WIP versions derived from `S`.
 
 - **User mental model**:
   - “The version in `package.yml` is the **next stable** I’m working toward.”
-  - “`save` creates WIP versions as pre-releases of that version (`<version>-wip.*`) and keeps index/registry pointers in sync.”
+  - “`save` creates WIP versions as pre-releases of that version (`<version>-<t>.<w>`) and keeps index/registry pointers in sync.”
   - “`pack` publishes that exact version, records it as the last packed stable, and then automatically bumps `package.yml.version` to the next patch so I don’t accidentally keep saving WIPs against an already released version.”
 
 - **Workspace isolation**:

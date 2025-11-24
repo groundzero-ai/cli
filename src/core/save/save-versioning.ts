@@ -2,12 +2,9 @@ import semver from 'semver';
 import { ValidationError } from '../../utils/errors.js';
 import {
   extractBaseVersion,
-  generateBase62Timestamp,
-  sanitizeWorkspaceHash,
-  WIP_TIMESTAMP_TOKEN_LENGTH,
-  WORKSPACE_HASH_TOKEN_LENGTH
+  generateWipVersion
 } from '../../utils/version-generator.js';
-import { ERROR_MESSAGES, WIP_SUFFIX } from './constants.js';
+import { ERROR_MESSAGES } from './constants.js';
 
 export interface WipVersionComputationResult {
   stable: string;
@@ -37,12 +34,10 @@ export function computeWipVersion(
   const reset = Boolean(lastWorkspaceVersion && lastBase !== normalizedStable);
   const resetMessage = reset
     ? `package.yml version ${normalizedStable} differs from last saved version ${lastWorkspaceVersion}. ` +
-      `Resetting WIP stream to ${normalizedStable}${WIP_SUFFIX}.`
+      `Resetting WIP stream for ${normalizedStable}.`
     : undefined;
 
-  const timestampPart = generateBase62Timestamp(options?.now ?? new Date(), WIP_TIMESTAMP_TOKEN_LENGTH);
-  const hashPart = sanitizeWorkspaceHash(workspaceHash, WORKSPACE_HASH_TOKEN_LENGTH);
-  const wipVersion = `${normalizedStable}${WIP_SUFFIX}.${timestampPart}.${hashPart}`;
+  const wipVersion = generateWipVersion(normalizedStable, workspaceHash, options);
 
   return {
     stable: normalizedStable,

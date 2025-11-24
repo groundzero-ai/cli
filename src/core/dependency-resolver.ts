@@ -245,7 +245,7 @@ export async function resolveDependencies(
   }
 
   // Use the resolved version (from directory name) rather than metadata version
-  // This ensures WIP packages use their full version string (e.g., 1.0.0-wip.xxx)
+  // This ensures WIP packages use their full version string (e.g., 1.0.0-000fz8.a3k)
   // instead of the base version from package.yml (e.g., 1.0.0)
   const currentVersion = resolvedVersion;
   if (!currentVersion) {

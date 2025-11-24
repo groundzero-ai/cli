@@ -139,7 +139,7 @@ High-level rules (details in `version-resolution.md`):
 - **Stable over WIP**:
   - For a given base stable `S`, if both:
     - Stable `S`, and
-    - WIPs `S-wip.*`
+    - WIPs `S-<t>.<w>`
     exist and satisfy the range, **prefer `S`**.
 
 - **WIP only when stable absent or explicitly requested**:

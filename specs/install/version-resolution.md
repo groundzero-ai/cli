@@ -18,7 +18,7 @@ The goal is to implement **“latest in range from local+remote”** determinist
   - Examples: `1.2.3`, `^1.2.0`, `~2.0.1`, `>=3.0.0 <4.0.0`, `*`, `latest`.
 - **Local versions**:
   - Semver versions discoverable via `listPackageVersions(name)` from the **local registry**.
-  - Includes both **stable** and **WIP/pre-release** versions, e.g. `1.2.3`, `1.2.3-wip.abc12345`.
+  - Includes both **stable** and **WIP/pre-release** versions, e.g. `1.2.3`, `1.2.3-000fz8.a3k`.
 - **Remote versions**:
   - Semver versions discoverable via remote metadata APIs (e.g. via `fetchRemotePackageMetadata` / registry metadata).
   - Also includes both **stable** and **WIP/pre-release** versions.
@@ -34,7 +34,7 @@ The goal is to implement **“latest in range from local+remote”** determinist
     - **`available = local`**, and a warning is emitted.
 
 - **Deduping**:
-  - Versions are deduped by their **full semver string** (`1.2.3-wip.abc` vs `1.2.3` are distinct).
+  - Versions are deduped by their **full semver string** (`1.2.3-000fz8.a3k` vs `1.2.3` are distinct).
 
 - **Ordering**:
   - For selection, versions are sorted in **descending semver order**:
@@ -97,7 +97,7 @@ If no version satisfies the constraint:
 
 - Let **`S`** be a stable version string, e.g. `1.2.3`.
 - Let **`W(S)`** be the set of WIP versions derived from `S`, e.g.:
-  - `1.2.3-wip.<timestamp>.<workspaceHash>`.
+  - `1.2.3-<t>.<w>`.
 
 ### 5.2 General rules
 
@@ -128,7 +128,7 @@ If no version satisfies the constraint:
 
 ### 6.1 Exact versions (incl. exact WIP)
 
-- **Example**: `install foo@1.2.3-wip.20241123a.abc12345`.
+- **Example**: `install foo@1.2.3-000fz8.a3k`.
 - Behavior:
   - Use **exact match**:
     - If that exact version is in `available`, select it.
@@ -190,22 +190,22 @@ These examples assume remote is reachable.
 
 - **Example 2 – WIP and stable**:
   - `package.yml`: `foo: ^1.2.0`
-  - Local: `1.2.3-wip.aaa`, `1.2.3`, `1.3.0-wip.bbb`
+  - Local: `1.2.3-000fz8.a3k`, `1.2.3`, `1.3.0-000fz9.a3k`
   - Remote: `1.3.0`
-  - Satisfying: `1.2.3`, `1.3.0-wip.bbb`, `1.3.0`
+  - Satisfying: `1.2.3`, `1.3.0-000fz9.a3k`, `1.3.0`
   - Selected: **`1.3.0`** (stable dominates WIP).
 
 - **Example 3 – No stable exists**:
   - `package.yml`: `foo: ^1.0.0-0` (or explicit WIP version).
   - Local: none.
-  - Remote: `1.0.0-wip.aaa`, `1.0.1-wip.bbb`
-  - Selected: **`1.0.1-wip.bbb`**.
+  - Remote: `1.0.0-000fz8.a3k`, `1.0.1-000fz9.a3k`
+  - Selected: **`1.0.1-000fz9.a3k`**.
 
 - **Example 4 – Wildcard with only WIPs**:
   - CLI: `install foo` (fresh dep, default wildcard internally).
   - Local: none.
-  - Remote: `0.1.0-wip.aaa`
-  - Selected: **`0.1.0-wip.aaa`**, but:
+  - Remote: `0.1.0-000fz8.a3k`
+  - Selected: **`0.1.0-000fz8.a3k`**, but:
     - The CLI should make it clear the installed version is a **pre-release/WIP**.
     - The stored range in `package.yml` may be **exact** or chosen policy-driven (e.g. exact WIP string).
 
@@ -221,7 +221,7 @@ Version resolution chooses **which version string** to install; this section sum
     - The loader must:
       - Load package files directly from that directory.
       - Read the `package.yml` from that directory for metadata.
-  - The resolved version string (`S-wip.*`) still participates in semver ordering and dependency resolution as specified above.
+  - The resolved version string (`S-<t>.<w>`) still participates in semver ordering and dependency resolution as specified above.
 
 - **Remote WIPs**:
   - Remote registries are expected to expose **copied artifacts** for any WIP versions they publish.

@@ -1,4 +1,5 @@
 import * as semver from 'semver';
+import { parseWipVersion } from './version-generator.js';
 
 /**
  * Version range types supported by the system
@@ -233,16 +234,7 @@ export function isPrereleaseVersion(version: string): boolean {
  * Determine if a version string follows the WIP naming convention
  */
 export function isWipVersion(version: string): boolean {
-  if (!isPrereleaseVersion(version)) {
-    return false;
-  }
-
-  const prerelease = semver.prerelease(version);
-  if (!prerelease) {
-    return false;
-  }
-
-  return prerelease.some(token => typeof token === 'string' && token.toLowerCase().startsWith('wip'));
+  return parseWipVersion(version) !== null;
 }
 
 /**
@@ -308,10 +300,6 @@ export function hasExplicitPrereleaseIntent(range: string): boolean {
   const trimmed = range.trim();
   if (!trimmed || trimmed === '*' || trimmed.toLowerCase() === 'latest') {
     return false;
-  }
-
-  if (/-wip/i.test(trimmed)) {
-    return true;
   }
 
   try {
