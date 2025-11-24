@@ -3,24 +3,19 @@ import { join } from 'path';
 import { PushOptions, CommandResult } from '../types/index.js';
 import { PushPackageResponse } from '../types/api.js';
 import { packageManager } from '../core/package.js';
-import { ensureRegistryDirectories } from '../core/directory.js';
+import { ensureRegistryDirectories, listPackageVersions } from '../core/directory.js';
 import { authManager } from '../core/auth.js';
 import { logger } from '../utils/logger.js';
-import { withErrorHandling } from '../utils/errors.js';
+import { withErrorHandling, UserCancellationError, PackageNotFoundError } from '../utils/errors.js';
 import { createHttpClient } from '../utils/http-client.js';
 import { createTarballFromPackage, createFormDataForUpload } from '../utils/tarball.js';
 import * as semver from 'semver';
 import { parsePackageInput } from '../utils/package-name.js';
 import { promptConfirmation } from '../utils/prompts.js';
-import { UserCancellationError } from '../utils/errors.js';
 import { formatFileSize } from '../utils/formatters.js';
 import { Spinner } from '../utils/spinner.js';
-import { 
-  computeStableVersion, 
-  transformPackageFilesForVersionChange,
-  packageVersionExists 
-} from '../utils/package-versioning.js';
 import { showApiKeySignupMessage } from '../utils/messages.js';
+import { getLatestStableVersion } from '../utils/package-versioning.js';
 import { resolveScopedNameForPushWithUserScope, isScopedName } from '../core/scoping/package-scoping.js';
 import { renameRegistryPackage } from '../core/registry/registry-rename.js';
 import { getLocalPackageDir } from '../utils/paths.js';
@@ -30,33 +25,6 @@ import { parsePackageYml } from '../utils/package-yml.js';
 import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
 import type { PackageYmlInfo } from '../core/save/package-yml-generator.js';
 import { getCurrentUsername } from '../core/api-keys.js';
-
-/**
- * Push package command implementation
- */
-async function createStablePackageVersion(pkg: any, stableVersion: string): Promise<any> {
-  // Abort if target stable version already exists
-  if (await packageVersionExists(pkg.metadata.name, stableVersion)) {
-    throw new Error(`Stable version already exists: ${pkg.metadata.name}@${stableVersion}`);
-  }
-
-  const transformedFiles = transformPackageFilesForVersionChange(
-    pkg.files,
-    stableVersion,
-    pkg.metadata.name
-  );
-
-  const newPackage = {
-    metadata: {
-      ...pkg.metadata,
-      version: stableVersion
-    },
-    files: transformedFiles
-  };
-
-  await packageManager.savePackage(newPackage);
-  return newPackage;
-}
 
 async function tryRenameWorkspacePackage(
   cwd: string,
@@ -100,8 +68,6 @@ async function pushPackageCommand(
   let packageNameToPush = parsedName;
   let attemptedVersion: string | undefined;
 
-  showApiKeySignupMessage();
-
   try {
     // Ensure registry directories exist
     await ensureRegistryDirectories();
@@ -133,36 +99,62 @@ async function pushPackageCommand(
       packageNameToPush = scopedName;
     }
 
-    // Load package and determine version
-    let pkg = await packageManager.loadPackage(packageNameToPush, parsedVersion);
-    let versionToPush = parsedVersion || pkg.metadata.version;
+    // Determine which version to push
+    let pkg;
+    let versionToPush: string;
+
+    if (parsedVersion) {
+      // Explicit version flow
+      if (semver.prerelease(parsedVersion)) {
+        console.error(`❌ Prerelease versions cannot be pushed: ${parsedVersion}`);
+        console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
+        console.log('💡 Create a stable version using "opkg pack <package>".');
+        return { success: false, error: 'Only stable versions can be pushed' };
+      }
+
+      try {
+        pkg = await packageManager.loadPackage(packageNameToPush, parsedVersion);
+      } catch (error) {
+        if (error instanceof PackageNotFoundError) {
+          console.error(`❌ Version ${parsedVersion} not found for package '${packageNameToPush}'`);
+          console.log('💡 Create this stable version using "opkg pack <package>" and push again.');
+          return { success: false, error: 'Version not found' };
+        }
+        throw error;
+      }
+
+      versionToPush = pkg.metadata.version;
+    } else {
+      // Implicit version flow - use latest stable only
+      const allVersions = await listPackageVersions(packageNameToPush);
+      const latestStable = getLatestStableVersion(allVersions);
+
+      if (!latestStable) {
+        console.error(`❌ No stable versions found for package '${packageNameToPush}'`);
+        console.log('💡 Stable versions can be created using "opkg pack <package>".');
+        // Treat as a graceful, non-error exit to avoid duplicate plain error output
+        return { success: true };
+      }
+
+      const proceed = await promptConfirmation(
+        `Push latest stable version '${latestStable}'?`,
+        true
+      );
+      if (!proceed) {
+        throw new UserCancellationError('User declined pushing the stable version');
+      }
+
+      pkg = await packageManager.loadPackage(packageNameToPush, latestStable);
+      versionToPush = pkg.metadata.version;
+    }
+
     attemptedVersion = versionToPush;
 
-    // Reject or handle prerelease versions
     if (semver.prerelease(versionToPush)) {
-      if (parsedVersion) {
-        // Explicit prerelease remains an error
-        console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
-        console.log('');
-        console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
-        console.log('💡 Please create a stable package using the command "opkg save <package> stable".');
-        return { success: false, error: 'Only stable versions can be pushed' };
-      } else {
-        // Latest is prerelease and no version was specified -> prompt to convert
-        const proceed = await promptConfirmation(
-          `Latest version '${versionToPush}' is a prerelease. Convert to stable and push?`,
-          true
-        );
-        if (!proceed) {
-          throw new UserCancellationError('User declined prerelease to stable conversion');
-        }
-
-        const stableVersion = computeStableVersion(versionToPush);
-        console.log(`Converting to stable '${stableVersion}' and pushing...`);
-        pkg = await createStablePackageVersion(pkg, stableVersion);
-        versionToPush = stableVersion;
-        attemptedVersion = versionToPush;
-      }
+      console.error(`❌ Prerelease versions cannot be pushed: ${versionToPush}`);
+      console.log('Only stable versions (x.y.z) can be pushed to the remote registry.');
+      console.log('💡 Create a stable version using "opkg pack <package>".');
+      return { success: false, error: 'Only stable versions can be pushed' };
     }
     
     // Authenticate and create HTTP client
@@ -243,17 +235,16 @@ async function pushPackageCommand(
       
       if (apiError?.statusCode === 409) {
         console.error(`❌ Version ${attemptedVersion || 'latest'} already exists for package '${packageNameToPush}'`);
-        console.log('');
         console.log('💡 Try one of these options:');
-        console.log('  • Increment version with command "opkg save <package> stable"');
-        console.log('  • Update version with command "opkg save <package>@<version>"');
+        console.log('  • Increment version with command "opkg pack <package>"');
+        console.log('  • Update version with command "opkg pack <package>@<version>"');
         console.log('  • Specify a version explicitly using <package>@<version>');
         return { success: false, error: 'Version already exists' };
       }
       
       if (apiError?.statusCode === 401) {
         console.error(`❌ Authentication failed: ${error.message}`);
-        console.log('');
+        showApiKeySignupMessage();
         console.log('💡 To configure authentication:');
         console.log('  opkg configure');
         console.log('  opkg configure --profile <name>');
@@ -262,7 +253,7 @@ async function pushPackageCommand(
 
       if (apiError?.statusCode === 403) {
         console.error(`❌ Access denied: ${error.message}`);
-        console.log('');
+        showApiKeySignupMessage();
         console.log('💡 To configure authentication:');
         console.log('  opkg configure');
         console.log('  opkg configure --profile <name>');
@@ -272,7 +263,6 @@ async function pushPackageCommand(
       if (apiError?.statusCode === 422) {
         console.error(`❌ Package validation failed: ${error.message}`);
         if (apiError.details) {
-          console.log('');
           console.log('Validation errors:');
           if (Array.isArray(apiError.details)) {
             apiError.details.forEach((detail: any) => {
@@ -288,7 +278,6 @@ async function pushPackageCommand(
       // Generic error handling (do not print here; global handler will print once)
       
       if (error.message.includes('timeout')) {
-        console.log('');
         console.log('💡 The upload may have timed out. You can:');
         console.log('  • Try again (the upload may have succeeded)');
         console.log('  • Check your internet connection');

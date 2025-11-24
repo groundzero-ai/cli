@@ -124,3 +124,21 @@ export async function packageVersionExists(packageName: string, version: string)
   return await exists(targetPath);
 }
 
+/**
+ * Filter a list of versions down to semver-valid stable releases.
+ */
+export function filterStableVersions(versions: string[]): string[] {
+  return versions.filter((version) => semver.valid(version) && !semver.prerelease(version));
+}
+
+/**
+ * Find the latest stable version from a list (returns null if none).
+ */
+export function getLatestStableVersion(versions: string[]): string | null {
+  const stableVersions = filterStableVersions(versions);
+  if (stableVersions.length === 0) {
+    return null;
+  }
+  return semver.rsort(stableVersions)[0];
+}
+
