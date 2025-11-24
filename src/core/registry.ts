@@ -68,7 +68,7 @@ export class RegistryManager {
               
               entries.push({
                 name: metadata.name,
-                version: metadata.version,
+                version: version, // Use version from directory name, not package.yml
                 description: metadata.description,
                 author: undefined, // Not available in package.yml
                 lastUpdated: new Date().toISOString() // We don't track this anymore
@@ -90,7 +90,7 @@ export class RegistryManager {
             
             entries.push({
               name: metadata.name,
-              version: metadata.version,
+              version: latestVersion, // Use version from directory name, not package.yml
               description: metadata.description,
               author: undefined, // Not available in package.yml
               lastUpdated: new Date().toISOString() // We don't track this anymore
