@@ -6,10 +6,10 @@ import { packageManager } from './package.js';
 import { getInstalledPackageVersion, scanGroundzeroPackages } from './openpackage.js';
 import { logger } from '../utils/logger.js';
 import { PackageNotFoundError, PackageVersionNotFoundError, VersionConflictError } from '../utils/errors.js';
-import { hasExplicitPrereleaseIntent, isExactVersion, selectVersionWithWipPolicy } from '../utils/version-ranges.js';
+import { hasExplicitPrereleaseIntent } from '../utils/version-ranges.js';
 import { listPackageVersions } from './directory.js';
 import { registryManager } from './registry.js';
-import { gatherVersionSourcesForInstall, type VersionSourceSummary } from './install/version-selection.js';
+import { selectInstallVersionUnified } from './install/version-selection.js';
 import { InstallResolutionMode } from './install/types.js';
 
 /**
@@ -136,212 +136,74 @@ export async function resolveDependencies(
     }
   }
 
-  if (allRanges.length === 0) {
-    // No constraints provided - resolvedVersion stays undefined so latest local is used.
-    // Since we never consult remote metadata in this branch, we treat it as a local selection.
-    resolutionSource = 'local';
-  } else if (allRanges.length === 1 && isExactVersion(allRanges[0])) {
-    // Single exact version – no need to consult remote metadata for selection.
-    resolvedVersion = allRanges[0];
-    versionRange = allRanges[0];
-    resolutionSource = 'local';
-  } else {
-    const localVersions = await listPackageVersions(packageName);
+  const hasConstraints = allRanges.length > 0;
+  const dedupedRanges = Array.from(new Set(allRanges));
+  const combinedRangeLabel = hasConstraints ? dedupedRanges.join(' & ') : undefined;
 
-    const normalizeLocalVersions = (versions: string[]): string[] => {
-      const normalized = new Set<string>();
-      for (const versionCandidate of versions) {
-        if (typeof versionCandidate !== 'string') {
-          continue;
-        }
-        const trimmed = versionCandidate.trim();
-        if (!trimmed || !semver.valid(trimmed)) {
-          continue;
-        }
-        normalized.add(trimmed);
-      }
-      return Array.from(normalized).sort(semver.rcompare);
-    };
-
-    const attemptResolveWithSources = (
-      versionSources: VersionSourceSummary
-    ): {
-      resolvedVersion: string | null;
-      versionRange?: string;
-      conflictError?: VersionConflictError;
-      isMissing: boolean;
-      source?: 'local' | 'remote';
-    } => {
-      const availableVersions = versionSources.availableVersions;
-      if (availableVersions.length === 0) {
-        return { resolvedVersion: null, isMissing: true };
-      }
-
-      const satisfying = availableVersions
-        .filter(versionCandidate => {
-          return allRanges.every(range => {
-            try {
-              return semver.satisfies(versionCandidate, range, { includePrerelease: true });
-            } catch (error) {
-              logger.debug(
-                `Failed to evaluate semver for ${packageName}@${versionCandidate} against range '${range}': ${error}`
-              );
-              return false;
-            }
-          });
-        })
-        .sort((a, b) => semver.rcompare(a, b));
-
-      if (satisfying.length === 0) {
-        return {
-          resolvedVersion: null,
-          isMissing: false,
-          conflictError: new VersionConflictError(packageName, {
-            ranges: allRanges,
-            availableVersions
-          })
-        };
-      }
-
-      const explicitPrereleaseIntent = allRanges.some(range => hasExplicitPrereleaseIntent(range));
-      const selection = selectVersionWithWipPolicy(satisfying, '*', {
-        explicitPrereleaseIntent,
-        preferStable: resolverOptions.preferStable
-      });
-
-      if (!selection.version) {
-        return {
-          resolvedVersion: null,
-          isMissing: false,
-          conflictError: new VersionConflictError(packageName, {
-            ranges: allRanges,
-            availableVersions
-          })
-        };
-      }
-
-      const deduped = Array.from(new Set(allRanges));
-      const resolvedRange = deduped.join(' & ');
-
-      const selectedVersion = selection.version;
-      const inLocal = versionSources.localVersions.includes(selectedVersion);
-      const inRemote = versionSources.remoteVersions.includes(selectedVersion);
-
-      let source: 'local' | 'remote' | undefined;
-      if (inLocal && !inRemote) {
-        source = 'local';
-      } else if (!inLocal && inRemote) {
-        source = 'remote';
-      } else if (inLocal && inRemote) {
-        // When both registries have the version, prefer tagging it as local
-        // unless we're in an explicitly remote-primary mode.
-        source = resolutionMode === 'remote-primary' ? 'remote' : 'local';
-      }
-
-      return {
-        resolvedVersion: selectedVersion,
-        versionRange: resolvedRange,
-        isMissing: false,
-        source
-      };
-    };
-
-    if (resolutionMode === 'default') {
-      // 2a. Default mode: local-first, then fallback to include remote when needed
-      const localOnlySources: VersionSourceSummary = {
-        localVersions: normalizeLocalVersions(localVersions),
-        remoteVersions: [],
-        availableVersions: normalizeLocalVersions(localVersions),
-        remoteStatus: 'skipped',
-        warnings: []
-      };
-
-      const localAttempt = attemptResolveWithSources(localOnlySources);
-
-      if (localAttempt.conflictError) {
-        // Local registry has versions but none satisfy all ranges – even remote
-        // cannot change that; surface as a conflict.
-        throw localAttempt.conflictError;
-      }
-
-      if (localAttempt.resolvedVersion) {
-        resolvedVersion = localAttempt.resolvedVersion;
-        versionRange = localAttempt.versionRange;
-        resolutionSource = localAttempt.source ?? 'local';
-        logger.debug(
-          `Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for package '${packageName}' using local registry only`
-        );
-      } else {
-        // No satisfying local version – consult remote and retry with union
-        const versionSources = await gatherVersionSourcesForInstall({
-          packageName,
-          mode: resolutionMode,
-          localVersions,
-          profile: resolverOptions.profile,
-          apiKey: resolverOptions.apiKey
-        });
-
-        if (versionSources.warnings.length > 0 && resolverOptions.onWarning) {
-          versionSources.warnings.forEach(resolverOptions.onWarning);
-        }
-
-        const remoteAttempt = attemptResolveWithSources(versionSources);
-
-        if (remoteAttempt.conflictError) {
-          throw remoteAttempt.conflictError;
-        }
-
-        if (!remoteAttempt.resolvedVersion) {
-          // After including remote we still have no available versions – mark as missing.
-          missing.add(packageName);
-          return {
-            resolvedPackages: Array.from(resolvedPackages.values()),
-            missingPackages: Array.from(missing)
-          };
-        }
-
-        resolvedVersion = remoteAttempt.resolvedVersion;
-        versionRange = remoteAttempt.versionRange;
-        resolutionSource = remoteAttempt.source ?? 'remote';
-        logger.debug(
-          `Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for package '${packageName}' using local+remote union`
-        );
-      }
-    } else {
-      // 2b. Non-default modes (local-only, remote-primary) – use existing behavior
-      const versionSources = await gatherVersionSourcesForInstall({
-        packageName,
-        mode: resolutionMode,
-        localVersions,
-        profile: resolverOptions.profile,
-        apiKey: resolverOptions.apiKey
-      });
-
-      if (versionSources.warnings.length > 0 && resolverOptions.onWarning) {
-        versionSources.warnings.forEach(resolverOptions.onWarning);
-      }
-
-      const attempt = attemptResolveWithSources(versionSources);
-
-      if (attempt.conflictError) {
-        throw attempt.conflictError;
-      }
-
-      if (!attempt.resolvedVersion) {
-        missing.add(packageName);
-        return {
-          resolvedPackages: Array.from(resolvedPackages.values()),
-          missingPackages: Array.from(missing)
-        };
-      }
-
-      resolvedVersion = attempt.resolvedVersion;
-      versionRange = attempt.versionRange;
-      resolutionSource = attempt.source ?? (resolutionMode === 'remote-primary' ? 'remote' : 'local');
-      logger.debug(
-        `Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for package '${packageName}'`
-      );
+  const filterAvailableVersions = (versions: string[]): string[] => {
+    if (!hasConstraints) {
+      return versions;
     }
+
+    return versions.filter(versionCandidate => {
+      return allRanges.every(range => {
+        try {
+          return semver.satisfies(versionCandidate, range, { includePrerelease: true });
+        } catch (error) {
+          logger.debug(
+            `Failed to evaluate semver for ${packageName}@${versionCandidate} against range '${range}': ${error}`
+          );
+          return false;
+        }
+      });
+    });
+  };
+
+  const localVersions = await listPackageVersions(packageName);
+  const explicitPrereleaseIntent = allRanges.some(range => hasExplicitPrereleaseIntent(range));
+
+  const selectionResult = await selectInstallVersionUnified({
+    packageName,
+    constraint: '*',
+    mode: resolutionMode,
+    selectionOptions: resolverOptions.preferStable ? { preferStable: true } : undefined,
+    explicitPrereleaseIntent,
+    profile: resolverOptions.profile,
+    apiKey: resolverOptions.apiKey,
+    localVersions,
+    filterAvailableVersions
+  });
+
+  if (selectionResult.sources.warnings.length > 0 && resolverOptions.onWarning) {
+    selectionResult.sources.warnings.forEach(resolverOptions.onWarning);
+  }
+
+  const filteredAvailable = filterAvailableVersions(selectionResult.sources.availableVersions);
+
+  if (!selectionResult.selectedVersion) {
+    if (filteredAvailable.length > 0) {
+      throw new VersionConflictError(packageName, {
+        ranges: allRanges,
+        availableVersions: selectionResult.sources.availableVersions
+      });
+    }
+
+    missing.add(packageName);
+    return {
+      resolvedPackages: Array.from(resolvedPackages.values()),
+      missingPackages: Array.from(missing)
+    };
+  }
+
+  resolvedVersion = selectionResult.selectedVersion;
+  versionRange = combinedRangeLabel;
+  resolutionSource =
+    selectionResult.resolutionSource ?? (resolutionMode === 'remote-primary' ? 'remote' : 'local');
+  logger.debug(
+    `Resolved constraints [${allRanges.join(', ')}] to '${resolvedVersion}' for package '${packageName}'`
+  );
+  if (!hasConstraints) {
+    versionRange = undefined;
   }
 
   // 3. Attempt to repair dependency from local registry

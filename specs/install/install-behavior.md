@@ -11,17 +11,17 @@ This document defines the **user-facing behavior** of the `install` command, ass
 ## 1. Command shapes
 
 - **`opkg install`**
-  - **Meaning**: Materialize *all* dependencies declared in `.openpackage/package.yml` into the workspace, at the **latest versions that satisfy their declared ranges**, using both local and remote registries.
+  - **Meaning**: Materialize *all* dependencies declared in `.openpackage/package.yml` into the workspace, at the **latest versions that satisfy their declared ranges**, using the **default local-first with remote-fallback policy** over local and remote registries (see §2 and `version-resolution.md`).
 
 - **`opkg install <name>`**
   - **Meaning**:
-    - If `<name>` is **already declared** in `package.yml`: ensure it is installed at the **latest version that satisfies the `package.yml` range**.
-    - If `<name>` is **not declared**: perform a **fresh install**, resolve the target version using local+remote, then add a new entry to `package.yml` (see §3).
+    - If `<name>` is **already declared** in `package.yml`: ensure it is installed at the **latest version that satisfies the `package.yml` range**, using the same **local-first with remote-fallback** resolver behavior.
+    - If `<name>` is **not declared**: perform a **fresh install**, resolve the target version using the **local-first with remote-fallback** policy (see §3 and `version-resolution.md`), then add a new entry to `package.yml` (see §3).
 
 - **`opkg install <name>@<spec>`**
   - **Meaning**:
-    - If `<name>` is **already declared** in `package.yml`: `<spec>` is treated as a **constraint hint** that must be **compatible** with the canonical `package.yml` range (see `package-yml-canonical.md` for rules).
-    - If `<name>` is **not declared**: `<spec>` is treated as the **initial version range** to store in `package.yml`, and resolution uses local+remote under that range.
+    - If `<name>` is **already declared** in `package.yml`: `<spec>` is treated as a **constraint hint** that must be **compatible** with the canonical `package.yml` range (see `package-yml-canonical.md` for rules); resolution still uses the same **local-first with remote-fallback** semantics unless `--local` or `--remote` are set.
+    - If `<name>` is **not declared**: `<spec>` is treated as the **initial version range** to store in `package.yml`, and resolution uses the **local-first with remote-fallback** policy under that range (or strictly local / remote when the corresponding flags are set).
 
 Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, conflicts) keep their existing semantics unless overridden below.
 
@@ -35,7 +35,11 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 - **G2 – Latest in range with local-first defaults**:
   - Whenever a version needs to be chosen for install, the system:
     - For **fresh dependencies** (e.g. `opkg install <name>` or `opkg install <name>@<spec>` where `<name>` is not yet in `package.yml`), first tries to satisfy the effective range from the **local registry only**, then falls back to include **remote versions** when local cannot satisfy.
-    - For **existing dependencies** (already declared in `package.yml`, with or without CLI hints), combine **local and remote registry versions** as described in `version-resolution.md`, then choose the highest satisfying semver version (including pre-releases where allowed by policy).
+    - For **existing dependencies** (already declared in `package.yml`, with or without CLI hints), follow the **same local-first with remote fallback policy** described in `version-resolution.md`, choosing the highest satisfying semver version (including pre-releases where allowed by policy).
+  - This same resolver policy (or its `--local` / `--remote` variants) is used **uniformly** for:
+    - The root install target.
+    - All **transitive dependencies** discovered during resolution.
+    - Any **dependency checks or validations** that need to resolve a target version.
 
 - **G3 – Minimal UX surface**:
   - `install` doubles as both:
@@ -87,7 +91,9 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 - **Behavior**:
   - `opkg install <name>`:
     - Use the **canonical range from `package.yml`**.
-    - Compute available versions from **local+remote** (per `version-resolution.md`), allowing remote versions to be selected when no satisfying local version exists (in default mode).
+    - Resolve versions using the same **local-first with remote-fallback** policy (per `version-resolution.md`):
+      - First attempt to satisfy the canonical range using **only local registry versions**.
+      - Only when no satisfying local version exists, and remote is enabled and reachable, **include remote versions** and retry selection over the combined set.
     - **Install / upgrade to the latest satisfying version** (if newer than current).
   - `opkg install <name>@<spec>`:
     - Treat `<spec>` as a **sanity check** against the canonical range:

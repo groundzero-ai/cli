@@ -28,7 +28,10 @@ The goal is to implement **“latest in range from local+remote”** determinist
 ## 2. Effective available versions
 
 - **Base rule**:
-  - The **effective `available` set** depends on the resolution mode and scenario:
+  - The **effective `available` set** depends on the resolution mode and scenario, and this rule is applied **uniformly** to:
+    - The **root package** being installed.
+    - **All recursive dependencies** discovered from `package.yml` files.
+    - Any **pre-flight checks or validations** that need to answer “what version would be chosen?” for a given name + constraint.
     - **Local-only / explicit `--local`**:
       - **`available = local`**.
       - Remote metadata is **never** consulted; if no satisfying local version exists, resolution fails (see error behavior).

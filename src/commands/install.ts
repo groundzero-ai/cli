@@ -2,7 +2,7 @@ import * as semver from 'semver';
 import { Command } from 'commander';
 import { InstallOptions, CommandResult, PackageYml } from '../types/index.js';
 import { ResolvedPackage } from '../core/dependency-resolver.js';
-import { ensureRegistryDirectories, hasPackageVersion, listPackageVersions } from '../core/directory.js';
+import { ensureRegistryDirectories, listPackageVersions } from '../core/directory.js';
 import { displayDependencyTree } from '../core/dependency-resolver.js';
 import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
@@ -40,7 +40,6 @@ import {
 import { extractPackagesFromConfig } from '../utils/install-helpers.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { parsePackageInput, arePackageNamesEquivalent } from '../utils/package-name.js';
-import { packageManager } from '../core/package.js';
 import { safePrompts } from '../utils/prompts.js';
 import {
   createCaretRange,
@@ -49,19 +48,13 @@ import {
   resolveVersionRange
 } from '../utils/version-ranges.js';
 import type { VersionSelectionOptions } from '../utils/version-ranges.js';
-import {
-  fetchRemotePackageMetadata,
-  pullDownloadsBatchFromRemote,
-  aggregateRecursiveDownloads,
-  type RemoteBatchPullResult,
-} from '../core/remote-pull.js';
-import { Spinner } from '../utils/spinner.js';
-import { createDownloadKey, computeMissingDownloadKeys } from '../core/install/download-keys.js';
-import { fetchMissingDependencyMetadata, pullMissingDependencies, planRemoteDownloadsForPackage } from '../core/install/remote-flow.js';
-import { recordBatchOutcome, describeRemoteFailure } from '../core/install/remote-reporting.js';
+import { aggregateRecursiveDownloads } from '../core/remote-pull.js';
+import { computeMissingDownloadKeys } from '../core/install/download-keys.js';
+import { fetchMissingDependencyMetadata, pullMissingDependencies } from '../core/install/remote-flow.js';
+import { recordBatchOutcome } from '../core/install/remote-reporting.js';
 import { handleDryRunMode } from '../core/install/dry-run.js';
-import { InstallScenario, InstallResolutionMode } from '../core/install/types.js';
-import { selectVersionForInstall } from '../core/install/version-selection.js';
+import { InstallResolutionMode } from '../core/install/types.js';
+import { selectInstallVersionUnified } from '../core/install/version-selection.js';
 import type { InstallVersionSelectionResult } from '../core/install/version-selection';
 
 export function determineResolutionMode(options: InstallOptions & { local?: boolean; resolutionMode?: InstallResolutionMode }): InstallResolutionMode {
@@ -84,21 +77,6 @@ export function validateResolutionFlags(options: InstallOptions & { local?: bool
   if (options.remote && options.local) {
     throw new Error('--remote and --local cannot be used together. Choose one resolution mode.');
   }
-}
-
-export function selectInstallScenario(
-  resolutionMode: InstallResolutionMode,
-  mainPackageAvailableLocally: boolean
-): InstallScenario {
-  if (resolutionMode === 'remote-primary') {
-    return 'force-remote';
-  }
-
-  if (resolutionMode === 'local-only') {
-    return 'local-primary';
-  }
-
-  return mainPackageAvailableLocally ? 'local-primary' : 'remote-primary';
 }
 
 /**
@@ -381,12 +359,10 @@ async function installPackageCommand(
 
   const selectionOptions = options.stable ? { preferStable: true } : undefined;
 
-  const preselection = await selectRootVersionWithLocalFallback({
+  const preselection = await selectInstallVersionUnified({
     packageName,
     constraint: versionConstraint,
-    resolutionMode,
-    canonicalPlan,
-    cliVersion: version,
+    mode: resolutionMode,
     selectionOptions,
     profile: options.profile,
     apiKey: options.apiKey
@@ -408,23 +384,11 @@ async function installPackageCommand(
     throw buildNoVersionFoundError(packageName, constraintLabel, preselection.selection, resolutionMode);
   }
 
-  // Determine if version is local or remote
-  const isRemote = preselection.sources.remoteStatus === 'success' && 
-                   preselection.sources.remoteVersions.includes(selectedRootVersion);
-  const source: 'remote' | 'local' = isRemote ? 'remote' : 'local';
+  const source: 'remote' | 'local' = preselection.resolutionSource ?? 'local';
 
   console.log(formatSelectionSummary(source, packageName, selectedRootVersion));
 
-  let downloadVersion = selectedRootVersion;
-
-  const mainPackageAvailableLocally = downloadVersion
-    ? await hasPackageVersion(packageName, downloadVersion)
-    : await packageManager.packageExists(packageName);
-
-  // 2) Determine install scenario
-  const scenario = selectInstallScenario(resolutionMode, mainPackageAvailableLocally);
-
-  // 3) Prepare env via prepareInstallEnvironment
+  // 2) Prepare env via prepareInstallEnvironment
   const { specifiedPlatforms } = await prepareInstallEnvironment(cwd, options);
 
   let resolvedPackages: ResolvedPackage[] = [];
@@ -465,118 +429,64 @@ async function installPackageCommand(
     }
   };
 
-  // 4) Resolve deps via resolveDependenciesForInstall (wrapped helper retained locally)
-  // 5) If scenario is local-primary and there are missing deps
-  if (scenario === 'local-primary') {
-    const initialResolution = await resolveDependenciesOutcome();
-    if (!initialResolution.success) {
-      return initialResolution.commandResult;
+  // 3) Resolve dependencies
+  const initialResolution = await resolveDependenciesOutcome();
+  if (!initialResolution.success) {
+    return initialResolution.commandResult;
+  }
+
+  resolvedPackages = initialResolution.data.resolvedPackages;
+  missingPackages = initialResolution.data.missingPackages;
+
+  const pullMissingFromRemote = async (): Promise<CommandResult | null> => {
+    const metadataResults = await fetchMissingDependencyMetadata(missingPackages, resolvedPackages, {
+      dryRun,
+      profile: options.profile,
+      apiKey: options.apiKey
+    });
+
+    if (metadataResults.length === 0) {
+      return null;
     }
 
-    resolvedPackages = initialResolution.data.resolvedPackages;
-    missingPackages = initialResolution.data.missingPackages;
+    const keysToDownload = new Set<string>();
+    for (const metadata of metadataResults) {
+      const aggregated = aggregateRecursiveDownloads([metadata.response]);
+      const missingKeys = await computeMissingDownloadKeys(aggregated);
+      missingKeys.forEach((key: string) => keysToDownload.add(key));
+    }
 
-    if (missingPackages.length > 0 && resolutionMode !== 'local-only') {
+    const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, {
+      dryRun,
+      profile: options.profile,
+      apiKey: options.apiKey
+    });
 
-      // Fetch metadata via fetchMissingDependencyMetadata
-      const metadataResults = await fetchMissingDependencyMetadata(missingPackages, resolvedPackages, { dryRun, profile: options.profile, apiKey: options.apiKey });
+    for (const batchResult of batchResults) {
+      recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
+    }
 
-      if (metadataResults.length > 0) {
-        // Build keysToDownload with computeMissingDownloadKeys
-        const keysToDownload = new Set<string>();
-        for (const metadata of metadataResults) {
-          const aggregated = aggregateRecursiveDownloads([metadata.response]);
-          const missingKeys = await computeMissingDownloadKeys(aggregated);
-          missingKeys.forEach((key: string) => keysToDownload.add(key));
-        }
+    const refreshedResolution = await resolveDependenciesOutcome();
+    if (!refreshedResolution.success) {
+      return refreshedResolution.commandResult;
+    }
 
-        // Pull batches via pullMissingDependencies and log with recordBatchOutcome
-        const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, { dryRun, profile: options.profile, apiKey: options.apiKey });
-        for (const batchResult of batchResults) {
-          recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
-        }
+    resolvedPackages = refreshedResolution.data.resolvedPackages;
+    missingPackages = refreshedResolution.data.missingPackages;
+    return null;
+  };
 
-        // Re-resolve deps
-        const refreshedResolution = await resolveDependenciesOutcome();
-        if (!refreshedResolution.success) {
-          return refreshedResolution.commandResult;
-        }
-
-        resolvedPackages = refreshedResolution.data.resolvedPackages;
-        missingPackages = refreshedResolution.data.missingPackages;
-      }
-    } else if (missingPackages.length > 0 && resolutionMode === 'local-only') {
+  if (missingPackages.length > 0) {
+    if (resolutionMode === 'local-only') {
       logger.info('Local-only mode: missing dependencies will not be pulled from remote', {
         missingPackages: Array.from(new Set(missingPackages))
       });
-    }
-  } else {
-    // 6) Else (remote-primary / force-remote)
-
-    // Fetch metadata for root
-    const metadataSpinner = dryRun ? null : new Spinner('Fetching package metadata...');
-    if (metadataSpinner) metadataSpinner.start();
-
-    let metadataResult;
-    try {
-      metadataResult = await fetchRemotePackageMetadata(packageName, downloadVersion, { recursive: true, profile: options.profile, apiKey: options.apiKey });
-    } finally {
-      if (metadataSpinner) metadataSpinner.stop();
-    }
-
-    if (!metadataResult.success) {
-      const requestedVersionLabel = downloadVersion ?? versionConstraint;
-      const message = describeRemoteFailure(
-        requestedVersionLabel ? `${packageName}@${requestedVersionLabel}` : packageName,
-        metadataResult
-      );
-      console.log(`❌ ${message}`);
-      return { success: false, error: metadataResult.reason === 'not-found' ? 'Package not found' : message };
-    }
-
-    // Decide which downloads to pull (respecting forceRemote, prompts, dryRun)
-    const { downloadKeys, warnings: planWarnings } = await planRemoteDownloadsForPackage(metadataResult, { forceRemote, dryRun });
-    warnings.push(...planWarnings);
-
-    if (downloadKeys.size > 0 || dryRun) {
-      const spinner = dryRun ? null : new Spinner(`Pulling ${downloadKeys.size} package(s) from remote registry...`);
-      if (spinner) spinner.start();
-
-      let batchResult: RemoteBatchPullResult;
-      try {
-        batchResult = await pullDownloadsBatchFromRemote(metadataResult.response, {
-          httpClient: metadataResult.context.httpClient,
-          profile: metadataResult.context.profile,
-          dryRun,
-          filter: (dependencyName, dependencyVersion) => {
-            const key = createDownloadKey(dependencyName, dependencyVersion);
-            if (!downloadKeys.has(key)) {
-              return false;
-            }
-
-            if (dryRun) {
-              return true;
-            }
-
-            downloadKeys.delete(key);
-            return true;
-          }
-        });
-      } finally {
-        if (spinner) spinner.stop();
+    } else {
+      const pullResult = await pullMissingFromRemote();
+      if (pullResult) {
+        return pullResult;
       }
-
-      recordBatchOutcome('Pulled from remote', batchResult, warnings, dryRun);
     }
-
-    // Resolve deps
-    const finalResolution = await resolveDependenciesOutcome();
-    if (!finalResolution.success) {
-      return finalResolution.commandResult;
-    }
-
-    resolvedPackages = finalResolution.data.resolvedPackages;
-    missingPackages = finalResolution.data.missingPackages;
   }
 
   // 7) Warn if still missing
@@ -679,61 +589,6 @@ async function installPackageCommand(
   };
 }
 
-
-interface RootVersionSelectionArgs {
-  packageName: string;
-  constraint: string;
-  resolutionMode: InstallResolutionMode;
-  canonicalPlan: CanonicalInstallPlan;
-  cliVersion?: string;
-  selectionOptions?: VersionSelectionOptions;
-  profile?: string;
-  apiKey?: string;
-  selectVersionImpl?: typeof selectVersionForInstall;
-}
-
-export async function selectRootVersionWithLocalFallback(
-  args: RootVersionSelectionArgs
-): Promise<InstallVersionSelectionResult> {
-  const selectImpl = args.selectVersionImpl ?? selectVersionForInstall;
-
-  const isFreshDependency =
-    args.canonicalPlan.dependencyState === 'fresh' &&
-    args.resolutionMode === 'default';
-
-  if (!isFreshDependency) {
-    return await selectImpl({
-      packageName: args.packageName,
-      constraint: args.constraint,
-      mode: args.resolutionMode,
-      profile: args.profile,
-      apiKey: args.apiKey,
-      selectionOptions: args.selectionOptions
-    });
-  }
-
-  const localFirst = await selectImpl({
-    packageName: args.packageName,
-    constraint: args.constraint,
-    mode: 'local-only',
-    profile: args.profile,
-    apiKey: args.apiKey,
-    selectionOptions: args.selectionOptions
-  });
-
-  if (localFirst.selectedVersion) {
-    return localFirst;
-  }
-
-  return await selectImpl({
-    packageName: args.packageName,
-    constraint: args.constraint,
-    mode: args.resolutionMode,
-    profile: args.profile,
-    apiKey: args.apiKey,
-    selectionOptions: args.selectionOptions
-  });
-}
 
 export function formatSelectionSummary(
   source: 'local' | 'remote',

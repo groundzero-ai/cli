@@ -48,6 +48,23 @@ export interface InstallVersionSelectionResult {
   mode: InstallResolutionMode;
 }
 
+export interface UnifiedInstallVersionSelectionArgs {
+  packageName: string;
+  constraint: string;
+  mode: InstallResolutionMode;
+  selectionOptions?: VersionSelectionOptions;
+  explicitPrereleaseIntent?: boolean;
+  profile?: string;
+  apiKey?: string;
+  localVersions?: string[];
+  remoteVersions?: string[];
+  filterAvailableVersions?: (versions: string[]) => string[];
+}
+
+export interface UnifiedInstallVersionSelectionResult extends InstallVersionSelectionResult {
+  resolutionSource?: 'local' | 'remote';
+}
+
 export class RemoteResolutionRequiredError extends Error {
   constructor(message: string, public details?: { packageName: string }) {
     super(message);
@@ -164,6 +181,118 @@ export async function selectVersionForInstall(args: InstallVersionSelectionArgs)
     selectedVersion: selection.version,
     selection,
     sources,
+    constraint: args.constraint,
+    mode: args.mode
+  };
+}
+
+export async function selectInstallVersionUnified(
+  args: UnifiedInstallVersionSelectionArgs
+): Promise<UnifiedInstallVersionSelectionResult> {
+  const mergedSelectionOptions: VersionSelectionOptions = {
+    ...(args.selectionOptions ?? {}),
+    ...(args.explicitPrereleaseIntent ? { explicitPrereleaseIntent: true } : {})
+  };
+
+  const applyFilter = (versions: string[]): string[] =>
+    args.filterAvailableVersions ? args.filterAvailableVersions(versions) : versions;
+
+  const attemptWithSources = (sources: VersionSourceSummary, modeContext: InstallResolutionMode) => {
+    const filteredVersions = applyFilter(sources.availableVersions);
+
+    const selection = selectVersionWithWipPolicy(
+      filteredVersions,
+      args.constraint,
+      mergedSelectionOptions
+    );
+
+    const selectedVersion = selection.version;
+    let resolutionSource: 'local' | 'remote' | undefined;
+    if (selectedVersion) {
+      const inLocal = sources.localVersions.includes(selectedVersion);
+      const inRemote = sources.remoteVersions.includes(selectedVersion);
+      if (inLocal && !inRemote) {
+        resolutionSource = 'local';
+      } else if (!inLocal && inRemote) {
+        resolutionSource = 'remote';
+      } else if (inLocal && inRemote) {
+        resolutionSource = modeContext === 'remote-primary' ? 'remote' : 'local';
+      }
+    }
+
+    return {
+      selectedVersion,
+      selection,
+      sources,
+      resolutionSource
+    };
+  };
+
+  const gatherBase = {
+    packageName: args.packageName,
+    localVersions: args.localVersions,
+    remoteVersions: args.remoteVersions,
+    profile: args.profile,
+    apiKey: args.apiKey
+  };
+
+  if (args.mode === 'local-only') {
+    const sources = await gatherVersionSourcesForInstall({
+      ...gatherBase,
+      mode: 'local-only'
+    });
+    const result = attemptWithSources(sources, 'local-only');
+    return {
+      ...result,
+      constraint: args.constraint,
+      mode: args.mode
+    };
+  }
+
+  if (args.mode === 'remote-primary') {
+    const sources = await gatherVersionSourcesForInstall({
+      ...gatherBase,
+      mode: 'remote-primary'
+    });
+    const result = attemptWithSources(sources, 'remote-primary');
+    return {
+      ...result,
+      constraint: args.constraint,
+      mode: args.mode
+    };
+  }
+
+  // Default mode: local-first with remote fallback.
+  const localSources = await gatherVersionSourcesForInstall({
+    ...gatherBase,
+    mode: 'local-only'
+  });
+  const localAttempt = attemptWithSources(localSources, 'local-only');
+
+  if (localAttempt.selectedVersion) {
+    return {
+      ...localAttempt,
+      constraint: args.constraint,
+      mode: args.mode
+    };
+  }
+
+  const fallbackSources = await gatherVersionSourcesForInstall({
+    ...gatherBase,
+    mode: 'default'
+  });
+
+  if (fallbackSources.remoteStatus === 'failed') {
+    const reason =
+      fallbackSources.remoteError ??
+      `Remote metadata lookup failed while resolving ${args.packageName}`;
+    throw new Error(reason);
+  }
+
+  const fallbackAttempt = attemptWithSources(fallbackSources, args.mode);
+
+  return {
+    ...fallbackAttempt,
     constraint: args.constraint,
     mode: args.mode
   };

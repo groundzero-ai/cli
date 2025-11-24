@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
-import {
-  determineResolutionMode,
-  selectInstallScenario,
-  validateResolutionFlags,
-} from '../src/commands/install.js';
+import { determineResolutionMode, validateResolutionFlags } from '../src/commands/install.js';
 
 const defaultMode = determineResolutionMode({});
 assert.equal(defaultMode, 'default');
@@ -24,18 +20,6 @@ assert.throws(
 
 validateResolutionFlags({ remote: true });
 validateResolutionFlags({ local: true });
-
-const forceRemoteScenario = selectInstallScenario('remote-primary', true);
-assert.equal(forceRemoteScenario, 'force-remote');
-
-const localOnlyScenario = selectInstallScenario('local-only', false);
-assert.equal(localOnlyScenario, 'local-primary');
-
-const defaultLocalScenario = selectInstallScenario('default', true);
-assert.equal(defaultLocalScenario, 'local-primary');
-
-const defaultRemoteScenario = selectInstallScenario('default', false);
-assert.equal(defaultRemoteScenario, 'remote-primary');
 
 console.log('install-cli-modes tests passed');
 

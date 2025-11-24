@@ -1,206 +1,46 @@
 import assert from 'node:assert/strict';
-import {
-  formatSelectionSummary,
-  selectRootVersionWithLocalFallback
-} from '../src/commands/install.js';
+import { formatSelectionSummary } from '../src/commands/install.js';
+import { selectInstallVersionUnified } from '../src/core/install/version-selection.js';
 
 console.log('install-selection tests starting');
 
-const freshPlan = {
-  effectiveRange: '*',
-  dependencyState: 'fresh',
-  persistDecision: { type: 'none' }
-};
-
-function buildSelectionResult(mode, version, overrides = {}) {
-  const selection = {
-    version,
-    isPrerelease: false,
-    satisfyingStable: version ? [version] : [],
-    satisfyingPrerelease: [],
-    availableStable: [],
-    availablePrerelease: [],
-    reason: version ? 'wildcard' : 'none'
-  };
-
-  const sources = {
-    localVersions: [],
-    remoteVersions: [],
-    availableVersions: [],
-    remoteStatus: 'skipped',
-    warnings: [],
-    ...overrides
-  };
-
-  return {
-    selectedVersion: version,
-    selection,
-    sources,
-    constraint: '*',
-    mode
-  };
-}
-
 async function prefersLocalWhenAvailable() {
-  const modes = [];
-
-  const stub = async args => {
-    modes.push(args.mode);
-    return buildSelectionResult(
-      args.mode,
-      '1.0.0',
-      { localVersions: ['1.0.0'], availableVersions: ['1.0.0'] }
-    );
-  };
-
-  const result = await selectRootVersionWithLocalFallback({
+  const result = await selectInstallVersionUnified({
     packageName: 'foo',
     constraint: '*',
-    resolutionMode: 'default',
-    canonicalPlan: freshPlan,
-    selectVersionImpl: stub
+    mode: 'default',
+    localVersions: ['1.0.0'],
+    remoteVersions: ['2.0.0']
   });
 
   assert.equal(result.selectedVersion, '1.0.0', 'should select local version');
-  assert.deepEqual(modes, ['local-only'], 'should only call local-only once');
+  assert.equal(result.resolutionSource, 'local', 'should report local source');
 }
 
 async function fallsBackToRemoteWhenLocalMissing() {
-  const modes = [];
-
-  const stub = async args => {
-    modes.push(args.mode);
-    if (args.mode === 'local-only') {
-      return buildSelectionResult(
-        args.mode,
-        null,
-        { localVersions: [], availableVersions: [] }
-      );
-    }
-    return buildSelectionResult(
-      args.mode,
-      '2.0.0',
-      {
-        remoteStatus: 'success',
-        remoteVersions: ['2.0.0'],
-        availableVersions: ['2.0.0'],
-        localVersions: []
-      }
-    );
-  };
-
-  const result = await selectRootVersionWithLocalFallback({
+  const result = await selectInstallVersionUnified({
     packageName: 'bar',
     constraint: '*',
-    resolutionMode: 'default',
-    canonicalPlan: freshPlan,
-    selectVersionImpl: stub
+    mode: 'default',
+    localVersions: [],
+    remoteVersions: ['2.0.0']
   });
 
   assert.equal(result.selectedVersion, '2.0.0', 'should fall back to remote version');
-  assert.deepEqual(
-    modes,
-    ['local-only', 'default'],
-    'should call local-only first, then default fallback'
-  );
-}
-
-async function fallsBackWithCliSpec() {
-  const modes = [];
-
-  const stub = async args => {
-    modes.push(args.mode);
-    if (args.mode === 'local-only') {
-      return buildSelectionResult(
-        args.mode,
-        null,
-        { localVersions: [], availableVersions: [] }
-      );
-    }
-    return buildSelectionResult(
-      args.mode,
-      '4.2.0',
-      {
-        remoteStatus: 'success',
-        remoteVersions: ['4.2.0'],
-        availableVersions: ['4.2.0'],
-        localVersions: []
-      }
-    );
-  };
-
-  const result = await selectRootVersionWithLocalFallback({
-    packageName: 'cli-spec',
-    constraint: '^4.2.0',
-    resolutionMode: 'default',
-    canonicalPlan: freshPlan,
-    cliVersion: '^4.2.0',
-    selectVersionImpl: stub
-  });
-
-  assert.equal(result.selectedVersion, '4.2.0', 'should fall back to remote version for CLI spec');
-  assert.deepEqual(
-    modes,
-    ['local-only', 'default'],
-    'CLI spec should still run local-only first then fallback'
-  );
+  assert.equal(result.resolutionSource, 'remote', 'should report remote source');
 }
 
 async function honorsLocalModeWithoutFallback() {
-  const modes = [];
-
-  const stub = async args => {
-    modes.push(args.mode);
-    return buildSelectionResult(
-      args.mode,
-      null,
-      { localVersions: [], availableVersions: [] }
-    );
-  };
-
-  const result = await selectRootVersionWithLocalFallback({
+  const result = await selectInstallVersionUnified({
     packageName: 'baz',
     constraint: '*',
-    resolutionMode: 'local-only',
-    canonicalPlan: freshPlan,
-    selectVersionImpl: stub
+    mode: 'local-only',
+    localVersions: [],
+    remoteVersions: ['5.0.0']
   });
 
   assert.equal(result.selectedVersion, null, 'local-only mode should not fall back');
-  assert.deepEqual(modes, ['local-only'], 'local-only mode should only call once');
-}
-
-async function skipsFallbackForExistingDependency() {
-  const modes = [];
-
-  const stub = async args => {
-    modes.push(args.mode);
-    return buildSelectionResult(
-      args.mode,
-      '3.0.0',
-      {
-        remoteStatus: 'success',
-        remoteVersions: ['3.0.0'],
-        availableVersions: ['3.0.0']
-      }
-    );
-  };
-
-  const existingPlan = {
-    ...freshPlan,
-    dependencyState: 'existing'
-  };
-
-  const result = await selectRootVersionWithLocalFallback({
-    packageName: 'qux',
-    constraint: '^3.0.0',
-    resolutionMode: 'default',
-    canonicalPlan: existingPlan,
-    selectVersionImpl: stub
-  });
-
-  assert.equal(result.selectedVersion, '3.0.0', 'existing dependency should resolve immediately');
-  assert.deepEqual(modes, ['default'], 'existing dependency should not do local-first pass');
+  assert.equal(result.resolutionSource, undefined, 'no source when nothing selected');
 }
 
 async function scopedPackageSummaryFormatting() {
@@ -223,9 +63,7 @@ async function scopedPackageSummaryFormatting() {
 async function runTests() {
   await prefersLocalWhenAvailable();
   await fallsBackToRemoteWhenLocalMissing();
-  await fallsBackWithCliSpec();
   await honorsLocalModeWithoutFallback();
-  await skipsFallbackForExistingDependency();
   await scopedPackageSummaryFormatting();
   console.log('install-selection tests passed');
 }
