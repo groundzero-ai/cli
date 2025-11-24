@@ -4,7 +4,7 @@ This document defines the **user-facing behavior** of the `install` command, ass
 
 - Versioning semantics from `save` / `pack` specs are already in place.
 - `package.yml` is the **canonical declaration of direct dependencies** (see `package-yml-canonical.md`).
-- Version selection obeys **“latest in range from local+remote”** (see `version-resolution.md`).
+- Version selection obeys **“latest in range”**, with **local-first defaults for fresh installs without an explicit version** and **automatic fallback to remote when local cannot satisfy** (see `version-resolution.md`).
 
 ---
 
@@ -32,11 +32,10 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 - **G1 – Single mental model**:
   - **“`package.yml` declares intent, `install` materializes the newest versions that satisfy that intent.”**
 
-- **G2 – Latest in range from local+remote**:
+- **G2 – Latest in range with local-first defaults**:
   - Whenever a version needs to be chosen for install, the system:
-    - Collects **local registry versions**.
-    - Collects **remote registry versions** (if reachable).
-    - Chooses the **highest semver version** that satisfies the effective range (including pre-releases where allowed by policy).
+    - For **fresh dependencies** (e.g. `opkg install <name>` or `opkg install <name>@<spec>` where `<name>` is not yet in `package.yml`), first tries to satisfy the effective range from the **local registry only**, then falls back to include **remote versions** when local cannot satisfy.
+    - For **existing dependencies** (already declared in `package.yml`, with or without CLI hints), combine **local and remote registry versions** as described in `version-resolution.md`, then choose the highest satisfying semver version (including pre-releases where allowed by policy).
 
 - **G3 – Minimal UX surface**:
   - `install` doubles as both:
@@ -56,9 +55,14 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 
 - **Behavior**:
   - **Case A – `opkg install <name>` (no version spec)**:
-    - Compute **available versions** from local+remote.
-    - **Default behavior**: Select the **latest semver version** that satisfies the internal wildcard range (`*`), **including pre-releases/WIPs**. If the selected version is a pre-release/WIP, the CLI should state that explicitly.
-    - **With `--stable` flag**: Select the **latest stable** version `S` if any exist. If only WIP or pre-releases exist, select the latest WIP/pre-release.
+    - Compute **available versions** from the **local registry only** for the first resolution attempt (no remote metadata is consulted initially).
+    - **Default behavior**: Select the **latest semver version** from this local set that satisfies the internal wildcard range (`*`), **including pre-releases/WIPs**. If the selected version is a pre-release/WIP, the CLI should state that explicitly.
+    - **With `--stable` flag**: From the local set, select the **latest stable** version `S` if any exist. If only WIP or pre-releases exist locally, select the latest WIP/pre-release.
+    - If **no local versions exist** or **no local version satisfies the implicit range**:
+      - In **default mode** (no `--local`), `install` MUST:
+        - Attempt resolution again including **remote versions**, following the rules in `version-resolution.md` (local+remote union and WIP/stable policies).
+        - Only fail if **neither local nor remote** provide a satisfying version, or remote metadata is unavailable.
+      - In **`--local` mode**, this remote fallback is **disabled** and the command fails with a clear “not available locally” style error that may suggest re-running without `--local` or using `save` / `pack`.
     - **Install `<name>@<selectedVersion>`**.
     - **Add to `package.yml`**:
       - Default range is **caret based on the stable base** of the selected version (e.g. `^1.0.1` for `1.0.1-000fz8.a3k`), unless later overridden by a global policy.
@@ -66,8 +70,12 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
   - **Case B – `opkg install <name>@<spec>`**:
     - Treat `<spec>` as the **initial canonical range**:
       - Parse `<spec>` using the same semantics as `version-ranges` (exact, caret, tilde, wildcard, comparison).
-    - Use **local+remote available versions** and choose the **best version satisfying `<spec>`**.
-    - **Install that version**.
+    - Resolve using the **local-first with remote fallback** policy for fresh dependencies (per `version-resolution.md`):
+      - First, attempt to satisfy `<spec>` using only **local registry versions**.
+      - If no satisfying local version exists:
+        - In **default mode** (no `--local`), include **remote versions** and retry selection over the combined set, allowing a remote version to be selected when it is the only match.
+        - In **`--local` mode**, do **not** fall back to remote; fail with a clear error indicating no local version satisfies `<spec>`.
+    - **Install the selected version**.
     - **Persist `<spec>` in `package.yml`** (do not auto-normalize beyond what the version-range parser requires).
 
 ### 3.2 Existing dependency (`<name>` already in package.yml)
@@ -79,12 +87,26 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 - **Behavior**:
   - `opkg install <name>`:
     - Use the **canonical range from `package.yml`**.
-    - Compute available versions from local+remote.
+    - Compute available versions from **local+remote** (per `version-resolution.md`), allowing remote versions to be selected when no satisfying local version exists (in default mode).
     - **Install / upgrade to the latest satisfying version** (if newer than current).
   - `opkg install <name>@<spec>`:
     - Treat `<spec>` as a **sanity check** against the canonical range:
       - If compatible (according to rules in `package-yml-canonical.md`), proceed as above.
       - If incompatible, **fail with a clear error** instructing the user to edit `package.yml` instead of using CLI-only overrides.
+
+---
+
+### 3.3 Selection summary UX (local vs remote)
+
+- After resolving the root version for any `install` invocation (fresh or existing dependency), the CLI MUST print a one-line summary indicating **where the chosen version came from**:
+  - If the selected version is backed by the **local registry**:
+    - Print: `✓ Selected local @<name>@<version>`.
+  - If the selected version is obtained from **remote metadata/registry**:
+    - Print: `✓ Selected remote @<name>@<version>`.
+- For **scoped packages** (e.g. `@hyericlee/nextjs`), this formatting naturally yields output like:
+  - `✓ Selected local @@hyericlee/nextjs@0.3.1`
+  - `✓ Selected remote @@hyericlee/nextjs@0.3.1`
+- This summary line complements any additional logging and should appear **once per top-level install invocation**, clearly tying the resolution decision to its source (local vs remote).
 
 ---
 
@@ -110,14 +132,14 @@ Other flags (`--dev`, `--remote`, `--platforms`, `--dry-run`, `--stable`, confli
 
 ### 5.1 Default mode (no `--remote`)
 
-- When resolving versions:
-  - The resolver **attempts to consult remote metadata** to augment the local version set.
-  - If remote is **reachable**:
-    - The **union of local+remote versions** is used for selecting the latest satisfying version.
-    - If a chosen version is not yet present locally, it will be **pulled from remote** (subject to existing remote-flow prompts and dry-run behavior).
-  - If remote is **unreachable or misconfigured**:
-    - The resolver **falls back to local-only** versions.
-    - A warning is logged (but the install can still succeed using local data).
+- When resolving versions (for both the root target and **all recursive dependencies**):
+  - Resolution obeys the **local-first with remote fallback** policy from `version-resolution.md`:
+    - First, attempt to satisfy the effective constraint using **only local registry versions**.
+    - If no satisfying local version exists and remote is **reachable**:
+      - Fetch remote metadata, compute the **union of local+remote versions**, and retry selection over this combined set.
+      - If the chosen version does not yet exist locally, it will be **pulled from remote** (subject to existing remote-flow prompts and dry-run behavior).
+    - If remote is **unreachable or misconfigured**:
+      - The resolver remains effectively **local-only** and fails when no satisfying local version exists, emitting a clear warning or error that remote lookup failed.
 
 ### 5.2 `--remote` flag
 

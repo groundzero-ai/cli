@@ -28,10 +28,37 @@ The goal is to implement **“latest in range from local+remote”** determinist
 ## 2. Effective available versions
 
 - **Base rule**:
-  - When remote is available:
-    - **`available = dedup(local ∪ remote)`**.
-  - When remote is not available (network error, misconfiguration, unauthenticated, etc.):
-    - **`available = local`**, and a warning is emitted.
+  - The **effective `available` set** depends on the resolution mode and scenario:
+    - **Local-only / explicit `--local`**:
+      - **`available = local`**.
+      - Remote metadata is **never** consulted; if no satisfying local version exists, resolution fails (see error behavior).
+    - **Fresh dependency installs in default mode** (e.g. `opkg install <name>` or `opkg install <name>@<spec>` where `<name>` is **not yet declared** in `package.yml`):
+      - Version selection is **local-first with remote fallback**, regardless of whether the effective constraint is a wildcard or an explicit range:
+        - Step 1 – **Local-only attempt**:
+          - Start with **`available_local = local`**.
+          - Attempt selection using only `available_local` (see §4–§6).
+        - Step 2 – **Fallback to remote when local cannot satisfy**:
+          - If **no local versions exist at all**, or
+          - No local versions satisfy the effective constraint:
+            - When remote metadata is available:
+              - Fetch remote versions and compute **`available = dedup(local ∪ remote)`**.
+              - Re-run selection against this expanded `available` set.
+            - When remote metadata is not available (network error, misconfiguration, unauthenticated, etc.):
+              - Resolution fails with a clear error that:
+                - Explains that no satisfying local version exists, and
+                - Mentions that remote lookup also failed (or was disabled).
+    - **Existing dependencies in default mode** (e.g. entries already in `package.yml`, or dependencies declared in nested `package.yml` files during recursive resolution):
+      - Resolution also follows a **local-first with remote fallback** policy:
+        - Step 1 – **Local-only attempt**:
+          - Use **only local registry versions** that match the declared range to build `available_local`.
+        - Step 2 – **Fallback to remote when local cannot satisfy**:
+          - If **no local versions exist at all**, or
+          - No local versions satisfy the effective constraint:
+            - When remote metadata is available:
+              - Fetch remote versions and compute **`available = dedup(local ∪ remote)`**.
+              - Re-run selection against this expanded `available` set.
+            - When remote metadata is not available:
+              - Resolution fails with a clear error explaining that no satisfying local version exists and remote lookup failed or was disabled.
 
 - **Deduping**:
   - Versions are deduped by their **full semver string** (`1.2.3-000fz8.a3k` vs `1.2.3` are distinct).
@@ -151,7 +178,15 @@ If no version satisfies the constraint:
 
 ### 6.2 Wildcard / latest (`*`, `latest`)
 
-- **Default behavior**:
+- **Fresh dependency default (wildcard)**:
+  - For `opkg install <name>` where `<name>` is not yet in `package.yml` and the effective constraint is wildcard/latest:
+    - Resolution follows the **local-first with remote fallback** policy (see §2 and §7):
+      - First, attempt selection using **only local versions** as `available`.
+      - If no local versions exist, or none satisfy the wildcard constraint:
+        - When remote metadata is available, expand `available` to **`dedup(local ∪ remote)`** and retry selection.
+        - Only if **no satisfying version exists in either local or remote**, or remote lookup fails, does the operation error.
+
+- **Default behavior (given an `available` set)**:
   - Use `semver.maxSatisfying(available, '*', { includePrerelease: true })` to find the **highest semver version**.
   - Select that version (stable or WIP/pre-release).
   - If the selected version is a pre-release/WIP, the CLI output should make that explicit.
@@ -166,7 +201,7 @@ If no version satisfies the constraint:
 
 - **Default behavior**:
   - Use `maxSatisfying` with `{ includePrerelease: true }` to find the **highest satisfying version**.
-  - Select that version directly (stable or WIP/pre-release).
+  - Select that version directly (stable or WIP/pre-release), using the `available` pool determined by the mode and scenario in §2–§3 (including local-first-with-fallback for fresh dependencies).
 
 - **With `--stable` flag**:
   - Use `maxSatisfying` with `{ includePrerelease: true }` to find the **highest satisfying version**.
@@ -181,7 +216,7 @@ If no version satisfies the constraint:
 
 - **Default behavior**:
   - Use `semver.maxSatisfying(available, range, { includePrerelease: true })` to find the **highest satisfying version**.
-  - Select that version directly (stable or WIP/pre-release).
+  - Select that version directly (stable or WIP/pre-release), using the `available` pool determined by the mode and scenario in §2–§3 (including local-first-with-fallback for fresh dependencies).
 
 - **With `--stable` flag**:
   - Same as caret/tilde with `--stable`, but using the exact comparison string.
@@ -192,11 +227,13 @@ If no version satisfies the constraint:
 ## 7. Local vs remote precedence
 
 - **Default mode**:
-  - `available` is the **union** of local and remote.
-  - Version choice is **purely semver-based**; there is no bias toward local if a newer remote version exists.
-  - If the chosen version:
-    - Already exists locally, it is installed from local.
-    - Only exists remotely, it is **pulled then installed**.
+  - For **all dependency resolutions in default mode** (root package and recursive dependencies, whether or not they are already declared in some `package.yml`):
+    - The resolver behaves as **local-first with automatic fallback to remote** as described in §2:
+      - It first attempts to satisfy the effective constraint using **local versions only**.
+      - If no satisfying local version exists, it **includes remote versions** (when available) and retries selection over the combined set.
+      - Only when **neither local nor remote** can satisfy the constraint does it fail with a “no matching versions found” style error.
+  - For **fresh dependencies** (`opkg install <name>` or `opkg install <name>@<spec>` where `<name>` is not yet in `package.yml`, and `--local` is **not** set):
+    - This is just a special case of the general rule above, where the dependency is being introduced for the first time into the workspace.
 
 - **`--remote` mode**:
   - Remote metadata is treated as **authoritative** for which versions exist.

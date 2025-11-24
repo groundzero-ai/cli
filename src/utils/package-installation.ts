@@ -75,7 +75,13 @@ export function displayInstallationResults(
   if (dependencyPackages.length > 0) {
     console.log(`✓ Installed dependencies: ${dependencyPackages.length}`);
     for (const dep of dependencyPackages) {
-      console.log(`   ├── ${dep.name}@${dep.version}`);
+      const sourceLabel: 'Local' | 'Remote' =
+        dep.source === 'remote' ? 'Remote' : 'Local';
+      const packageSpecifier =
+        typeof dep.name === 'string' && dep.name.startsWith('@')
+          ? dep.name
+          : `@${dep.name}`;
+      console.log(`   ├── ${sourceLabel} ${packageSpecifier}@${dep.version}`);
     }
   }
   console.log(`✓ Total packages processed: ${resolvedPackages.length}`);

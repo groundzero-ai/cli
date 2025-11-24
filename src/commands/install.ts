@@ -48,6 +48,7 @@ import {
   parseVersionRange,
   resolveVersionRange
 } from '../utils/version-ranges.js';
+import type { VersionSelectionOptions } from '../utils/version-ranges.js';
 import {
   fetchRemotePackageMetadata,
   pullDownloadsBatchFromRemote,
@@ -378,13 +379,17 @@ async function installPackageCommand(
 
   let versionConstraint = canonicalPlan.effectiveRange;
 
-  const preselection = await selectVersionForInstall({
+  const selectionOptions = options.stable ? { preferStable: true } : undefined;
+
+  const preselection = await selectRootVersionWithLocalFallback({
     packageName,
     constraint: versionConstraint,
-    mode: resolutionMode,
+    resolutionMode,
+    canonicalPlan,
+    cliVersion: version,
+    selectionOptions,
     profile: options.profile,
-    apiKey: options.apiKey,
-    selectionOptions: options.stable ? { preferStable: true } : undefined
+    apiKey: options.apiKey
   });
 
   if (preselection.sources.warnings.length > 0) {
@@ -406,9 +411,9 @@ async function installPackageCommand(
   // Determine if version is local or remote
   const isRemote = preselection.sources.remoteStatus === 'success' && 
                    preselection.sources.remoteVersions.includes(selectedRootVersion);
-  const source = isRemote ? 'remote' : 'local';
+  const source: 'remote' | 'local' = isRemote ? 'remote' : 'local';
 
-  console.log(`✓ Selected ${source} @${packageName}@${selectedRootVersion}`);
+  console.log(formatSelectionSummary(source, packageName, selectedRootVersion));
 
   let downloadVersion = selectedRootVersion;
 
@@ -672,6 +677,71 @@ async function installPackageCommand(
     },
     warnings: warnings.length > 0 ? Array.from(new Set(warnings)) : undefined
   };
+}
+
+
+interface RootVersionSelectionArgs {
+  packageName: string;
+  constraint: string;
+  resolutionMode: InstallResolutionMode;
+  canonicalPlan: CanonicalInstallPlan;
+  cliVersion?: string;
+  selectionOptions?: VersionSelectionOptions;
+  profile?: string;
+  apiKey?: string;
+  selectVersionImpl?: typeof selectVersionForInstall;
+}
+
+export async function selectRootVersionWithLocalFallback(
+  args: RootVersionSelectionArgs
+): Promise<InstallVersionSelectionResult> {
+  const selectImpl = args.selectVersionImpl ?? selectVersionForInstall;
+
+  const isFreshDependency =
+    args.canonicalPlan.dependencyState === 'fresh' &&
+    args.resolutionMode === 'default';
+
+  if (!isFreshDependency) {
+    return await selectImpl({
+      packageName: args.packageName,
+      constraint: args.constraint,
+      mode: args.resolutionMode,
+      profile: args.profile,
+      apiKey: args.apiKey,
+      selectionOptions: args.selectionOptions
+    });
+  }
+
+  const localFirst = await selectImpl({
+    packageName: args.packageName,
+    constraint: args.constraint,
+    mode: 'local-only',
+    profile: args.profile,
+    apiKey: args.apiKey,
+    selectionOptions: args.selectionOptions
+  });
+
+  if (localFirst.selectedVersion) {
+    return localFirst;
+  }
+
+  return await selectImpl({
+    packageName: args.packageName,
+    constraint: args.constraint,
+    mode: args.resolutionMode,
+    profile: args.profile,
+    apiKey: args.apiKey,
+    selectionOptions: args.selectionOptions
+  });
+}
+
+export function formatSelectionSummary(
+  source: 'local' | 'remote',
+  packageName: string,
+  version: string
+): string {
+  const packageSpecifier = packageName.startsWith('@') ? packageName : `@${packageName}`;
+  return `✓ Selected ${source} ${packageSpecifier}@${version}`;
 }
 
 
