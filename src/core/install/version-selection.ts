@@ -2,7 +2,6 @@ import * as semver from 'semver';
 import { listPackageVersions } from '../directory.js';
 import {
   fetchRemotePackageMetadata,
-  type RemotePackageMetadataResult,
   type RemotePullFailure
 } from '../remote-pull.js';
 import type { PullPackageResponse } from '../../types/api.js';
@@ -14,6 +13,7 @@ import {
   type VersionSelectionResult
 } from '../../utils/version-ranges.js';
 import { isScopedName } from '../scoping/package-scoping.js';
+import { Spinner } from '../../utils/spinner.js';
 
 export interface VersionSourceSummary {
   localVersions: string[];
@@ -173,18 +173,33 @@ async function fetchRemoteVersions(
   packageName: string,
   options: RemoteVersionLookupOptions
 ): Promise<RemoteVersionLookupResult> {
-  const metadataResult = await fetchRemotePackageMetadata(packageName, undefined, {
-    profile: options.profile,
-    apiKey: options.apiKey,
-    recursive: false
-  });
+  const spinner =
+    process.stdout.isTTY && process.stderr.isTTY
+      ? new Spinner(`Checking remote versions for ${packageName}...`)
+      : null;
 
-  if (!metadataResult.success) {
-    return { success: false, failure: metadataResult };
+  if (spinner) {
+    spinner.start();
   }
 
-  const versions = extractVersionsFromRemoteResponse(metadataResult.response);
-  return { success: true, versions };
+  try {
+    const metadataResult = await fetchRemotePackageMetadata(packageName, undefined, {
+      profile: options.profile,
+      apiKey: options.apiKey,
+      recursive: false
+    });
+
+    if (!metadataResult.success) {
+      return { success: false, failure: metadataResult };
+    }
+
+    const versions = extractVersionsFromRemoteResponse(metadataResult.response);
+    return { success: true, versions };
+  } finally {
+    if (spinner) {
+      spinner.stop();
+    }
+  }
 }
 
 function extractVersionsFromRemoteResponse(response: PullPackageResponse): string[] {
