@@ -172,9 +172,9 @@ export async function resolveDependencies(
   let pkg: Package;
   try {
     // Load package with resolved version
-    logger.debug(`Attempting to load package '${packageName}' from local registry`, { 
-      version: resolvedVersion, 
-      originalRange: versionRange 
+    logger.debug(`Attempting to load package '${packageName}' from local registry`, {
+      version: resolvedVersion,
+      originalRange: versionRange
     });
     pkg = await packageManager.loadPackage(packageName, resolvedVersion);
     logger.debug(`Successfully loaded package '${packageName}' from local registry`, { version: pkg.metadata.version });
@@ -243,8 +243,14 @@ export async function resolveDependencies(
       throw error;
     }
   }
-  
-  const currentVersion = pkg.metadata.version;
+
+  // Use the resolved version (from directory name) rather than metadata version
+  // This ensures WIP packages use their full version string (e.g., 1.0.0-wip.xxx)
+  // instead of the base version from package.yml (e.g., 1.0.0)
+  const currentVersion = resolvedVersion;
+  if (!currentVersion) {
+    throw new Error(`Resolved version is undefined for package ${packageName}`);
+  }
   
   // 3. Check for existing resolution
   const existing = resolvedPackages.get(packageName);
