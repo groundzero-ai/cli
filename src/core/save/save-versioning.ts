@@ -59,7 +59,7 @@ export interface PackVersionComputationResult {
 export function computeWipVersion(
   baseStable: string,
   lastWorkspaceVersion: string | undefined,
-  workspaceHash: string,
+  workspacePath: string,
   options?: { now?: Date }
 ): WipVersionComputationResult {
   const normalizedStable = normalizeStableVersion(baseStable);
@@ -90,7 +90,7 @@ export function computeWipVersion(
     }
   }
 
-  const wipVersion = generateWipVersion(effectiveStable, workspaceHash, options);
+  const wipVersion = generateWipVersion(effectiveStable, workspacePath, options);
 
   return {
     stable: normalizedStable,

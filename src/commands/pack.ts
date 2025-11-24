@@ -13,7 +13,7 @@ import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
 import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
 import { resolveEffectiveNameForSave } from '../core/scoping/package-scoping.js';
 import { readPackageIndex, writePackageIndex } from '../utils/package-index-yml.js';
-import { createWorkspaceHash } from '../utils/version-generator.js';
+import { createWorkspaceHash, createWorkspaceTag } from '../utils/version-generator.js';
 import { computePackTargetVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { packageVersionExists } from '../utils/package-versioning.js';
@@ -74,6 +74,7 @@ async function packPackageCommand(
 
   const indexRecord = await readPackageIndex(cwd, packageConfig.name);
   const workspaceHash = createWorkspaceHash(cwd);
+  const workspaceTag = createWorkspaceTag(cwd);
 
   const packVersionInfo = computePackTargetVersion(
     packageConfig.version,
@@ -106,7 +107,7 @@ async function packPackageCommand(
     return { success: false, error: registrySave.error || 'Pack operation failed' };
   }
 
-  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceHash);
+  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceTag);
 
   const syncResult = await performPlatformSync(
     cwd,

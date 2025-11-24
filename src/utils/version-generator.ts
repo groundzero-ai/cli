@@ -112,9 +112,13 @@ export function createWorkspaceHash(
   return digest.slice(0, length);
 }
 
-export function sanitizeWorkspaceHash(
+/**
+ * Sanitize a workspace hash string to a fixed length.
+ * Internal helper used for tag generation.
+ */
+function sanitizeWorkspaceHash(
   hash: string,
-  length: number = WORKSPACE_HASH_TOKEN_LENGTH
+  length: number
 ): string {
   const cleaned = (hash || '').toLowerCase().replace(/[^0-9a-z]/g, '');
   if (cleaned.length === 0) {
@@ -127,23 +131,32 @@ export function sanitizeWorkspaceHash(
 }
 
 /**
+ * Create the workspace tag used in WIP versions.
+ * Returns a 3-character tag derived from the workspace path hash.
+ * This is the single source of truth for workspace tags used in version strings.
+ */
+export function createWorkspaceTag(inputPath: string): string {
+  const workspaceHash = createWorkspaceHash(inputPath);
+  return sanitizeWorkspaceHash(workspaceHash, WIP_WORKSPACE_TAG_LENGTH);
+}
+
+/**
  * Generate a WIP version string in the canonical S-<t>.<w> form.
  *
  * - `stable` is the normalized base stable version (e.g. "1.2.3").
- * - `workspaceHash` is the full workspace hash; only the first
- *   `WIP_WORKSPACE_TAG_LENGTH` cleaned characters are used.
+ * - `workspacePath` is the workspace path; the tag is derived from it.
  * - `options.now` can be provided for deterministic testing.
  */
 export function generateWipVersion(
   stable: string,
-  workspaceHash: string,
+  workspacePath: string,
   options?: { now?: Date }
 ): string {
   const timestampPart = generateBase62Timestamp(
     options?.now ?? new Date(),
     WIP_TIMESTAMP_TOKEN_LENGTH
   );
-  const hashPart = sanitizeWorkspaceHash(workspaceHash, WIP_WORKSPACE_TAG_LENGTH);
+  const hashPart = createWorkspaceTag(workspacePath);
   return `${stable}-${timestampPart}.${hashPart}`;
 }
 

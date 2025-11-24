@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { computeWipVersion, computePackTargetVersion } from '../src/core/save/save-versioning.js';
 
 const fixedDate = new Date('2024-11-23T12:34:56Z');
+const testWorkspacePath = '/test/workspace';
 
 // First save with no index: WIP derived directly from package.yml.version
-const wipFromStable = computeWipVersion('1.2.3', undefined, 'abcd1234', { now: fixedDate });
+const wipFromStable = computeWipVersion('1.2.3', undefined, testWorkspacePath, { now: fixedDate });
 console.log('wipFromStable', wipFromStable);
 assert.equal(wipFromStable.stable, '1.2.3');
 assert.equal(wipFromStable.effectiveStable, '1.2.3');
@@ -16,7 +17,7 @@ assert.equal(wipFromStable.shouldBumpPackageYml, false);
 const continuingWip = computeWipVersion(
   '1.2.3',
   '1.2.3-000000.abc',
-  'abcd1234',
+  testWorkspacePath,
   { now: new Date('2024-11-23T12:35:00Z') }
 );
 console.log('continuingWip', continuingWip);
@@ -30,7 +31,7 @@ assert.equal(continuingWip.shouldBumpPackageYml, false);
 const wipAfterStable = computeWipVersion(
   '1.2.3',
   '1.2.3', // last workspace version is a non-prerelease stable
-  'abcd1234',
+  testWorkspacePath,
   { now: fixedDate }
 );
 console.log('wipAfterStable', wipAfterStable);
@@ -44,7 +45,7 @@ assert.equal(wipAfterStable.nextStable, '1.2.4');
 const resetWip = computeWipVersion(
   '3.0.0',
   '2.0.0-zzzzzz.abc',
-  'abcd1234',
+  testWorkspacePath,
   { now: fixedDate }
 );
 console.log('resetWip', resetWip);

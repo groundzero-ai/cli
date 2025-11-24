@@ -13,7 +13,7 @@ import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
 import { isPackageTransitivelyCovered } from '../utils/dependency-coverage.js';
 import { resolveEffectiveNameForSave } from '../core/scoping/package-scoping.js';
 import { readPackageIndex } from '../utils/package-index-yml.js';
-import { createWorkspaceHash } from '../utils/version-generator.js';
+import { createWorkspaceHash, createWorkspaceTag } from '../utils/version-generator.js';
 import { computeWipVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
@@ -84,10 +84,11 @@ async function savePackageCommand(
 
   const indexRecord = await readPackageIndex(cwd, packageConfig.name);
   const workspaceHash = createWorkspaceHash(cwd);
+  const workspaceTag = createWorkspaceTag(cwd);
   const wipVersionInfo = computeWipVersion(
     packageConfig.version,
     indexRecord?.workspace?.version,
-    workspaceHash
+    cwd
   );
   if (wipVersionInfo.resetMessage) {
     console.log(wipVersionInfo.resetMessage);
@@ -120,7 +121,7 @@ async function savePackageCommand(
     return { success: false, error: registrySave.error || 'Save operation failed' };
   }
 
-  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceHash, {
+  await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceTag, {
     keepVersion: effectiveConfig.version
   });
 
