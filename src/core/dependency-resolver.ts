@@ -82,7 +82,22 @@ export async function resolveDependencies(
     const cycle = Array.from(visitedStack);
     const cycleStart = cycle.indexOf(packageName);
     const actualCycle = cycle.slice(cycleStart).concat([packageName]);
-    throw new Error(`❌ Circular dependency detected:\n   ${actualCycle.join(' → ')}\n\n💡 Review your package dependencies to break the cycle.`);
+    const warning =
+      `Circular dependency detected:\n` +
+      `   ${actualCycle.join(' → ')}\n` +
+      `💡 Review your package dependencies to break the cycle.\n` +
+      `   (The cycle will be skipped for this install run.)`;
+    // Surface as a warning via logger and resolver callback, but do NOT mark the
+    // package as missing. This keeps the install flow running without falsely
+    // reporting the root package as a missing dependency.
+    logger.warn(warning);
+    if (resolverOptions.onWarning) {
+      resolverOptions.onWarning(warning);
+    }
+    return {
+      resolvedPackages: Array.from(resolvedPackages.values()),
+      missingPackages: Array.from(missing)
+    };
   }
   
   // 2. Resolve version range(s) to specific version if needed

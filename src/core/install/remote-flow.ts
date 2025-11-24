@@ -37,6 +37,11 @@ export async function fetchMissingDependencyMetadata(
       const metadataResult = await fetchRemotePackageMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
       if (!metadataResult.success) {
         const message = describeRemoteFailure(requiredVersion ? `${missingName}@${requiredVersion}` : missingName, metadataResult);
+        // Avoid garbled output by clearing the spinner line before printing
+        // warning messages, since the spinner writes to the same stdout line.
+        if (metadataSpinner) {
+          metadataSpinner.stop();
+        }
         console.log(`⚠️  ${message}`);
         continue;
       }

@@ -432,7 +432,12 @@ async function installPackageCommand(
     try {
       const data = await resolveDependenciesForInstall(packageName, cwd, versionConstraint, options);
       if (data.warnings && data.warnings.length > 0) {
-        data.warnings.forEach(message => warnings.push(message));
+        data.warnings.forEach(message => {
+          warnings.push(message);
+          // Surface resolver warnings (including circular dependency notices)
+          // directly to the user for better visibility.
+          console.log(`⚠️  ${message}`);
+        });
       }
       return { success: true, data };
     } catch (error) {
