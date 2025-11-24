@@ -1,6 +1,5 @@
 import { createHash } from 'crypto';
 import * as semver from 'semver';
-import { WIP_SUFFIX } from '../core/save/constants.js';
 
 /**
  * Version generation utilities for local and WIP versions.
@@ -11,26 +10,14 @@ export const WORKSPACE_HASH_TOKEN_LENGTH = 8;
 // Length of the short workspace tag used in WIP versions (e.g. 3 base36 chars)
 export const WIP_WORKSPACE_TAG_LENGTH = 3;
 
-/**
- * Generate a local development version using a simple `-wip` suffix.
- * Legacy helper used by older flows (e.g. interactive save) that predate
- * the S-<t>.<w> WIP scheme.
- *
- * Format: {baseVersion}-wip
- * Uses semver prerelease identifiers for proper version ordering.
- */
-export function generateLocalVersion(baseVersion: string): string {
-  // Ensure base version is clean semver (remove any existing prerelease or build metadata)
-  const cleanVersion = baseVersion.split('-')[0].split('+')[0];
-
-  return `${cleanVersion}${WIP_SUFFIX}`;
-}
 
 /**
- * Check if a version is a local development version
+ * Check if a version is a local (non-stable) development version.
+ * This is now defined as "any semver prerelease", which includes WIP versions.
  */
 export function isLocalVersion(version: string): boolean {
-  return version.includes(`${WIP_SUFFIX}.`) || version.endsWith(WIP_SUFFIX);
+  const parsed = semver.parse(version);
+  return Boolean(parsed && parsed.prerelease.length > 0);
 }
 
 /**
@@ -169,9 +156,7 @@ export interface ParsedWipVersion {
 /**
  * Parse a WIP version string.
  *
- * Supports:
- * - New scheme:  {base}-{timestamp}.{workspaceTag}  (e.g. 1.2.3-000fz8.a3k)
- * - Legacy scheme: {base}-wip.{timestamp}.{workspaceHash}
+ * Supports the S-<t>.<w> scheme: {base}-{timestamp}.{workspaceTag} (e.g. 1.2.3-000fz8.a3k)
  */
 export function parseWipVersion(version: string): ParsedWipVersion | null {
   const parsed = semver.parse(version);
@@ -186,33 +171,7 @@ export function parseWipVersion(version: string): ParsedWipVersion | null {
     }
   }
 
-  // Legacy {base}-wip.{timestamp}.{workspaceHash} support
-  const suffixIndex = version.indexOf(WIP_SUFFIX);
-  if (suffixIndex === -1) {
-    return null;
-  }
-
-  const baseStable = version.slice(0, suffixIndex);
-  const afterSuffix = version.slice(suffixIndex + WIP_SUFFIX.length);
-  if (!afterSuffix.startsWith('.')) {
-    return null;
-  }
-
-  const parts = afterSuffix.slice(1).split('.');
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const [legacyTimestamp, legacyWorkspaceHash] = parts;
-  if (!legacyTimestamp || !legacyWorkspaceHash) {
-    return null;
-  }
-
-  return {
-    baseStable,
-    timestamp: legacyTimestamp,
-    workspaceHash: legacyWorkspaceHash
-  };
+  return null;
 }
 
 export function extractWorkspaceHashFromVersion(version: string): string | null {

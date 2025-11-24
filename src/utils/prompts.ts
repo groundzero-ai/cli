@@ -5,6 +5,7 @@ import { UserCancellationError } from './errors.js';
 import { PLATFORM_DEFINITIONS } from '../core/platforms.js';
 import { normalizePackageName, validatePackageName } from './package-name.js';
 import { readTextFile } from './fs.js';
+import { DEFAULT_VERSION } from '../core/save/constants.js';
 
 /**
  * Common prompt types and utilities for user interaction
@@ -104,7 +105,7 @@ export async function promptPackageDetails(defaultName?: string): Promise<Packag
       type: 'text',
       name: 'version',
       message: 'Version:',
-      initial: '0.1.0-wip',
+      initial: DEFAULT_VERSION,
       validate: (value: string) => {
         if (!value) return 'Version is required';
         if (!/^\d+\.\d+\.\d+/.test(value)) {
@@ -156,7 +157,7 @@ export async function promptPackageDetailsForNamed(packageName: string): Promise
       type: 'text',
       name: 'version',
       message: 'Version:',
-      initial: '0.1.0-wip',
+      initial: DEFAULT_VERSION,
       validate: (value: string) => {
         if (!value) return 'Version is required';
         if (!/^\d+\.\d+\.\d+/.test(value)) {

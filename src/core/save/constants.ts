@@ -2,7 +2,6 @@
 export const UTF8_ENCODING = 'utf8' as const;
 export const DEFAULT_VERSION = '0.1.0';
 export const VERSION_TYPE_STABLE = 'stable';
-export const WIP_SUFFIX = '-wip';
 
 export const ERROR_MESSAGES = {
   INVALID_PACKAGE_SYNTAX: 'Invalid package syntax: %s. Use format: package@version',
