@@ -37,15 +37,27 @@ export function displayPackageTable(packages: PackageTableEntry[], title?: strin
   const versionWidth = Math.min(maxVersionLength + 6, 20); // Cap at 20 chars, more spacing
   
   // Table header (similar to docker image ls)
-  console.log('REPOSITORY'.padEnd(nameWidth) + 'VERSION'.padEnd(versionWidth) + 'DESCRIPTION');
-  console.log('-'.repeat(nameWidth) + '-'.repeat(versionWidth) + '-----------');
+  // Add explicit spaces between columns so long names don't visually merge with versions
+  console.log(
+    'REPOSITORY'.padEnd(nameWidth) +
+    ' ' +
+    'VERSION'.padEnd(versionWidth) +
+    'DESCRIPTION'
+  );
+  console.log(
+    '-'.repeat(nameWidth) +
+    ' ' +
+    '-'.repeat(versionWidth) +
+    '-----------'
+  );
   
   // Display each package
   for (const pkg of packages) {
     const name = pkg.name.padEnd(nameWidth);
     const version = pkg.version.padEnd(versionWidth);
     const description = pkg.description || '(no description)';
-    console.log(`${name}${version}${description}`);
+    // Ensure at least one space between name and version columns
+    console.log(`${name} ${version}${description}`);
   }
   
   console.log('');
