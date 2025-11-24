@@ -307,6 +307,15 @@ export function hasExplicitPrereleaseIntent(range: string): boolean {
     return false;
   }
 
+   // Fast-path: if the original range string contains no '-' characters at all,
+   // it cannot be explicitly expressing prerelease intent. This avoids treating
+   // normalized comparators like ">=1.0.0-0" (introduced by semver with
+   // includePrerelease) as user-authored prerelease ranges when the original
+   // input was a stable caret like "^1.0.0".
+   if (!trimmed.includes('-')) {
+     return false;
+   }
+
   try {
     const parsedRange = new semver.Range(trimmed, { includePrerelease: true });
     for (const comparatorSet of parsedRange.set) {

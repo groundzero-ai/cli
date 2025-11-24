@@ -6,11 +6,12 @@ import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalOpenPackageDir, getLocalPackageYmlPath, getLocalPackagesDir, getLocalPackageDir } from './paths.js';
 import { DEPENDENCY_ARRAYS } from '../constants/index.js';
-import { createCaretRange } from './version-ranges.js';
+import { createCaretRange, hasExplicitPrereleaseIntent, isPrereleaseVersion } from './version-ranges.js';
 import { extractBaseVersion } from './version-generator.js';
 import { normalizePackageName, arePackageNamesEquivalent } from './package-name.js';
 import { packageManager } from '../core/package.js';
 import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -112,8 +113,31 @@ export async function addPackageToYml(
   let versionToWrite = originalVersion ?? defaultRange;
 
   if (!originalVersion && existingRange) {
-    if (rangeIncludesVersion(existingRange, baseVersion)) {
+    const hasPrereleaseIntent = hasExplicitPrereleaseIntent(existingRange);
+    const isNewVersionStable = !isPrereleaseVersion(packageVersion);
+
+    if (hasPrereleaseIntent) {
+      if (isNewVersionStable) {
+        // Constraint has explicit prerelease intent and we're packing a stable
+        // version on the same base line: normalize to a stable caret.
+        versionToWrite = createCaretRange(baseVersion);
+        logger.debug(
+          `Updating range from prerelease-including '${existingRange}' to stable '${versionToWrite}' ` +
+          `for ${packageName} (pack transition to ${packageVersion})`
+        );
+      } else {
+        // For prerelease-intent ranges during saves (prerelease versions),
+        // always preserve the existing constraint.
+        versionToWrite = existingRange;
+      }
+    } else if (rangeIncludesVersion(existingRange, baseVersion)) {
+      // Stable (non-prerelease) constraint that already includes the new base
+      // version: keep it unchanged.
       versionToWrite = existingRange;
+    } else {
+      // Stable constraint that does not include the new base version: bump to
+      // a new caret on the packed stable.
+      versionToWrite = defaultRange;
     }
   }
 

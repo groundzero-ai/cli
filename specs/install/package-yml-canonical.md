@@ -120,13 +120,18 @@ The aim is to make behavior predictable and avoid “CLI overrides” that silen
     - `save` / `pack` persist a **default caret range** derived from the new stable, e.g. `^1.2.3`.
   - On subsequent `save` / `pack` operations for that same package:
     - Let `R_pkg` be the existing range in `package.yml` and `S_new` the new stable base version (e.g. `2.0.0`).
+    - **Special case: Prerelease-to-stable transition during `pack`**:
+      - If `R_pkg` includes explicit prerelease intent (e.g. `^1.0.0-0`) and `S_new` is a stable version on the same base line (e.g. `1.0.0`):
+        - Then `pack` **updates** `R_pkg` to a stable range (e.g. `^1.0.0`) to reflect the transition from prerelease to stable.
+      - This exception **only applies** when transitioning from a prerelease-intent constraint to a stable target; subsequent stable version changes within the stable range do not update `R_pkg`.
+      - For prerelease-intent ranges, `save` operations (which produce prerelease versions) **never** update the constraint, preserving the prerelease intent.
     - If `S_new` **already satisfies** `R_pkg` (e.g. `R_pkg = ^1.0.0`, `S_new = 1.0.1`):
       - **The constraint is left unchanged**; `save` / `pack` do not rewrite `R_pkg`.
     - If `S_new` is **outside** `R_pkg` (e.g. `R_pkg = ^1.0.0`, `S_new = 2.0.0`):
       - `save` / `pack` may **auto-update** the dependency line in `package.yml` to a new caret range `^S_new` to keep the workspace tracking the new stable line.
   - This auto-tracking behavior:
     - Applies only to dependencies managed via `save` / `pack` for workspace-owned packages.
-    - Never changes constraints that already include the new stable version.
+    - Never changes constraints that already include the new stable version (except for the prerelease-to-stable transition exception above).
 
 ---
 

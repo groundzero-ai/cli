@@ -93,6 +93,30 @@ async function savePackageCommand(
   if (wipVersionInfo.resetMessage) {
     console.log(wipVersionInfo.resetMessage);
   }
+
+  // If the last workspace version was a stable S matching package.yml.version,
+  // begin the next development cycle by bumping package.yml.version to patch(S)
+  // *before* discovering files and saving to the registry. This ensures the
+  // saved snapshot's package.yml reflects the new stable line.
+  if (wipVersionInfo.shouldBumpPackageYml && wipVersionInfo.nextStable) {
+    try {
+      const bumpedConfig = { ...packageConfig, version: wipVersionInfo.nextStable };
+      
+      // Update the on-disk package.yml so discovery sees the bumped version
+      await writePackageYml(packageInfo.fullPath, bumpedConfig);
+      
+      // Update in-memory configs to keep them in sync
+      packageConfig = bumpedConfig;
+      packageInfo = { ...packageInfo, config: bumpedConfig };
+      
+      console.log(
+        `✓ Updated package.yml.version to ${wipVersionInfo.nextStable} for the next cycle`
+      );
+    } catch (error) {
+      logger.warn(`Failed to auto-bump package.yml before save: ${String(error)}`);
+    }
+  }
+
   const effectiveConfig = { ...packageConfig, version: wipVersionInfo.wipVersion };
 
   // Discover and process files directly into package files array
@@ -124,23 +148,6 @@ async function savePackageCommand(
   await deleteWorkspaceWipCopies(effectiveConfig.name, workspaceTag, {
     keepVersion: effectiveConfig.version
   });
-
-  // If the last workspace version was a stable S matching package.yml.version,
-  // begin the next development cycle by bumping package.yml.version to patch(S)
-  // after a successful save. This keeps new WIP saves on the next stable line
-  // while leaving freshly installed workspaces at their packed stable until
-  // they perform a save.
-  if (wipVersionInfo.shouldBumpPackageYml && wipVersionInfo.nextStable) {
-    try {
-      const bumpedConfig = { ...packageConfig, version: wipVersionInfo.nextStable };
-      await writePackageYml(packageInfo.fullPath, bumpedConfig);
-      console.log(
-        `✓ Updated package.yml.version to ${wipVersionInfo.nextStable} for the next cycle`
-      );
-    } catch (error) {
-      logger.warn(`Failed to auto-bump package.yml after save: ${String(error)}`);
-    }
-  }
 
   // Finalize the save operation
   // Don't add root package to itself as a dependency
