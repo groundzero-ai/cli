@@ -162,17 +162,49 @@ export async function resolveDependencies(
   const localVersions = await listPackageVersions(packageName);
   const explicitPrereleaseIntent = allRanges.some(range => hasExplicitPrereleaseIntent(range));
 
-  const selectionResult = await selectInstallVersionUnified({
-    packageName,
-    constraint: '*',
-    mode: resolutionMode,
-    selectionOptions: resolverOptions.preferStable ? { preferStable: true } : undefined,
-    explicitPrereleaseIntent,
-    profile: resolverOptions.profile,
-    apiKey: resolverOptions.apiKey,
-    localVersions,
-    filterAvailableVersions
-  });
+  let selectionResult;
+  try {
+    selectionResult = await selectInstallVersionUnified({
+      packageName,
+      constraint: '*',
+      mode: resolutionMode,
+      selectionOptions: resolverOptions.preferStable ? { preferStable: true } : undefined,
+      explicitPrereleaseIntent,
+      profile: resolverOptions.profile,
+      apiKey: resolverOptions.apiKey,
+      localVersions,
+      filterAvailableVersions
+    });
+  } catch (error) {
+    // In default (local-first with remote fallback) mode, a failure here almost
+    // always means that remote metadata lookup failed (e.g. network error,
+    // unreachable registry) while trying to fall back to remote. For local-first
+    // semantics we should treat this as "remote unavailable" and continue with a
+    // best-effort local resolution by marking this package as missing instead of
+    // aborting the entire install.
+    if (resolutionMode === 'default') {
+      const message = error instanceof Error ? error.message : String(error);
+      const warning =
+        `Remote metadata lookup failed while resolving '${packageName}'. ` +
+        `Proceeding in local-first mode with this dependency marked as missing. ` +
+        `${message}`;
+
+      logger.warn(warning);
+      if (resolverOptions.onWarning) {
+        resolverOptions.onWarning(warning);
+      }
+
+      missing.add(packageName);
+      return {
+        resolvedPackages: Array.from(resolvedPackages.values()),
+        missingPackages: Array.from(missing)
+      };
+    }
+
+    // For non-default modes (e.g. remote-primary), remote metadata is required
+    // and failures should still be treated as fatal.
+    throw error;
+  }
 
   if (selectionResult.sources.warnings.length > 0 && resolverOptions.onWarning) {
     selectionResult.sources.warnings.forEach(resolverOptions.onWarning);
@@ -215,46 +247,58 @@ export async function resolveDependencies(
       originalRange: versionRange
     });
     pkg = await packageManager.loadPackage(packageName, resolvedVersion);
-    logger.debug(`Successfully loaded package '${packageName}' from local registry`, { version: pkg.metadata.version });
+    logger.debug(`Successfully loaded package '${packageName}' from local registry`, {
+      version: pkg.metadata.version
+    });
   } catch (error) {
     if (error instanceof PackageNotFoundError) {
       // Auto-repair attempt: Check if package exists in registry but needs to be loaded
       logger.debug(`Package '${packageName}' not found in local registry, attempting repair`);
-      
+
       try {
         // Check if package exists in registry metadata (but files might be missing)
         const hasPackage = await registryManager.hasPackage(packageName);
         logger.debug(`Registry check for '${packageName}': hasPackage=${hasPackage}, requiredVersion=${version}`);
-        
+
         if (hasPackage) {
           // Check if the resolved version exists (use resolvedVersion if available, otherwise fall back to version)
           const versionToCheck = resolvedVersion || version;
           if (versionToCheck) {
             const hasSpecificVersion = await registryManager.hasPackageVersion(packageName, versionToCheck);
             if (!hasSpecificVersion) {
-              // Package exists but not in the required/resolved version - this is not a repairable error
+              // Package exists but not in the required/resolved version - treat as a missing dependency
               const dependencyChain = Array.from(visitedStack);
               const versionDisplay = versionRange || version || resolvedVersion;
-              let errorMessage = `Package '${packageName}' exists in registry but version '${versionDisplay}' is not available\n\n`;
-              
+              let warningMessage = `Package '${packageName}' exists in registry but version '${versionDisplay}' is not available\n\n`;
+
               if (dependencyChain.length > 0) {
-                errorMessage += `📋 Dependency chain:\n`;
+                warningMessage += `📋 Dependency chain:\n`;
                 for (let i = 0; i < dependencyChain.length; i++) {
                   const indent = '  '.repeat(i);
-                  errorMessage += `${indent}└─ ${dependencyChain[i]}\n`;
+                  warningMessage += `${indent}└─ ${dependencyChain[i]}\n`;
                 }
-                errorMessage += `${'  '.repeat(dependencyChain.length)}└─ ${packageName}@${versionDisplay} ❌ (version not available)\n\n`;
+                warningMessage += `${'  '.repeat(dependencyChain.length)}└─ ${packageName}@${versionDisplay} ❌ (version not available)\n\n`;
               }
-              
-              errorMessage += `💡 To resolve this issue:\n`;
-              errorMessage += `   • Install the available version: opkg install ${packageName}@latest\n`;
-              errorMessage += `   • Update the dependency to use an available version\n`;
-              errorMessage += `   • Create the required version locally: opkg init && opkg save\n`;
-              
-              throw new PackageVersionNotFoundError(errorMessage);
+
+              warningMessage += `💡 To resolve this issue:\n`;
+              warningMessage += `   • Install the available version: opkg install ${packageName}@latest\n`;
+              warningMessage += `   • Update the dependency to use an available version\n`;
+              warningMessage += `   • Create the required version locally: opkg init && opkg save\n`;
+
+              // Surface as warning but do NOT abort the entire install – mark as missing instead.
+              logger.warn(warningMessage);
+              if (resolverOptions.onWarning) {
+                resolverOptions.onWarning(warningMessage);
+              }
+
+              missing.add(packageName);
+              return {
+                resolvedPackages: Array.from(resolvedPackages.values()),
+                missingPackages: Array.from(missing)
+              };
             }
           }
-          
+
           logger.info(`Found package '${packageName}' in registry metadata, attempting repair`);
           // Try to reload the package metadata using resolved version (or original version if not resolved)
           const metadata = await registryManager.getPackageMetadata(packageName, resolvedVersion || version);
@@ -264,17 +308,27 @@ export async function resolveDependencies(
         } else {
           // Package truly doesn't exist - treat as missing dependency
           missing.add(packageName);
-          return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
+          return {
+            resolvedPackages: Array.from(resolvedPackages.values()),
+            missingPackages: Array.from(missing)
+          };
         }
       } catch (repairError) {
-        // If this is a version-specific error we created, re-throw it directly
-        if (repairError instanceof PackageVersionNotFoundError) {
-          throw repairError;
+        // Repair failed - treat as missing dependency instead of aborting the whole install flow
+        logger.warn(
+          `Failed to repair missing package '${packageName}' from registry metadata: ${String(repairError)}`
+        );
+        if (resolverOptions.onWarning) {
+          resolverOptions.onWarning(
+            `Failed to repair missing package '${packageName}' from registry metadata. It will be skipped for this install run.`
+          );
         }
-        
-        // Repair failed - treat as missing dependency
+
         missing.add(packageName);
-        return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
+        return {
+          resolvedPackages: Array.from(resolvedPackages.values()),
+          missingPackages: Array.from(missing)
+        };
       }
     } else {
       // Re-throw other errors
