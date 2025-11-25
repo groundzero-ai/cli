@@ -30,7 +30,13 @@ function extractReasonFromFailure(failure: RemotePullFailure): string {
 export async function fetchMissingDependencyMetadata(
   missing: string[],
   resolvedPackages: ResolvedPackage[],
-  opts: { dryRun: boolean; profile?: string; apiKey?: string; alreadyWarnedPackages?: Set<string> }
+  opts: {
+    dryRun: boolean;
+    profile?: string;
+    apiKey?: string;
+    alreadyWarnedPackages?: Set<string>;
+    onFailure?: (name: string, failure: RemotePullFailure) => void;
+  }
 ): Promise<RemotePackageMetadataSuccess[]> {
   const { dryRun, alreadyWarnedPackages } = opts;
   const uniqueMissing = Array.from(new Set(missing));
@@ -62,6 +68,7 @@ export async function fetchMissingDependencyMetadata(
           }
           console.log(`⚠️  Remote pull failed for \`${packageLabel}\` (reason: ${reason})`);
         }
+        opts.onFailure?.(missingName, metadataResult);
         continue;
       }
 

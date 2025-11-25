@@ -48,12 +48,13 @@ import {
   resolveVersionRange
 } from '../utils/version-ranges.js';
 import type { VersionSelectionOptions } from '../utils/version-ranges.js';
-import { aggregateRecursiveDownloads } from '../core/remote-pull.js';
+import { aggregateRecursiveDownloads, type RemoteBatchPullResult } from '../core/remote-pull.js';
 import { computeMissingDownloadKeys } from '../core/install/download-keys.js';
 import { fetchMissingDependencyMetadata, pullMissingDependencies } from '../core/install/remote-flow.js';
 import { recordBatchOutcome } from '../core/install/remote-reporting.js';
 import { handleDryRunMode } from '../core/install/dry-run.js';
 import { InstallResolutionMode, type PackageRemoteResolutionOutcome } from '../core/install/types.js';
+import { extractRemoteErrorReason } from '../utils/error-reasons.js';
 import { selectInstallVersionUnified } from '../core/install/version-selection.js';
 import type { InstallVersionSelectionResult } from '../core/install/version-selection';
 
@@ -407,6 +408,10 @@ async function installPackageCommand(
           // Surface resolver warnings (including circular dependency notices)
           // directly to the user for better visibility.
           console.log(`⚠️  ${message}`);
+          const match = message.match(/Remote pull failed for `([^`]+)`/);
+          if (match) {
+            warnedPackages.add(match[1]);
+          }
         });
       }
       return { success: true, data };
@@ -456,8 +461,6 @@ async function installPackageCommand(
 
   // Track packages that were already warned about during resolution
   // to avoid duplicate warnings when fetching metadata
-  missingPackages.forEach(pkg => warnedPackages.add(pkg));
-
   const pullMissingFromRemote = async (): Promise<CommandResult | null> => {
     if (retryEligibleMissing.length === 0) {
       return null;
@@ -467,7 +470,14 @@ async function installPackageCommand(
       dryRun,
       profile: options.profile,
       apiKey: options.apiKey,
-      alreadyWarnedPackages: warnedPackages
+      alreadyWarnedPackages: warnedPackages,
+      onFailure: (name, failure) => {
+        remoteOutcomes[name] = {
+          name,
+          reason: failure.reason,
+          message: failure.message
+        };
+      }
     });
 
     if (metadataResults.length === 0) {
@@ -489,6 +499,7 @@ async function installPackageCommand(
 
     for (const batchResult of batchResults) {
       recordBatchOutcome('Pulled dependencies', batchResult, warnings, dryRun);
+      updateRemoteOutcomesFromBatch(batchResult, remoteOutcomes);
     }
 
     const refreshedResolution = await resolveDependenciesOutcome();
@@ -520,7 +531,7 @@ async function installPackageCommand(
 
   // 7) Warn if still missing
   if (missingPackages.length > 0) {
-    const missingSummary = `Missing packages after pull: ${Array.from(new Set(missingPackages)).join(', ')}`;
+    const missingSummary = `Missing packages: ${Array.from(new Set(missingPackages)).join(', ')}`;
     console.log(`⚠️  ${missingSummary}`);
     warnings.push(missingSummary);
   }
@@ -600,7 +611,8 @@ async function installPackageCommand(
     installationOutcome.allAddedFiles,
     installationOutcome.allUpdatedFiles,
     installationOutcome.rootFileResults,
-    missingPackages
+    missingPackages,
+    remoteOutcomes
   );
 
   return {
@@ -626,6 +638,46 @@ export function formatSelectionSummary(
 ): string {
   const packageSpecifier = packageName.startsWith('@') ? packageName : `@${packageName}`;
   return `✓ Selected ${source} ${packageSpecifier}@${version}`;
+}
+
+function updateRemoteOutcomesFromBatch(
+  batchResult: RemoteBatchPullResult,
+  remoteOutcomes: Record<string, PackageRemoteResolutionOutcome>
+): void {
+  if (!batchResult.failed || batchResult.failed.length === 0) {
+    return;
+  }
+
+  for (const failure of batchResult.failed) {
+    const reasonLabel = extractRemoteErrorReason(failure.error ?? 'Unknown error');
+    const reasonTag = mapReasonLabelToOutcome(reasonLabel);
+    const packageName = failure.name;
+    const message = `Remote pull failed for \`${packageName}\` (reason: ${reasonLabel})`;
+
+    remoteOutcomes[packageName] = {
+      name: packageName,
+      reason: reasonTag,
+      message
+    };
+  }
+}
+
+function mapReasonLabelToOutcome(
+  reasonLabel: string
+): PackageRemoteResolutionOutcome['reason'] {
+  switch (reasonLabel) {
+    case 'not found in remote registry':
+    case 'not found in registry':
+      return 'not-found';
+    case 'access denied':
+      return 'access-denied';
+    case 'network error':
+      return 'network';
+    case 'integrity check failed':
+      return 'integrity';
+    default:
+      return 'unknown';
+  }
 }
 
 

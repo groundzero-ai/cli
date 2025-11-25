@@ -1,6 +1,8 @@
 import { logger } from './logger.js';
 import { promptPlatformSelection } from './prompts.js';
 import { detectAllPlatforms } from '../core/platforms.js';
+import type { PackageRemoteResolutionOutcome } from '../core/install/types.js';
+import { extractRemoteErrorReason } from './error-reasons.js';
 
 /**
  * Detect existing platforms in the project
@@ -61,7 +63,8 @@ export function displayInstallationResults(
   allAddedFiles?: string[],
   allUpdatedFiles?: string[],
   rootFileResults?: { installed: string[]; updated: string[]; skipped: string[] },
-  missingPackages?: string[]
+  missingPackages?: string[],
+  missingPackageOutcomes?: Record<string, PackageRemoteResolutionOutcome>
 ): void {
   // Build installation summary
   let summaryText = `✓ Installed ${packageName}`;
@@ -134,7 +137,8 @@ export function displayInstallationResults(
   if (missingPackages && missingPackages.length > 0) {
     console.log(`\n⚠️  Missing dependencies detected:`);
     for (const missing of missingPackages) {
-      console.log(`   • ${missing} (not found in registry)`);
+      const reasonLabel = formatMissingDependencyReason(missingPackageOutcomes?.[missing]);
+      console.log(`   • ${missing} (${reasonLabel})`);
     }
     console.log(`\n💡 To resolve missing dependencies:`);
     console.log(`   • Create locally: opkg init && opkg save`);
@@ -143,4 +147,23 @@ export function displayInstallationResults(
     console.log('');
   }
 
+}
+
+function formatMissingDependencyReason(outcome?: PackageRemoteResolutionOutcome): string {
+  if (!outcome) {
+    return 'not found in registry';
+  }
+
+  switch (outcome.reason) {
+    case 'not-found':
+      return 'not found in remote registry';
+    case 'access-denied':
+      return 'access denied';
+    case 'network':
+      return 'network error';
+    case 'integrity':
+      return 'integrity check failed';
+    default:
+      return extractRemoteErrorReason(outcome.message || 'unknown error');
+  }
 }

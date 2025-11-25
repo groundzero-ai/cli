@@ -9,6 +9,29 @@ import { extractPackageFromTarball, verifyTarballIntegrity, ExtractedPackage } f
 import { logger } from '../utils/logger.js';
 import { ConfigError, ValidationError } from '../utils/errors.js';
 
+const NETWORK_ERROR_PATTERN = /(fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|network)/i;
+
+function matchesNetworkPattern(value: unknown): boolean {
+  return typeof value === 'string' && NETWORK_ERROR_PATTERN.test(value);
+}
+
+function isNetworkFailure(error: Error): boolean {
+  if (matchesNetworkPattern(error.message)) {
+    return true;
+  }
+
+  const cause = (error as any).cause;
+  if (cause && (matchesNetworkPattern(cause.message) || matchesNetworkPattern(cause.code) || matchesNetworkPattern(cause.errno))) {
+    return true;
+  }
+
+  if (matchesNetworkPattern((error as any).code) || matchesNetworkPattern((error as any).errno)) {
+    return true;
+  }
+
+  return false;
+}
+
 export interface RemotePullContext {
   httpClient: HttpClient;
   profile: string;
@@ -431,13 +454,14 @@ function mapErrorToFailure(error: unknown): RemotePullFailure {
     const apiError = (error as any).apiError;
 
     if (apiError?.statusCode === 404) {
-      return {
+      const failure: RemotePullFailure = {
         success: false,
         reason: 'not-found',
         message: error.message,
         statusCode: 404,
         error
       };
+      return failure;
     }
 
     if (apiError?.statusCode === 401 || apiError?.statusCode === 403) {
@@ -450,7 +474,7 @@ function mapErrorToFailure(error: unknown): RemotePullFailure {
       };
     }
 
-    if (error.message.includes('Download') || error.message.includes('timeout')) {
+    if (isNetworkFailure(error)) {
       return {
         success: false,
         reason: 'network',

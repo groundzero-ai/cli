@@ -322,11 +322,18 @@ export async function resolveDependencies(
         }
       } catch (repairError) {
         // Repair failed - treat as missing dependency instead of aborting the whole install flow
-        const reason = extractRemoteErrorReason(String(repairError));
-        const warning = `Remote pull failed for \`${packageName}\` (reason: ${reason})`;
-        logger.warn(warning);
-        if (resolverOptions.onWarning) {
-          resolverOptions.onWarning(warning);
+        const remoteOutcome = remoteOutcomes.get(packageName);
+        const derivedReason = remoteOutcome ? formatRemoteOutcomeReason(remoteOutcome) : null;
+        const fallbackReason = extractRemoteErrorReason(String(repairError));
+        const reason = derivedReason ?? fallbackReason;
+        if (remoteOutcome) {
+          const warning = `Remote pull failed for \`${packageName}\` (reason: ${reason})`;
+          logger.warn(warning);
+          if (resolverOptions.onWarning) {
+            resolverOptions.onWarning(warning);
+          }
+        } else {
+          // Warning suppressed until remote outcome available
         }
 
         missing.add(packageName);
@@ -499,6 +506,21 @@ function buildResolveResult(
     missingPackages: Array.from(missing),
     remoteOutcomes: outcomesRecord
   };
+}
+
+function formatRemoteOutcomeReason(outcome: PackageRemoteResolutionOutcome): string {
+  switch (outcome.reason) {
+    case 'not-found':
+      return 'not found in remote registry';
+    case 'access-denied':
+      return 'access denied';
+    case 'network':
+      return 'network error';
+    case 'integrity':
+      return 'integrity check failed';
+    default:
+      return extractRemoteErrorReason(outcome.message || 'unknown error');
+  }
 }
 
 /**
