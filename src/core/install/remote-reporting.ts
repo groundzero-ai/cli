@@ -1,5 +1,6 @@
 import type { RemoteBatchPullResult, RemotePullFailure } from '../remote-pull.js';
 import { createDownloadKey } from './download-keys.js';
+import { extractRemoteErrorReason } from '../../utils/error-reasons.js';
 
 /**
  * Record the outcome of a batch pull operation
@@ -27,7 +28,8 @@ export function recordBatchOutcome(
 
     if (failed.length > 0) {
       for (const failure of failed) {
-        const message = `Dry run: would fail to ${label} ${failure.key}: ${failure.error}`;
+        const reason = extractRemoteErrorReason(failure.error);
+        const message = `Dry run: remote pull would fail for \`${failure.key}\` (reason: ${reason})`;
         console.log(`⚠️  ${message}`);
         warnings.push(message);
       }
@@ -45,7 +47,8 @@ export function recordBatchOutcome(
 
   if (failed.length > 0) {
     for (const failure of failed) {
-      const message = `Failed to ${label} ${failure.key}: ${failure.error}`;
+      const reason = extractRemoteErrorReason(failure.error);
+      const message = `Remote pull failed for \`${failure.key}\` (reason: ${reason})`;
       console.log(`⚠️  ${message}`);
       warnings.push(message);
     }

@@ -14,6 +14,7 @@ import {
 } from '../../utils/version-ranges.js';
 import { isScopedName } from '../scoping/package-scoping.js';
 import { Spinner } from '../../utils/spinner.js';
+import { extractRemoteErrorReason } from '../../utils/error-reasons.js';
 
 export interface VersionSourceSummary {
   localVersions: string[];
@@ -148,7 +149,8 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
   const fallbackToLocalOnly = remoteStatus !== 'success';
 
   if (fallbackToLocalOnly && remoteError && isScopedName(args.packageName)) {
-    warnings.push(`Using local version (reason: ${remoteError})`);
+    const reason = extractRemoteErrorReason(remoteError);
+    warnings.push(`Remote pull failed for \`${args.packageName}\` (reason: ${reason})`);
   }
 
   return {

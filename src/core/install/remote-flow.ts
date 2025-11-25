@@ -1,4 +1,4 @@
-import type { RemotePackageMetadataSuccess, RemoteBatchPullResult } from '../remote-pull.js';
+import type { RemotePackageMetadataSuccess, RemoteBatchPullResult, RemotePullFailure } from '../remote-pull.js';
 import type { ResolvedPackage } from '../dependency-resolver.js';
 import { fetchRemotePackageMetadata, pullDownloadsBatchFromRemote, aggregateRecursiveDownloads, parseDownloadName } from '../remote-pull.js';
 import { hasPackageVersion } from '../directory.js';
@@ -7,7 +7,22 @@ import { promptOverwriteConfirmation } from '../../utils/prompts.js';
 import { Spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { createDownloadKey } from './download-keys.js';
-import { describeRemoteFailure } from './remote-reporting.js';
+import { extractRemoteErrorReason } from '../../utils/error-reasons.js';
+
+function extractReasonFromFailure(failure: RemotePullFailure): string {
+  switch (failure.reason) {
+    case 'not-found':
+      return 'not found in remote registry';
+    case 'access-denied':
+      return 'access denied';
+    case 'network':
+      return 'network error';
+    case 'integrity':
+      return 'integrity check failed';
+    default:
+      return failure.message ? extractRemoteErrorReason(failure.message) : 'unknown error';
+  }
+}
 
 /**
  * Fetch metadata for missing dependencies
@@ -36,13 +51,14 @@ export async function fetchMissingDependencyMetadata(
 
       const metadataResult = await fetchRemotePackageMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
       if (!metadataResult.success) {
-        const message = describeRemoteFailure(requiredVersion ? `${missingName}@${requiredVersion}` : missingName, metadataResult);
+        const packageLabel = requiredVersion ? `${missingName}@${requiredVersion}` : missingName;
+        const reason = extractReasonFromFailure(metadataResult);
         // Avoid garbled output by clearing the spinner line before printing
         // warning messages, since the spinner writes to the same stdout line.
         if (metadataSpinner) {
           metadataSpinner.stop();
         }
-        console.log(`⚠️  ${message}`);
+        console.log(`⚠️  Remote pull failed for \`${packageLabel}\` (reason: ${reason})`);
         continue;
       }
 

@@ -11,6 +11,7 @@ import { listPackageVersions } from './directory.js';
 import { registryManager } from './registry.js';
 import { selectInstallVersionUnified } from './install/version-selection.js';
 import { InstallResolutionMode } from './install/types.js';
+import { extractRemoteErrorReason } from '../utils/error-reasons.js';
 
 /**
  * Resolved package interface for dependency resolution
@@ -184,10 +185,8 @@ export async function resolveDependencies(
     // aborting the entire install.
     if (resolutionMode === 'default') {
       const message = error instanceof Error ? error.message : String(error);
-      const warning =
-        `Remote metadata lookup failed while resolving '${packageName}'. ` +
-        `Proceeding in local-first mode with this dependency marked as missing. ` +
-        `${message}`;
+      const reason = extractRemoteErrorReason(message);
+      const warning = `Remote pull failed for \`${packageName}\` (reason: ${reason})`;
 
       logger.warn(warning);
       if (resolverOptions.onWarning) {
@@ -315,13 +314,11 @@ export async function resolveDependencies(
         }
       } catch (repairError) {
         // Repair failed - treat as missing dependency instead of aborting the whole install flow
-        logger.warn(
-          `Failed to repair missing package '${packageName}' from registry metadata: ${String(repairError)}`
-        );
+        const reason = extractRemoteErrorReason(String(repairError));
+        const warning = `Remote pull failed for \`${packageName}\` (reason: ${reason})`;
+        logger.warn(warning);
         if (resolverOptions.onWarning) {
-          resolverOptions.onWarning(
-            `Failed to repair missing package '${packageName}' from registry metadata. It will be skipped for this install run.`
-          );
+          resolverOptions.onWarning(warning);
         }
 
         missing.add(packageName);
