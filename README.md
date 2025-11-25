@@ -102,7 +102,13 @@ Adds dirs or files to the package.
 ```bash title="Terminal"
 opkg save <package>
 ```  
-Save the set of dirs and files as a package for reuse and cross-platform sync.
+Save the set of dirs and files as a package for reuse and cross-platform sync (prerelease).
+
+### Finalize/pack a package
+```bash title="Terminal"
+opkg pack <package>
+```  
+Save the package as a stable non-prerelease version ready for push (upload).
 
 ### List packages
 ```bash title="Terminal"
@@ -127,6 +133,18 @@ Use the install command to add all files under the specified package to the code
 opkg uninstall <package>
 ```  
 Use the uninstall command to remove all files for the specified package from the codebase at cwd.
+
+### Push a package to remote
+```bash title="Terminal"
+opkg push <package>
+```  
+Use the `push` command to upload a package to the [official OpenPackage registry](https://openpackage.dev).
+
+### Pull a package from remote
+```bash title="Terminal"
+opkg pull <package>
+```  
+Use the `pull` command to download a package from the [official OpenPackage registry](https://openpackage.dev) to the local registry.
 
 > [!TIP]  
 > Learn more by heading over to the [official docs](https://openpackage.dev/docs).
@@ -153,24 +171,6 @@ Files and paths will be automatically converted to platform specific designation
 | Roo | .roo/ | AGENTS.md | | commands/ | | |
 | Warp | .warp/ | WARP.md | | | |
 | Windsurf | .windsurf/ | | rules/ | | | |
-
-## Configuration
-
-OpenPackage stores CLI configuration in `~/.openpackage/config.json`.  
-Profiles can now specify a `defaultScope` value:
-
-```jsonc
-{
-  "profiles": {
-    "work": {
-      "description": "Company registry",
-      "defaultScope": "@acme"
-    }
-  }
-}
-```
-
-When you run `opkg save` or `opkg push` for an unscoped package, the CLI will use the profile's `defaultScope` as the suggested scope and require choosing a scoped name before pushing to the remote registry.
 
 ## Contributing
 
