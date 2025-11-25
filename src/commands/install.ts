@@ -53,7 +53,7 @@ import { computeMissingDownloadKeys } from '../core/install/download-keys.js';
 import { fetchMissingDependencyMetadata, pullMissingDependencies } from '../core/install/remote-flow.js';
 import { recordBatchOutcome } from '../core/install/remote-reporting.js';
 import { handleDryRunMode } from '../core/install/dry-run.js';
-import { InstallResolutionMode } from '../core/install/types.js';
+import { InstallResolutionMode, type PackageRemoteResolutionOutcome } from '../core/install/types.js';
 import { selectInstallVersionUnified } from '../core/install/version-selection.js';
 import type { InstallVersionSelectionResult } from '../core/install/version-selection';
 
@@ -343,6 +343,7 @@ async function installPackageCommand(
   const dryRun = !!options.dryRun;
   const forceRemote = resolutionMode === 'remote-primary';
   const warnings: string[] = [];
+  const warnedPackages = new Set<string>();
 
   const canonicalPlan = await determineCanonicalInstallPlan({
     cwd,
@@ -437,12 +438,36 @@ async function installPackageCommand(
 
   resolvedPackages = initialResolution.data.resolvedPackages;
   missingPackages = initialResolution.data.missingPackages;
+  const remoteOutcomes: Record<string, PackageRemoteResolutionOutcome> = {
+    ...(initialResolution.data.remoteOutcomes ?? {})
+  };
+
+  const computeRetryEligibleMissing = (names: string[]): string[] => {
+    return names.filter(name => {
+      const outcome = remoteOutcomes[name];
+      if (!outcome) {
+        return true;
+      }
+      return outcome.reason !== 'not-found' && outcome.reason !== 'access-denied';
+    });
+  };
+
+  let retryEligibleMissing = computeRetryEligibleMissing(missingPackages);
+
+  // Track packages that were already warned about during resolution
+  // to avoid duplicate warnings when fetching metadata
+  missingPackages.forEach(pkg => warnedPackages.add(pkg));
 
   const pullMissingFromRemote = async (): Promise<CommandResult | null> => {
-    const metadataResults = await fetchMissingDependencyMetadata(missingPackages, resolvedPackages, {
+    if (retryEligibleMissing.length === 0) {
+      return null;
+    }
+
+    const metadataResults = await fetchMissingDependencyMetadata(retryEligibleMissing, resolvedPackages, {
       dryRun,
       profile: options.profile,
-      apiKey: options.apiKey
+      apiKey: options.apiKey,
+      alreadyWarnedPackages: warnedPackages
     });
 
     if (metadataResults.length === 0) {
@@ -473,6 +498,10 @@ async function installPackageCommand(
 
     resolvedPackages = refreshedResolution.data.resolvedPackages;
     missingPackages = refreshedResolution.data.missingPackages;
+    if (refreshedResolution.data.remoteOutcomes) {
+      Object.assign(remoteOutcomes, refreshedResolution.data.remoteOutcomes);
+    }
+    retryEligibleMissing = computeRetryEligibleMissing(missingPackages);
     return null;
   };
 
@@ -481,7 +510,7 @@ async function installPackageCommand(
       logger.info('Local-only mode: missing dependencies will not be pulled from remote', {
         missingPackages: Array.from(new Set(missingPackages))
       });
-    } else {
+    } else if (retryEligibleMissing.length > 0) {
       const pullResult = await pullMissingFromRemote();
       if (pullResult) {
         return pullResult;

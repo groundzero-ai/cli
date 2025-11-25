@@ -9,8 +9,8 @@ import { PackageNotFoundError, PackageVersionNotFoundError, VersionConflictError
 import { hasExplicitPrereleaseIntent } from '../utils/version-ranges.js';
 import { listPackageVersions } from './directory.js';
 import { registryManager } from './registry.js';
-import { selectInstallVersionUnified } from './install/version-selection.js';
-import { InstallResolutionMode } from './install/types.js';
+import { selectInstallVersionUnified, RemoteVersionLookupError } from './install/version-selection.js';
+import { InstallResolutionMode, type PackageRemoteResolutionOutcome } from './install/types.js';
 import { extractRemoteErrorReason } from '../utils/error-reasons.js';
 
 /**
@@ -54,6 +54,12 @@ interface DependencyResolverOptions {
   preferStable?: boolean;
 }
 
+export interface ResolveDependenciesResult {
+  resolvedPackages: ResolvedPackage[];
+  missingPackages: string[];
+  remoteOutcomes?: Record<string, PackageRemoteResolutionOutcome>;
+}
+
 /**
  * Prompt user for overwrite confirmation
  */
@@ -81,8 +87,9 @@ export async function resolveDependencies(
   requiredVersions: Map<string, string[]> = new Map(),
   globalConstraints?: Map<string, string[]>,
   rootOverrides?: Map<string, string[]>,
-  resolverOptions: DependencyResolverOptions = {}
-): Promise<{ resolvedPackages: ResolvedPackage[]; missingPackages: string[] }> {
+  resolverOptions: DependencyResolverOptions = {},
+  remoteOutcomes: Map<string, PackageRemoteResolutionOutcome> = new Map()
+): Promise<ResolveDependenciesResult> {
   // Track missing dependencies for this invocation subtree
   const missing = new Set<string>();
   const resolutionMode: InstallResolutionMode = resolverOptions.mode ?? 'local-only';
@@ -104,10 +111,7 @@ export async function resolveDependencies(
     if (resolverOptions.onWarning) {
       resolverOptions.onWarning(warning);
     }
-    return {
-      resolvedPackages: Array.from(resolvedPackages.values()),
-      missingPackages: Array.from(missing)
-    };
+    return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
   }
   
   // 2. Resolve version range(s) to specific version if needed
@@ -193,11 +197,18 @@ export async function resolveDependencies(
         resolverOptions.onWarning(warning);
       }
 
+      let outcomeReason: PackageRemoteResolutionOutcome['reason'] = 'unknown';
+      if (error instanceof RemoteVersionLookupError && error.failure) {
+        outcomeReason = error.failure.reason;
+      }
+      remoteOutcomes.set(packageName, {
+        name: packageName,
+        reason: outcomeReason,
+        message: warning
+      });
+
       missing.add(packageName);
-      return {
-        resolvedPackages: Array.from(resolvedPackages.values()),
-        missingPackages: Array.from(missing)
-      };
+      return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
     }
 
     // For non-default modes (e.g. remote-primary), remote metadata is required
@@ -220,10 +231,7 @@ export async function resolveDependencies(
     }
 
     missing.add(packageName);
-    return {
-      resolvedPackages: Array.from(resolvedPackages.values()),
-      missingPackages: Array.from(missing)
-    };
+    return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
   }
 
   resolvedVersion = selectionResult.selectedVersion;
@@ -360,7 +368,7 @@ export async function resolveDependencies(
       // Existing version is same or newer - keep existing
       existing.conflictResolution = 'kept';
     }
-    return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
+    return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
   }
   
   // 3.1. Check for already installed version in openpackage
@@ -381,7 +389,7 @@ export async function resolveDependencies(
         isRoot,
         conflictResolution: 'kept'
       });
-      return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
+      return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
     } else {
       // New version is older than installed - skip installation
       logger.debug(`Package '${packageName}' has newer version installed (v${installedVersion} > v${currentVersion}), skipping`);
@@ -392,7 +400,7 @@ export async function resolveDependencies(
         isRoot,
         conflictResolution: 'kept'
       });
-      return { resolvedPackages: Array.from(resolvedPackages.values()), missingPackages: Array.from(missing) };
+      return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
     }
   }
   
@@ -438,7 +446,8 @@ export async function resolveDependencies(
         requiredVersions,
         globalConstraints,
         rootOverrides,
-        resolverOptions
+        resolverOptions,
+        remoteOutcomes
       );
       for (const m of child.missingPackages) missing.add(m);
     }
@@ -458,7 +467,8 @@ export async function resolveDependencies(
           requiredVersions,
           globalConstraints,
           rootOverrides,
-          resolverOptions
+          resolverOptions,
+          remoteOutcomes
         );
         for (const m of child.missingPackages) missing.add(m);
       }
@@ -472,8 +482,23 @@ export async function resolveDependencies(
   for (const resolved of resolvedArray) {
     (resolved as any).requiredVersions = requiredVersions;
   }
+  return buildResolveResult(resolvedPackages, missing, remoteOutcomes);
+}
 
-  return { resolvedPackages: resolvedArray, missingPackages: Array.from(missing) };
+function buildResolveResult(
+  resolvedPackages: Map<string, ResolvedPackage>,
+  missing: Set<string>,
+  remoteOutcomes: Map<string, PackageRemoteResolutionOutcome>
+): ResolveDependenciesResult {
+  const resolvedArray = Array.from(resolvedPackages.values());
+  const outcomesRecord =
+    remoteOutcomes.size > 0 ? Object.fromEntries(remoteOutcomes) : undefined;
+
+  return {
+    resolvedPackages: resolvedArray,
+    missingPackages: Array.from(missing),
+    remoteOutcomes: outcomesRecord
+  };
 }
 
 /**

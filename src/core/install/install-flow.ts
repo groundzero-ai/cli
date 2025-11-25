@@ -5,6 +5,7 @@ import { ensureRegistryDirectories } from '../directory.js';
 import { createPlatformDirectories } from '../platforms.js';
 import { gatherGlobalVersionConstraints, gatherRootVersionConstraints } from '../openpackage.js';
 import { resolveDependencies } from '../dependency-resolver.js';
+import { PackageRemoteResolutionOutcome } from './types.js';
 import { logger } from '../../utils/logger.js';
 import { VersionConflictError, UserCancellationError } from '../../utils/errors.js';
 import type { Platform } from '../../constants/index.js';
@@ -21,6 +22,7 @@ export interface DependencyResolutionResult {
   resolvedPackages: ResolvedPackage[];
   missingPackages: string[];
   warnings?: string[];
+  remoteOutcomes?: Record<string, PackageRemoteResolutionOutcome>;
 }
 
 export class VersionResolutionAbortError extends Error {
@@ -133,7 +135,8 @@ export async function resolveDependenciesForInstall(
     return {
       resolvedPackages: result.resolvedPackages,
       missingPackages: result.missingPackages,
-      warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined
+      warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined,
+      remoteOutcomes: result.remoteOutcomes
     };
   } catch (error) {
     if (error instanceof VersionConflictError) {
@@ -157,7 +160,8 @@ export async function resolveDependenciesForInstall(
       return {
         resolvedPackages: retryResult.resolvedPackages,
         missingPackages: retryResult.missingPackages,
-        warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined
+        warnings: resolverWarnings.size > 0 ? Array.from(resolverWarnings) : undefined,
+        remoteOutcomes: retryResult.remoteOutcomes
       };
     }
 

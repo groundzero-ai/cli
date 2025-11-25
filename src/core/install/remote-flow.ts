@@ -30,9 +30,9 @@ function extractReasonFromFailure(failure: RemotePullFailure): string {
 export async function fetchMissingDependencyMetadata(
   missing: string[],
   resolvedPackages: ResolvedPackage[],
-  opts: { dryRun: boolean; profile?: string; apiKey?: string }
+  opts: { dryRun: boolean; profile?: string; apiKey?: string; alreadyWarnedPackages?: Set<string> }
 ): Promise<RemotePackageMetadataSuccess[]> {
-  const { dryRun } = opts;
+  const { dryRun, alreadyWarnedPackages } = opts;
   const uniqueMissing = Array.from(new Set(missing));
   const metadataResults: RemotePackageMetadataSuccess[] = [];
 
@@ -51,14 +51,17 @@ export async function fetchMissingDependencyMetadata(
 
       const metadataResult = await fetchRemotePackageMetadata(missingName, requiredVersion, { recursive: true, profile: opts.profile, apiKey: opts.apiKey });
       if (!metadataResult.success) {
-        const packageLabel = requiredVersion ? `${missingName}@${requiredVersion}` : missingName;
-        const reason = extractReasonFromFailure(metadataResult);
-        // Avoid garbled output by clearing the spinner line before printing
-        // warning messages, since the spinner writes to the same stdout line.
-        if (metadataSpinner) {
-          metadataSpinner.stop();
+        // Skip warning if we already warned about this package during resolution
+        if (!alreadyWarnedPackages?.has(missingName)) {
+          const packageLabel = requiredVersion ? `${missingName}@${requiredVersion}` : missingName;
+          const reason = extractReasonFromFailure(metadataResult);
+          // Avoid garbled output by clearing the spinner line before printing
+          // warning messages, since the spinner writes to the same stdout line.
+          if (metadataSpinner) {
+            metadataSpinner.stop();
+          }
+          console.log(`⚠️  Remote pull failed for \`${packageLabel}\` (reason: ${reason})`);
         }
-        console.log(`⚠️  Remote pull failed for \`${packageLabel}\` (reason: ${reason})`);
         continue;
       }
 

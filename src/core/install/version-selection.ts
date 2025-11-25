@@ -24,6 +24,7 @@ export interface VersionSourceSummary {
   warnings: string[];
   remoteError?: string;
   fallbackToLocalOnly?: boolean;
+  remoteFailure?: RemotePullFailure;
 }
 
 export interface GatherVersionSourcesArgs {
@@ -73,6 +74,13 @@ export class RemoteResolutionRequiredError extends Error {
   }
 }
 
+export class RemoteVersionLookupError extends Error {
+  constructor(message: string, public failure?: RemotePullFailure) {
+    super(message);
+    this.name = 'RemoteVersionLookupError';
+  }
+}
+
 interface RemoteVersionLookupOptions {
   profile?: string;
   apiKey?: string;
@@ -97,6 +105,7 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
   let remoteVersions: string[] = [];
   let remoteStatus: VersionSourceSummary['remoteStatus'] = 'skipped';
   let remoteError: string | undefined;
+  let remoteFailure: RemotePullFailure | undefined;
   const warnings: string[] = [];
 
   if (args.mode !== 'local-only') {
@@ -115,6 +124,7 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
       } else {
         remoteStatus = 'failed';
         remoteError = describeRemoteFailure(args.packageName, remoteLookup.failure);
+        remoteFailure = remoteLookup.failure;
       }
     }
   }
@@ -142,7 +152,8 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
       remoteVersions,
       availableVersions: remoteVersions,
       remoteStatus,
-      warnings
+      warnings,
+      remoteFailure
     };
   }
 
@@ -160,7 +171,8 @@ export async function gatherVersionSourcesForInstall(args: GatherVersionSourcesA
     remoteStatus,
     warnings,
     remoteError,
-    fallbackToLocalOnly
+    fallbackToLocalOnly,
+    remoteFailure
   };
 }
 
@@ -288,7 +300,7 @@ export async function selectInstallVersionUnified(
     const reason =
       fallbackSources.remoteError ??
       `Remote metadata lookup failed while resolving ${args.packageName}`;
-    throw new Error(reason);
+    throw new RemoteVersionLookupError(reason, fallbackSources.remoteFailure);
   }
 
   const fallbackAttempt = attemptWithSources(fallbackSources, args.mode);
