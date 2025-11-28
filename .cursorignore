@@ -4,3 +4,5 @@
 # Credentials
 /credentials
 .npmrc
+
+.opencode/

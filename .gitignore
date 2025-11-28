@@ -342,6 +342,7 @@ public
 # uploads/
 
 # CLI-specific working directories or cache
+.opencode/
 .openpackage/
 
 # End of .gitignore
