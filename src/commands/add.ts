@@ -51,7 +51,9 @@ import {
   safePrompts
 } from '../utils/prompts.js';
 import {
-  mapPlatformFileToUniversal
+  mapPlatformFileToUniversal,
+  resolveTargetDirectory,
+  resolveTargetFilePath
 } from '../utils/platform-mapper.js';
 import {
   normalizePathForProcessing
@@ -352,7 +354,10 @@ async function copyWithConflictResolution(
 
   for (const entry of entries) {
     const registryPath = entry.registryPath;
-    const destination = join(packageDir, ...registryPath.split('/'));
+    
+    // Use same mapping rules as registry save: universal → .openpackage/, ai → ai/, etc.
+    const targetDir = resolveTargetDirectory(packageDir, registryPath);
+    const destination = resolveTargetFilePath(targetDir, registryPath);
 
     const sourceContent = await readTextFile(entry.sourcePath);
     const destExists = await exists(destination);

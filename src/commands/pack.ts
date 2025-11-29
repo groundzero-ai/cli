@@ -18,7 +18,7 @@ import { computePackTargetVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { packageVersionExists } from '../utils/package-versioning.js';
 import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
-import { writePackageYml } from '../utils/package-yml.js';
+import { formatRegistryPathForDisplay } from '../utils/registry-paths.js';
 
 async function packPackageCommand(
   packageName: string,
@@ -153,7 +153,7 @@ async function packPackageCommand(
     const savedPaths = packageFiles.map(f => f.path);
     const sortedSaved = [...savedPaths].sort((a, b) => a.localeCompare(b));
     for (const savedPath of sortedSaved) {
-      console.log(`   ├── ${savedPath}`);
+      console.log(`   ├── ${formatRegistryPathForDisplay(savedPath)}`);
     }
   }
 

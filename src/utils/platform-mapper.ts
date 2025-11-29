@@ -172,7 +172,12 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
     return join(targetPath, firstPart);
   }
 
-  // For universal subdirs, return target path as-is
+  const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
+  if (universalValues.includes(firstPart)) {
+    return join(targetPath, DIR_PATTERNS.OPENPACKAGE);
+  }
+
+  // For all other paths, return target path as-is
   return targetPath;
 }
 

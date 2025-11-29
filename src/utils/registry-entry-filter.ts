@@ -9,7 +9,20 @@ import { getAllRootFiles, isPlatformId } from '../core/platforms.js';
 const ROOT_REGISTRY_FILE_NAMES = getAllRootFiles();
 
 export function normalizeRegistryPath(registryPath: string): string {
-  return normalizePathForProcessing(registryPath);
+  let normalized = normalizePathForProcessing(registryPath);
+
+  const openpackagePrefix = `${DIR_PATTERNS.OPENPACKAGE}/`;
+  if (normalized.startsWith(openpackagePrefix)) {
+    const withoutPrefix = normalized.slice(openpackagePrefix.length);
+    const firstComponent = getFirstPathComponent(withoutPrefix);
+    const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
+
+    if (firstComponent && universalValues.includes(firstComponent)) {
+      normalized = withoutPrefix;
+    }
+  }
+
+  return normalized;
 }
 
 export function isRootRegistryPath(registryPath: string): boolean {

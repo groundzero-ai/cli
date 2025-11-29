@@ -18,6 +18,7 @@ import { computeWipVersion } from '../core/save/save-versioning.js';
 import { savePackageToRegistry } from '../core/save/package-saver.js';
 import { deleteWorkspaceWipCopies } from '../core/save/workspace-wip-cleanup.js';
 import { writePackageYml } from '../utils/package-yml.js';
+import { formatRegistryPathForDisplay } from '../utils/registry-paths.js';
 
 /**
  * Main implementation of the save package command
@@ -174,7 +175,7 @@ async function savePackageCommand(
     const savedPaths = packageFiles.map(f => f.path);
     const sortedSaved = [...savedPaths].sort((a, b) => a.localeCompare(b));
     for (const savedPath of sortedSaved) {
-      console.log(`   ├── ${savedPath}`);
+      console.log(`   ├── ${formatRegistryPathForDisplay(savedPath)}`);
     }
   }
 
