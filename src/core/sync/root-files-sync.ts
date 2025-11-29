@@ -5,8 +5,8 @@
 
 import { relative } from 'path';
 import { ensureDir, writeTextFile, exists, readTextFile } from '../../utils/fs.js';
-import { getPlatformDefinition, getAllPlatforms } from '../platforms.js';
-import { type Platform, FILE_PATTERNS } from '../../constants/index.js';
+import { getPlatformDefinition, getAllPlatforms, type Platform } from '../platforms.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
 import type { PackageFile } from '../../types/index.js';
 import { mergePackageContentIntoRootFile } from '../../utils/root-file-merger.js';

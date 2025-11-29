@@ -16,10 +16,10 @@ import {
 } from '../../utils/index-based-installer.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
 import type { PackageFile } from '../../types/index.js';
-import { PLATFORM_DIRS, type Platform } from '../../constants/index.js';
+import { DIR_PATTERNS } from '../../constants/index.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
-import { isPlatformId } from '../platforms.js';
+import { isPlatformId, type Platform } from '../platforms.js';
 import {
   normalizeRegistryPath,
   isRootRegistryPath,
@@ -245,7 +245,7 @@ function buildExactFileMapping(
     const key = normalized.replace(/\\/g, '/');
     const values = new Set<string>();
 
-    if (key.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+    if (key.startsWith(`${DIR_PATTERNS.AI}/`)) {
       // ai/ paths: keep as-is
       values.add(key);
       addTargets(key, values);

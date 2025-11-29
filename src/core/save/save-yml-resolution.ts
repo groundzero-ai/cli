@@ -6,7 +6,7 @@
 
 import { join } from 'path';
 import * as yaml from 'js-yaml';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, type Platform } from '../../constants/index.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { exists, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { safePrompts } from '../../utils/prompts.js';
@@ -25,6 +25,7 @@ import {
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { UTF8_ENCODING } from './constants.js';
 import { deepMerge } from '../../utils/platform-yaml-merge.js';
+import type { Platform } from '../platforms.js';
 
 export interface SaveCandidateGroup {
   registryPath: string;

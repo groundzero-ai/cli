@@ -4,8 +4,8 @@
  */
 
 import { basename } from 'path';
-import { getPlatformDefinition, isPlatformId } from '../core/platforms.js';
-import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, PLATFORMS, PLATFORM_DIRS, type UniversalSubdir, type Platform } from '../constants/index.js';
+import { getPlatformDefinition, getAllPlatforms, isPlatformId, type Platform } from '../core/platforms.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
 
 /**
@@ -21,7 +21,7 @@ export function parseUniversalPath(
 ): { universalSubdir: UniversalSubdir; relPath: string; platformSuffix?: string } | null {
   // Check if path starts with universal subdirs
   const universalSubdirs = Object.values(UNIVERSAL_SUBDIRS) as UniversalSubdir[];
-  const knownPlatforms = Object.values(PLATFORMS) as readonly Platform[];
+  const knownPlatforms = getAllPlatforms({ includeDisabled: true }) as readonly Platform[];
 
   for (const subdir of universalSubdirs) {
     const parsed = parsePathWithPrefix(path, subdir);
@@ -73,7 +73,7 @@ export function parseUniversalPath(
   }
 
   // Check if path starts with ai/ followed by universal subdirs (for AI directory files)
-  const aiParsed = parsePathWithPrefix(path, PLATFORM_DIRS.AI);
+  const aiParsed = parsePathWithPrefix(path, DIR_PATTERNS.AI);
   if (aiParsed) {
     const aiPath = aiParsed.remaining;
 

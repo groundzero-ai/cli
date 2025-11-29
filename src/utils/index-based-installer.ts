@@ -15,11 +15,11 @@ import { getLocalPackagesDir } from './paths.js';
 import { packageManager } from '../core/package.js';
 import { logger } from './logger.js';
 import {
-  PLATFORM_DIRS,
+  DIR_PATTERNS,
   FILE_PATTERNS,
-  UNIVERSAL_SUBDIRS,
-  type Platform
+  UNIVERSAL_SUBDIRS
 } from '../constants/index.js';
+import type { Platform } from '../core/platforms.js';
 import { getFirstPathComponent, getPathAfterFirstComponent, normalizePathForProcessing } from './path-normalization.js';
 import {
   isAllowedRegistryPath,
@@ -592,7 +592,7 @@ function deriveGroupKey(registryPath: string): string {
   const first = segments[0];
   const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
 
-  if (first === PLATFORM_DIRS.AI) {
+  if (first === DIR_PATTERNS.AI) {
     if (segments.length >= 2) {
       return ensureTrailingSlash(`${segments[0]}/${segments[1]}`);
     }
@@ -1003,7 +1003,7 @@ function mapRegistryPathToTargets(
 
   const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
 
-  if (first === PLATFORM_DIRS.AI) {
+  if (first === DIR_PATTERNS.AI) {
     const targetAbs = join(cwd, normalized);
     targets.push({
       absPath: targetAbs,
@@ -1183,7 +1183,7 @@ function hadPreviousDirForPlatform(
   }
 
   const rootDir = platform === 'ai'
-    ? normalizePathForProcessing(PLATFORM_DIRS.AI)
+    ? normalizePathForProcessing(DIR_PATTERNS.AI)
     : normalizePathForProcessing(getPlatformDefinition(platform as Platform).rootDir);
 
   for (const value of prevValues) {

@@ -47,6 +47,7 @@
     "gray-matter": "^4.0.3",
     "hash-wasm": "^4.12.0",
     "js-yaml": "^4.1.0",
+    "jsonc-parser": "^3.3.1",
     "junk": "^4.0.1",
     "nanoid": "^5.0.7",
     "prompts": "^2.4.2",

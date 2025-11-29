@@ -8,10 +8,8 @@ import { exists } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { withErrorHandling, UserCancellationError, PackageNotFoundError } from '../utils/errors.js';
 import {
-  type Platform,
-} from '../constants/index.js';
-import {
-  createPlatformDirectories
+  createPlatformDirectories,
+  type Platform
 } from '../core/platforms.js';
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import { resolvePlatforms } from '../core/install/platform-resolution.js';
@@ -47,7 +45,6 @@ import {
   parseVersionRange,
   resolveVersionRange
 } from '../utils/version-ranges.js';
-import type { VersionSelectionOptions } from '../utils/version-ranges.js';
 import { aggregateRecursiveDownloads, type RemoteBatchPullResult } from '../core/remote-pull.js';
 import { computeMissingDownloadKeys } from '../core/install/download-keys.js';
 import { fetchMissingDependencyMetadata, pullMissingDependencies } from '../core/install/remote-flow.js';

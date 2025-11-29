@@ -12,14 +12,14 @@ import {
   PackageYml
 } from '../types/index.js';
 import {
-  FILE_PATTERNS,
-  PLATFORM_DIRS,
-  type Platform
+  DIR_PATTERNS,
+  FILE_PATTERNS
 } from '../constants/index.js';
 import {
   getAllPlatforms,
   getDetectedPlatforms,
-  getPlatformDefinition
+  getPlatformDefinition,
+  type Platform
 } from '../core/platforms.js';
 import {
   withErrorHandling,
@@ -216,7 +216,7 @@ function deriveSourceEntry(absFilePath: string, cwd: string): SourceEntry | null
   const relativePath = relative(cwd, absFilePath);
   const normalizedRelPath = normalizePathForProcessing(relativePath);
 
-  if (normalizedRelPath.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+  if (normalizedRelPath.startsWith(`${DIR_PATTERNS.AI}/`)) {
     return {
       sourcePath: absFilePath,
       registryPath: normalizedRelPath
@@ -310,7 +310,7 @@ function applyPlatformSpecificPaths(
 }
 
 function isAiRegistryPath(registryPath: string): boolean {
-  return registryPath === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`);
+  return registryPath === DIR_PATTERNS.AI || registryPath.startsWith(`${DIR_PATTERNS.AI}/`);
 }
 
 // computeDirKeyFromRegistryPath and directory collapsing moved to core/add/package-index-updater.ts

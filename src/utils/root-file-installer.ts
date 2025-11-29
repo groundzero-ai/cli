@@ -5,11 +5,10 @@
 
 import { join } from 'path';
 import { exists, readTextFile, writeTextFile } from './fs.js';
-import { getRootFilesFromRegistry } from './root-file-registry.js';
 import { mergePackageContentIntoRootFile } from './root-file-merger.js';
 import { logger } from './logger.js';
-import { FILE_PATTERNS, type Platform } from '../constants/index.js';
-import { getPlatformDefinition } from '../core/platforms.js';
+import { FILE_PATTERNS } from '../constants/index.js';
+import { getPlatformDefinition, type Platform } from '../core/platforms.js';
 
 /**
  * Result of root file installation

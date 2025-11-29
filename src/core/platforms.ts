@@ -8,27 +8,12 @@ import { join, relative } from 'path';
 import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { getPathLeaf } from '../utils/path-normalization.js';
-import { PLATFORMS, PLATFORM_DIRS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type Platform, type UniversalSubdir } from '../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { mapPlatformFileToUniversal } from '../utils/platform-mapper.js';
 import { parseUniversalPath } from '../utils/platform-file.js';
+import { readJsoncFileSync } from '../utils/jsonc.js';
 
-// All platforms
-export const ALL_PLATFORMS = Object.values(PLATFORMS) as readonly Platform[];
-
-/**
- * Lookup map from platform directory name to platform ID.
- * Used for quickly inferring platform from source directory.
- */
-export const PLATFORM_DIR_LOOKUP: Record<string, Platform> = (() => {
-  const map: Record<string, Platform> = {};
-  for (const [dirKey, dirValue] of Object.entries(PLATFORM_DIRS)) {
-    const platformId = (PLATFORMS as Record<string, Platform | undefined>)[dirKey as keyof typeof PLATFORMS];
-    if (platformId) {
-      map[dirValue] = platformId;
-    }
-  }
-  return map;
-})();
+export type Platform = string;
 
 // New unified platform definition structure
 export interface SubdirDef {
@@ -49,226 +34,127 @@ export interface PlatformDefinition {
   rootDir: string;
   rootFile?: string;
   subdirs: Partial<Record<UniversalSubdir, SubdirDef>>;
+  aliases?: string[];
+  enabled: boolean;
 }
 
-// Unified platform definitions using the new structure
-export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> = {
+// Types for JSONC config structure
+interface SubdirConfig {
+  path: string;
+  readExts: string[];
+  writeExt?: string | null;
+}
 
-  [PLATFORMS.AUGMENT]: {
-    id: PLATFORMS.AUGMENT,
-    name: 'Augment Code',
-    rootDir: PLATFORM_DIRS.AUGMENT,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
+interface PlatformConfig {
+  name: string;
+  rootDir: string;
+  rootFile?: string;
+  subdirs: Partial<Record<string, SubdirConfig>>;
+  aliases?: string[];
+  enabled?: boolean;
+}
+
+type PlatformsConfig = Record<string, PlatformConfig>;
+
+/**
+ * Normalize subdir config from JSONC to internal SubdirDef format
+ */
+function normalizeSubdirs(
+  subdirs: Partial<Record<string, SubdirConfig>> | undefined
+): Partial<Record<UniversalSubdir, SubdirDef>> {
+  if (!subdirs) {
+    return {};
+  }
+
+  const normalized: Partial<Record<UniversalSubdir, SubdirDef>> = {};
+
+  for (const [subdirKey, subdirConfig] of Object.entries(subdirs)) {
+    // Validate that the subdir key is a valid universal subdir
+    if (!isValidUniversalSubdir(subdirKey)) {
+      logger.warn(`Invalid universal subdir key in platforms.jsonc: ${subdirKey}`);
+      continue;
     }
-  },
 
-  [PLATFORMS.CLAUDE]: {
-    id: PLATFORMS.CLAUDE,
-    name: 'Claude Code',
-    rootDir: PLATFORM_DIRS.CLAUDE,
-    rootFile: FILE_PATTERNS.CLAUDE_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.SKILLS]: {
-        path: 'skills',
-        readExts: [],
-        writeExt: undefined
-      }
+    // Skip if subdirConfig is undefined
+    if (!subdirConfig) {
+      continue;
     }
-  },
 
-  [PLATFORMS.CODEX]: {
-    id: PLATFORMS.CODEX,
-    name: 'Codex CLI',
-    rootDir: PLATFORM_DIRS.CODEX,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'prompts',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
+    normalized[subdirKey as UniversalSubdir] = {
+      path: subdirConfig.path,
+      readExts: subdirConfig.readExts,
+      // Convert null to undefined for writeExt
+      writeExt: subdirConfig.writeExt === null ? undefined : subdirConfig.writeExt
+    };
+  }
+
+  return normalized;
+}
+
+/**
+ * Load platform definitions from platforms.jsonc file
+ */
+function loadPlatformDefinitionsFromConfig(): Record<Platform, PlatformDefinition> {
+  const raw = readJsoncFileSync<PlatformsConfig>('platforms.jsonc');
+  const result: Partial<Record<Platform, PlatformDefinition>> = {};
+
+  for (const [id, cfg] of Object.entries(raw)) {
+    const platformId = id as Platform;
+
+    result[platformId] = {
+      id: platformId,
+      name: cfg.name,
+      rootDir: cfg.rootDir,
+      rootFile: cfg.rootFile,
+      subdirs: normalizeSubdirs(cfg.subdirs),
+      aliases: cfg.aliases,
+      enabled: cfg.enabled !== false
+    };
+  }
+
+  return result as Record<Platform, PlatformDefinition>;
+}
+
+// Unified platform definitions loaded from platforms.jsonc
+export const PLATFORM_DEFINITIONS: Record<Platform, PlatformDefinition> =
+  loadPlatformDefinitionsFromConfig();
+
+const PLATFORM_IDS = Object.freeze(Object.keys(PLATFORM_DEFINITIONS) as Platform[]);
+
+// All platforms (including disabled) for internal reference
+export const ALL_PLATFORMS = PLATFORM_IDS;
+
+/**
+ * Lookup map from platform directory name to platform ID.
+ * Used for quickly inferring platform from source directory.
+ */
+export const PLATFORM_DIR_LOOKUP: Record<string, Platform> = (() => {
+  const map: Record<string, Platform> = {};
+  for (const def of Object.values(PLATFORM_DEFINITIONS)) {
+    map[def.rootDir] = def.id;
+  }
+  return map;
+})();
+
+const PLATFORM_ALIAS_LOOKUP: Record<string, Platform> = (() => {
+  const map: Record<string, Platform> = {};
+  for (const def of Object.values(PLATFORM_DEFINITIONS)) {
+    for (const alias of def.aliases ?? []) {
+      map[alias.toLowerCase()] = def.id;
     }
-  },
+  }
+  return map;
+})();
 
-  [PLATFORMS.CURSOR]: {
-    id: PLATFORMS.CURSOR,
-    name: 'Cursor',
-    rootDir: PLATFORM_DIRS.CURSOR,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MDC_FILES, FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MDC_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    }
-  },
-
-  [PLATFORMS.FACTORY]: {
-    id: PLATFORMS.FACTORY,
-    name: 'Factory AI',
-    rootDir: PLATFORM_DIRS.FACTORY,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'droids',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    }
-  },
-
-  [PLATFORMS.GEMINI]: {
-    id: PLATFORMS.GEMINI,
-    name: 'Gemini CLI',
-    rootDir: PLATFORM_DIRS.GEMINI,
-    rootFile: FILE_PATTERNS.GEMINI_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.TOML_FILES],
-        writeExt: FILE_PATTERNS.TOML_FILES
-      }
-    }
-  },
-
-  [PLATFORMS.KILO]: {
-    id: PLATFORMS.KILO,
-    name: 'Kilo Code',
-    rootDir: PLATFORM_DIRS.KILO,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'workflows',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-    }
-  },
-
-  [PLATFORMS.KIRO]: {
-    id: PLATFORMS.KIRO,
-    name: 'Kiro',
-    rootDir: PLATFORM_DIRS.KIRO,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'steering',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-    }
-  },
-
-  [PLATFORMS.OPENCODE]: {
-    id: PLATFORMS.OPENCODE,
-    name: 'OpenCode',
-    rootDir: PLATFORM_DIRS.OPENCODE,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'command',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agent',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    }
-  },
-
-  [PLATFORMS.QWEN]: {
-    id: PLATFORMS.QWEN,
-    name: 'Qwen Code',
-    rootDir: PLATFORM_DIRS.QWEN,
-    rootFile: FILE_PATTERNS.QWEN_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.AGENTS]: {
-        path: 'agents',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    }
-  },
-
-  [PLATFORMS.ROO]: {
-    id: PLATFORMS.ROO,
-    name: 'Roo Code',
-    rootDir: PLATFORM_DIRS.ROO,
-    rootFile: FILE_PATTERNS.AGENTS_MD,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.COMMANDS]: {
-        path: 'commands',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      },
-    }
-  },
-
-  [PLATFORMS.WARP]: {
-    id: PLATFORMS.WARP,
-    name: 'Warp',
-    rootDir: PLATFORM_DIRS.WARP,
-    rootFile: FILE_PATTERNS.WARP_MD,
-    subdirs: {
-    }
-  },
-
-  [PLATFORMS.WINDSURF]: {
-    id: PLATFORMS.WINDSURF,
-    name: 'Windsurf',
-    rootDir: PLATFORM_DIRS.WINDSURF,
-    subdirs: {
-      [UNIVERSAL_SUBDIRS.RULES]: {
-        path: 'rules',
-        readExts: [FILE_PATTERNS.MD_FILES],
-        writeExt: FILE_PATTERNS.MD_FILES
-      }
-    }
-  },
-
-} as const;
+const PLATFORM_ROOT_FILES = Object.freeze(
+  Object.values(PLATFORM_DEFINITIONS)
+    .map(def => def.rootFile)
+    .filter((file): file is string => typeof file === 'string')
+);
 
 // Legacy type definitions for compatibility
 export type PlatformName = Platform;
 export type PlatformCategory = string;
-export type { Platform };
 
 export interface PlatformDetectionResult {
   name: Platform;
@@ -295,10 +181,28 @@ export function getPlatformDefinition(name: Platform): PlatformDefinition {
 /**
  * Get all platforms
  */
-export function getAllPlatforms(): Platform[] {
-  const allPlatforms = Object.values(PLATFORMS) as Platform[];
-  // Temporarily disable GEMINI platform
-  return allPlatforms.filter(platform => platform !== PLATFORMS.GEMINI);
+export function getAllPlatforms(options?: { includeDisabled?: boolean }): Platform[] {
+  if (options?.includeDisabled) {
+    return [...PLATFORM_IDS];
+  }
+  return PLATFORM_IDS.filter(platform => PLATFORM_DEFINITIONS[platform].enabled);
+}
+
+export function resolvePlatformName(input: string | undefined): Platform | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  const normalized = input.toLowerCase();
+  if (normalized in PLATFORM_DEFINITIONS) {
+    return normalized as Platform;
+  }
+
+  return PLATFORM_ALIAS_LOOKUP[normalized];
+}
+
+export function getAllRootFiles(): string[] {
+  return [...PLATFORM_ROOT_FILES];
 }
 
 /**
@@ -510,7 +414,7 @@ export function isValidUniversalSubdir(subKey: string): boolean {
  * Check if a value is a valid platform ID.
  */
 export function isPlatformId(value: string | undefined): value is Platform {
-  return !!value && Object.values(PLATFORMS).includes(value as Platform);
+  return !!value && value in PLATFORM_DEFINITIONS;
 }
 
 /**
@@ -538,7 +442,7 @@ export function inferPlatformFromWorkspaceFile(
   }
 
   // Check for AI directory
-  if (sourceDir === PLATFORM_DIRS.AI || registryPath.startsWith(`${PLATFORM_DIRS.AI}/`)) {
+  if (sourceDir === DIR_PATTERNS.AI || registryPath.startsWith(`${DIR_PATTERNS.AI}/`)) {
     return 'ai';
   }
 

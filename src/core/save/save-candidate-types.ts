@@ -1,4 +1,4 @@
-import type { Platform } from '../../constants/index.js';
+import type { Platform } from '../platforms.js';
 
 export type SaveCandidateSource = 'local' | 'workspace';
 

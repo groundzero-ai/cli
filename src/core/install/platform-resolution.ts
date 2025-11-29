@@ -1,4 +1,4 @@
-import { PLATFORMS, type Platform } from '../../constants/index.js';
+import { resolvePlatformName, type Platform } from '../platforms.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
 import { detectPlatforms, promptForPlatformSelection } from '../../utils/package-installation.js';
 
@@ -17,12 +17,12 @@ export async function resolvePlatforms(
 
   const normalized = normalizePlatforms(specified);
   if (normalized && normalized.length > 0) {
-    const known = new Set<string>(Object.values(PLATFORMS));
-    const invalid = normalized.filter(p => !known.has(p));
-    if (invalid.length > 0) {
-      throw new Error(`platform ${invalid[0]} not found`);
+    const resolved = normalized.map(name => resolvePlatformName(name));
+    const invalidIndex = resolved.findIndex(platform => !platform);
+    if (invalidIndex !== -1) {
+      throw new Error(`platform ${normalized[invalidIndex]} not found`);
     }
-    return normalized as Platform[];
+    return resolved as Platform[];
   }
 
   const auto = await detectPlatforms(cwd);

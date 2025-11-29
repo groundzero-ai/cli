@@ -6,9 +6,9 @@
 import { join } from 'path';
 import { getPackageVersionPath } from '../core/directory.js';
 import { exists, readTextFile } from './fs.js';
-import { FILE_PATTERNS, type Platform } from '../constants/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
-import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
+import { getAllPlatforms, getPlatformDefinition, type Platform } from '../core/platforms.js';
 
 /**
  * Get all root files from a package version in the local registry.

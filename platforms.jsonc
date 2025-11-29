@@ -1,0 +1,206 @@
+{
+  // Platform definitions for all supported AI coding platforms
+  // Each platform defines its directory structure, root files, and subdirectories
+
+  "augment": {
+    "name": "Augment Code",
+    "rootDir": ".augment",
+    "subdirs": {
+      "rules": {
+        "path": "rules",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "commands": {
+        "path": "commands",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "claude": {
+    "name": "Claude Code",
+    "rootDir": ".claude",
+    "rootFile": "CLAUDE.md",
+    "aliases": ["claudecode"],
+    "subdirs": {
+      "commands": {
+        "path": "commands",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "agents": {
+        "path": "agents",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "skills": {
+        "path": "skills",
+        "readExts": [],
+        "writeExt": null
+      }
+    }
+  },
+
+  "codex": {
+    "name": "Codex CLI",
+    "rootDir": ".codex",
+    "rootFile": "AGENTS.md",
+    "aliases": ["codexcli"],
+    "subdirs": {
+      "commands": {
+        "path": "prompts",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "cursor": {
+    "name": "Cursor",
+    "rootDir": ".cursor",
+    "rootFile": "AGENTS.md",
+    "subdirs": {
+      "rules": {
+        "path": "rules",
+        "readExts": [".mdc", ".md"],
+        "writeExt": ".mdc"
+      },
+      "commands": {
+        "path": "commands",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "factory": {
+    "name": "Factory AI",
+    "rootDir": ".factory",
+    "rootFile": "AGENTS.md",
+    "subdirs": {
+      "commands": {
+        "path": "commands",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "agents": {
+        "path": "droids",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "gemini": {
+    "name": "Gemini CLI",
+    "rootDir": ".gemini",
+    "rootFile": "GEMINI.md",
+    "aliases": ["geminicli"],
+    "enabled": false,
+    "subdirs": {
+      "commands": {
+        "path": "commands",
+        "readExts": [".toml"],
+        "writeExt": ".toml"
+      }
+    }
+  },
+
+  "kilo": {
+    "name": "Kilo Code",
+    "rootDir": ".kilocode",
+    "rootFile": "AGENTS.md",
+    "aliases": ["kilocode"],
+    "subdirs": {
+      "rules": {
+        "path": "rules",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "commands": {
+        "path": "workflows",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "kiro": {
+    "name": "Kiro",
+    "rootDir": ".kiro",
+    "subdirs": {
+      "rules": {
+        "path": "steering",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "opencode": {
+    "name": "OpenCode",
+    "rootDir": ".opencode",
+    "rootFile": "AGENTS.md",
+    "subdirs": {
+      "commands": {
+        "path": "command",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      },
+      "agents": {
+        "path": "agent",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "qwen": {
+    "name": "Qwen Code",
+    "rootDir": ".qwen",
+    "rootFile": "QWEN.md",
+    "aliases": ["qwencode"],
+    "subdirs": {
+      "agents": {
+        "path": "agents",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "roo": {
+    "name": "Roo Code",
+    "rootDir": ".roo",
+    "rootFile": "AGENTS.md",
+    "subdirs": {
+      "commands": {
+        "path": "commands",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  },
+
+  "warp": {
+    "name": "Warp",
+    "rootDir": ".warp",
+    "rootFile": "WARP.md",
+    "subdirs": {}
+  },
+
+  "windsurf": {
+    "name": "Windsurf",
+    "rootDir": ".windsurf",
+    "subdirs": {
+      "rules": {
+        "path": "rules",
+        "readExts": [".md"],
+        "writeExt": ".md"
+      }
+    }
+  }
+}
+

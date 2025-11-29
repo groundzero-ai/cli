@@ -2,7 +2,7 @@ import { DiscoveredFile } from "../../types"
 import { Platformish } from "../../utils/file-processing.js"
 import { exists, isDirectory } from "../../utils/fs.js"
 import { discoverMdFiles } from "./md-files-discovery.js"
-import { PLATFORM_AI, PLATFORM_DIRS } from "../../constants/index.js"
+import { PLATFORM_AI, DIR_PATTERNS } from "../../constants/index.js"
 import { getPlatformDefinition } from "../platforms.js"
 import { mapPlatformFileToUniversal } from "../../utils/platform-mapper.js"
 import { join } from "path"
@@ -13,7 +13,7 @@ export async function obtainSourceDirAndRegistryPath(
   registryPathPrefix: string
 ): Promise<{ sourceDir: string, registryPath: string }> {
 
-  const sourceDir = platform === PLATFORM_AI ? PLATFORM_DIRS.AI : getPlatformDefinition(platform).rootDir;
+  const sourceDir = platform === PLATFORM_AI ? DIR_PATTERNS.AI : getPlatformDefinition(platform).rootDir;
 
 
   let registryPath: string

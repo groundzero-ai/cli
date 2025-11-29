@@ -1,6 +1,6 @@
 import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
-import { PLATFORM_DIRS } from '../constants/index.js';
+import { DIR_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import { packageManager } from '../core/package.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
@@ -28,7 +28,7 @@ export async function installAiFiles(
     const pkg = await packageManager.loadPackage(packageName, version);
 
     // Filter to only install AI directory files (those starting with ai/) - allow all file types
-    const aiPrefix = `${PLATFORM_DIRS.AI}/`;
+    const aiPrefix = `${DIR_PATTERNS.AI}/`;
     const filesToInstall = pkg.files.filter(file => file.path.startsWith(aiPrefix))
 
     if (filesToInstall.length === 0) {
@@ -40,7 +40,7 @@ export async function installAiFiles(
     const existenceChecks = await Promise.all(
       filesToInstall.map(async (file) => {
         const aiRelPath = file.path.slice(aiPrefix.length); // strip "ai/"
-        const targetPath = join(PLATFORM_DIRS.AI, targetDir || '.', aiRelPath);
+        const targetPath = join(DIR_PATTERNS.AI, targetDir || '.', aiRelPath);
         const fileExists = await exists(targetPath);
         return { file, targetPath, exists: fileExists };
       })
@@ -109,13 +109,13 @@ export async function installAiFilesFromList(
       return { installedCount: 0, files: [], overwritten: false, skipped: true };
     }
 
-    const aiPrefix = `${PLATFORM_DIRS.AI}/`;
+    const aiPrefix = `${DIR_PATTERNS.AI}/`;
 
     // Pre-create dirs
     const directories = new Set<string>();
     const targets = await Promise.all(files.map(async (file) => {
       const aiRelPath = file.path.startsWith(aiPrefix) ? file.path.slice(aiPrefix.length) : file.path;
-      const targetPath = join(PLATFORM_DIRS.AI, targetDir || '.', aiRelPath);
+      const targetPath = join(DIR_PATTERNS.AI, targetDir || '.', aiRelPath);
       directories.add(dirname(targetPath));
       const existsFlag = await exists(targetPath);
       return { file, targetPath, existsFlag };

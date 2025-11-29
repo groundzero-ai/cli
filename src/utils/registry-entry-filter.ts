@@ -1,18 +1,12 @@
 import {
+  DIR_PATTERNS,
   FILE_PATTERNS,
-  PLATFORM_DIRS,
-  PLATFORMS,
   UNIVERSAL_SUBDIRS
 } from '../constants/index.js';
 import { getFirstPathComponent, normalizePathForProcessing } from './path-normalization.js';
+import { getAllRootFiles, isPlatformId } from '../core/platforms.js';
 
-const ROOT_REGISTRY_FILE_NAMES = [
-  FILE_PATTERNS.AGENTS_MD,
-  FILE_PATTERNS.CLAUDE_MD,
-  FILE_PATTERNS.GEMINI_MD,
-  FILE_PATTERNS.QWEN_MD,
-  FILE_PATTERNS.WARP_MD
-];
+const ROOT_REGISTRY_FILE_NAMES = getAllRootFiles();
 
 export function normalizeRegistryPath(registryPath: string): string {
   return normalizePathForProcessing(registryPath);
@@ -31,7 +25,6 @@ export function isSkippableRegistryPath(registryPath: string): boolean {
     return true;
   }
 
-  const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
   const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
 
   if (!universalValues.some(subdir => normalized.startsWith(`${subdir}/`))) {
@@ -50,7 +43,7 @@ export function isSkippableRegistryPath(registryPath: string): boolean {
   }
 
   const possiblePlatform = normalized.slice(secondLastDot + 1, lastDot);
-  return platformValues.includes(possiblePlatform);
+  return isPlatformId(possiblePlatform);
 }
 
 export function isAllowedRegistryPath(registryPath: string): boolean {
@@ -66,7 +59,7 @@ export function isAllowedRegistryPath(registryPath: string): boolean {
 
   const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
   const firstComponent = getFirstPathComponent(normalized);
-  const isAi = firstComponent === PLATFORM_DIRS.AI;
+  const isAi = firstComponent === DIR_PATTERNS.AI;
   const isUniversal = universalValues.includes(firstComponent);
 
   return isAi || isUniversal;

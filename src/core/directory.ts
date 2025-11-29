@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
 import { OpenPackageDirectories } from '../types/index.js';
-import { PLATFORM_DIRS, OPENPACKAGE_DIRS } from '../constants/index.js';
+import { DIR_PATTERNS, OPENPACKAGE_DIRS } from '../constants/index.js';
 import { ensureDir, exists, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { normalizePackageName } from '../utils/package-name.js';
@@ -18,7 +18,7 @@ import { normalizePackageName } from '../utils/package-name.js';
  */
 export function getOpenPackageDirectories(): OpenPackageDirectories {
   const homeDir = os.homedir();
-  const openPackageDir = path.join(homeDir, PLATFORM_DIRS.OPENPACKAGE);
+  const openPackageDir = path.join(homeDir, DIR_PATTERNS.OPENPACKAGE);
   
   return {
     config: openPackageDir,

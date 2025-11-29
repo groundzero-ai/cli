@@ -1,6 +1,6 @@
 import { join, basename } from 'path';
 import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Platform } from '../core/platforms.js';
-import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type UniversalSubdir, PLATFORM_DIRS } from '../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { normalizePathForProcessing, getRelativePathParts, findSubpathIndex } from './path-normalization.js';
 import { getAllPlatformDirs } from './platform-utils.js';
 
@@ -55,7 +55,7 @@ export function mapPlatformFileToUniversal(
   const normalizedPath = normalizePathForProcessing(absPath);
 
   // Check each platform
-  for (const platform of Object.values(PLATFORMS) as Platform[]) {
+  for (const platform of getAllPlatforms({ includeDisabled: true })) {
     const definition = getPlatformDefinition(platform);
 
     // Check each subdir in this platform
@@ -166,7 +166,7 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
   const platformDirectories = getAllPlatformDirs();
   if (platformDirectories.includes(firstPart)) {
     // Special case: AI directory should not be prefixed again since it's already the base
-    if (firstPart === PLATFORM_DIRS.AI) {
+    if (firstPart === DIR_PATTERNS.AI) {
       return targetPath;
     }
     return join(targetPath, firstPart);

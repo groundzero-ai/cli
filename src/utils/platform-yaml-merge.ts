@@ -4,10 +4,11 @@
  * into universal markdown content.
  */
 
-import { FILE_PATTERNS, PLATFORMS, UNIVERSAL_SUBDIRS, type Platform } from '../constants/index.js';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../constants/index.js';
 import type { PackageFile } from '../types/index.js';
 import { packageManager } from '../core/package.js';
 import * as yaml from 'js-yaml';
+import { getAllPlatforms, type Platform } from '../core/platforms.js';
 
 function isPlainObject(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -162,7 +163,7 @@ export async function loadRegistryYamlOverrides(
   const pkg = await packageManager.loadPackage(packageName, version);
 
   // Known platforms for suffix matching
-  const platformValues: string[] = Object.values(PLATFORMS as Record<string, string>);
+  const platformValues: string[] = getAllPlatforms({ includeDisabled: true });
   const subdirs: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
 
   for (const file of pkg.files) {

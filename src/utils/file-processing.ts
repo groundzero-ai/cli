@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { PLATFORM_AI, PLATFORM_DIRS } from '../constants/index.js';
+import { PLATFORM_AI, DIR_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import {
   exists,
@@ -158,7 +158,7 @@ export async function processMdFileForDiscovery(
           registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
         }
 
-        const sourceDir = platform === PLATFORM_AI ? PLATFORM_DIRS.AI : getPlatformDefinition(platform).rootDir;
+        const sourceDir = platform === PLATFORM_AI ? DIR_PATTERNS.AI : getPlatformDefinition(platform).rootDir;
         const result: DiscoveredFile = {
           fullPath: file.fullPath,
           relativePath: file.relativePath,

@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { isJunk } from 'junk';
-import { PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
+import { PLATFORM_AI, DIR_PATTERNS } from '../../constants/index.js';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {
   getPlatformDefinition,
@@ -25,10 +25,10 @@ async function discoverPlatformFiles(
   // Handle AI directory separately - does not contain platform subdirectory structure
   if (config.platform === PLATFORM_AI) {
     return discoverFiles(
-      PLATFORM_DIRS.AI,
+      DIR_PATTERNS.AI,
       packageName,
       config.platform,
-      PLATFORM_DIRS.AI, // AI directory uses 'ai' prefix
+      DIR_PATTERNS.AI, // AI directory uses 'ai' prefix
     );
   }
 
@@ -62,7 +62,7 @@ function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): Discover
     const normalizedPath = normalizePathForProcessing(file.registryPath);
 
     if (isUniversalSubdirPath(normalizedPath)) return 3;
-    if (normalizedPath.startsWith(`${PLATFORM_DIRS.AI}/`) || normalizedPath === PLATFORM_DIRS.AI) return 2;
+    if (normalizedPath.startsWith(`${DIR_PATTERNS.AI}/`) || normalizedPath === DIR_PATTERNS.AI) return 2;
     return 1;
   };
 

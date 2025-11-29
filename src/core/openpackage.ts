@@ -3,7 +3,7 @@ import { PackageYml, PackageDependency } from '../types/index.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { exists, isDirectory, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { FILE_PATTERNS, PLATFORM_DIRS } from '../constants/index.js';
+import { FILE_PATTERNS, DIR_PATTERNS } from '../constants/index.js';
 import { getLocalPackageYmlPath, getLocalPackagesDir } from '../utils/paths.js';
 import { findFilesByExtension, findDirectoriesContainingFile } from '../utils/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
@@ -41,7 +41,7 @@ async function findPackageConfigFile(directoryPath: string): Promise<string | nu
  * Get the version of an installed package by package name
  */
 export async function getInstalledPackageVersion(packageName: string, targetDir: string): Promise<string | null> {
-  const openpackagePath = join(targetDir, PLATFORM_DIRS.AI);
+  const openpackagePath = join(targetDir, DIR_PATTERNS.AI);
   const packageGroundzeroPath = join(openpackagePath, packageName);
   
   if (!(await exists(packageGroundzeroPath))) {
@@ -290,9 +290,9 @@ export async function checkExistingPackageInMarkdownFiles(
 
   // Always include AI directory
   targets.push({
-    dir: join(cwd, PLATFORM_DIRS.AI),
+    dir: join(cwd, DIR_PATTERNS.AI),
     exts: [FILE_PATTERNS.MD_FILES],
-    label: PLATFORM_DIRS.AI
+    label: DIR_PATTERNS.AI
   });
 
   // Add detected platforms' subdirectories (rules/commands/agents, etc.)

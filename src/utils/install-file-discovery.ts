@@ -1,7 +1,7 @@
 import { packageManager } from '../core/package.js';
-import { FILE_PATTERNS, type Platform } from '../constants/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import type { PackageFile } from '../types/index.js';
-import { getPlatformDefinition } from '../core/platforms.js';
+import { getPlatformDefinition, type Platform } from '../core/platforms.js';
 
 export interface CategorizedInstallFiles {
   pathBasedFiles: PackageFile[];

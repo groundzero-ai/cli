@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { PLATFORM_DIRS } from '../../constants/index.js';
+import { DIR_PATTERNS } from '../../constants/index.js';
 import { type UninstallDiscoveredFile } from '../../types/index.js';
 import { getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { exists, isDirectory, walkFiles, readTextFile } from '../../utils/fs.js';
@@ -45,7 +45,7 @@ async function expandIndexToFilePaths(
 
 function deriveSourceDir(relPath: string): string {
   const first = normalizePathForProcessing(relPath).split('/')[0] || '';
-  return first || PLATFORM_DIRS.AI; // default to 'ai' if uncertain
+  return first || DIR_PATTERNS.AI; // default to 'ai' if uncertain
 }
 
 async function discoverViaIndex(

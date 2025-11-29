@@ -2,7 +2,7 @@
  * Common types and interfaces for the OpenPackage CLI application
  */
 
-import type { Platform } from '../constants/index.js';
+import type { Platform } from '../core/platforms.js';
 
 // Core application types
 export interface OpenPackageDirectories {

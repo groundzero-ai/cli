@@ -1,5 +1,5 @@
 import { join, dirname } from 'path';
-import { FILE_PATTERNS, PLATFORM_AI, PLATFORM_DIRS } from '../../constants/index.js';
+import { FILE_PATTERNS, PLATFORM_AI, DIR_PATTERNS } from '../../constants/index.js';
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
@@ -77,7 +77,7 @@ async function discoverAIForPackages(
   result: Map<string, any>,
   packageNames: string[]
 ): Promise<void> {
-  const aiDir = PLATFORM_DIRS.AI;
+  const aiDir = DIR_PATTERNS.AI;
   const fullAIDir = join(cwd, aiDir);
 
   if (!(await exists(fullAIDir))) return;

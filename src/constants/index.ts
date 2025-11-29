@@ -4,55 +4,11 @@
  * file patterns, and other constants used throughout the application.
  */
 
-export const PLATFORMS = {
-  AUGMENT: 'augment',
-  CLAUDE: 'claude',
-  CODEX: 'codex',
-  CURSOR: 'cursor',
-  FACTORY: 'factory',
-  GEMINI: 'gemini',
-  KILO: 'kilo',
-  KIRO: 'kiro',
-  OPENCODE: 'opencode',
-  QWEN: 'qwen',
-  ROO: 'roo',
-  WARP: 'warp',
-  WINDSURF: 'windsurf',
-} as const;
-
 export const PLATFORM_AI = 'ai';
 
-// Human-friendly aliases mapped to platform ids
-export const PLATFORM_ALIASES = {
-  // CODEXCLI
-  codexcli: PLATFORMS.CODEX,
-  // CLAUDECODE
-  claudecode: PLATFORMS.CLAUDE,
-  // GEMINICLI
-  geminicli: PLATFORMS.GEMINI,
-  // KILO
-  kilocode: PLATFORMS.KILO,
-  // QWENCODE
-  qwencode: PLATFORMS.QWEN
-} as const;
-
-export const PLATFORM_DIRS = {
+export const DIR_PATTERNS = {
   OPENPACKAGE: '.openpackage',
   AI: 'ai',
-
-  AUGMENT: '.augment',
-  CLAUDE: '.claude',
-  CODEX: '.codex',
-  CURSOR: '.cursor',
-  FACTORY: '.factory',
-  GEMINI: '.gemini',
-  KILO: '.kilocode',
-  KIRO: '.kiro',
-  OPENCODE: '.opencode',
-  QWEN: '.qwen',
-  ROO: '.roo',
-  WARP: '.warp',
-  WINDSURF: '.windsurf',
 } as const;
 
 export const FILE_PATTERNS = {
@@ -98,9 +54,6 @@ export const CONFLICT_RESOLUTION = {
   OVERWRITTEN: 'overwritten'
 } as const;
 
-// Type exports for better TypeScript integration
-export type Platform = typeof PLATFORMS[keyof typeof PLATFORMS];
-export type PlatformDir = typeof PLATFORM_DIRS[keyof typeof PLATFORM_DIRS];
 export type FilePattern = typeof FILE_PATTERNS[keyof typeof FILE_PATTERNS];
 export type UniversalSubdir = typeof UNIVERSAL_SUBDIRS[keyof typeof UNIVERSAL_SUBDIRS];
 export type OpenPackageDir = typeof OPENPACKAGE_DIRS[keyof typeof OPENPACKAGE_DIRS];

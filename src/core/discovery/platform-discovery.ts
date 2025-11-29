@@ -1,8 +1,9 @@
 import { join,  normalize } from 'path';
-import { FILE_PATTERNS, PLATFORMS, PLATFORM_DIRS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
 import {
   getDetectedPlatforms,
   getPlatformDefinition,
+  getAllPlatforms,
   type PlatformName
 } from '../../core/platforms.js';
 import { matchPlatformPattern, isExactPlatformMatch } from '../../utils/path-matching.js';
@@ -59,17 +60,15 @@ export function parsePlatformDirectory(directoryPath: string): { platform: strin
   const normalizedPath = normalize(directoryPath);
 
   // Check for AI directory first (special case)
-  const aiMatch = checkPlatformMatch(normalizedPath, PLATFORM_DIRS.AI, PLATFORM_DIRS.AI);
+  const aiMatch = checkPlatformMatch(normalizedPath, DIR_PATTERNS.AI, DIR_PATTERNS.AI);
   if (aiMatch) {
     return aiMatch;
   }
 
   // Check for other platforms
-  const platforms = Object.values(PLATFORMS) as PlatformName[];
+  const platforms = getAllPlatforms({ includeDisabled: true }) as PlatformName[];
   for (const platform of platforms) {
-    // Map platform name to platform directory using the correct key format
-    const platformKey = platform.toUpperCase() as keyof typeof PLATFORM_DIRS;
-    const platformDir = PLATFORM_DIRS[platformKey];
+    const platformDir = getPlatformDefinition(platform).rootDir;
     const match = checkPlatformMatch(normalizedPath, platform, platformDir);
     if (match) {
       return match;
@@ -88,10 +87,10 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
 
   // Add AI directory as required feature
   config.push({
-    name: PLATFORM_DIRS.AI,
-    platform: PLATFORM_DIRS.AI as Platformish,
-    rootDir: PLATFORM_DIRS.AI,
-    rulesDir: join(cwd, PLATFORM_DIRS.AI),
+    name: DIR_PATTERNS.AI,
+    platform: DIR_PATTERNS.AI as Platformish,
+    rootDir: DIR_PATTERNS.AI,
+    rulesDir: join(cwd, DIR_PATTERNS.AI),
     filePatterns: [FILE_PATTERNS.MD_FILES],
     registryPath: ''
   });
