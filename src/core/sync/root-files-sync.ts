@@ -44,8 +44,19 @@ export async function syncRootFiles(
     skipped: []
   };
 
+  // Always sync universal AGENTS.md to ./AGENTS.md regardless of platform detection
+  const universalAgentsFile = packageFiles.find(
+    file => getPathLeaf(file.path) === FILE_PATTERNS.AGENTS_MD
+  );
+  if (universalAgentsFile) {
+    const agentsResult = await syncUniversalAgentsFile(cwd, universalAgentsFile, packageName);
+    result.created.push(...agentsResult.created);
+    result.updated.push(...agentsResult.updated);
+    result.skipped.push(...agentsResult.skipped);
+  }
+
   if (platforms.length === 0) {
-    logger.debug('No platforms provided, skipping root file sync');
+    logger.debug('No platforms provided, skipping platform-specific root file sync');
     return result;
   }
 
@@ -76,6 +87,67 @@ export async function syncRootFiles(
   result.created = Array.from(new Set(result.created));
   result.updated = Array.from(new Set(result.updated));
   result.skipped = Array.from(new Set(result.skipped));
+
+  return result;
+}
+
+/**
+ * Sync universal AGENTS.md to ./AGENTS.md without requiring platform detection
+ */
+async function syncUniversalAgentsFile(
+  cwd: string,
+  rootFile: PackageFile,
+  packageName: string
+): Promise<RootFileSyncResult> {
+  const result: RootFileSyncResult = {
+    created: [],
+    updated: [],
+    skipped: []
+  };
+
+  const sectionBody = rootFile.content.trim();
+  if (!sectionBody) {
+    logger.warn('Empty section for AGENTS.md, skipping universal sync');
+    result.skipped.push(rootFile.path);
+    return result;
+  }
+
+  const targetPath = `${cwd}/${FILE_PATTERNS.AGENTS_MD}`;
+  let existingContent = '';
+  let fileExists = false;
+
+  if (await exists(targetPath)) {
+    try {
+      existingContent = await readTextFile(targetPath, 'utf8');
+      fileExists = true;
+    } catch (error) {
+      logger.warn(`Failed to read existing AGENTS.md at ${targetPath}: ${error}`);
+      result.skipped.push(FILE_PATTERNS.AGENTS_MD);
+      return result;
+    }
+  }
+
+  const existingSectionContent = fileExists
+    ? extractPackageContentFromRootFile(existingContent, packageName)?.trim() ?? null
+    : null;
+
+  if (existingSectionContent !== null && existingSectionContent === sectionBody) {
+    logger.debug(`Universal AGENTS.md section unchanged at ${targetPath} (pkg: ${packageName})`);
+    return result;
+  }
+
+  const mergedContent = mergePackageContentIntoRootFile(existingContent, packageName, sectionBody);
+  await ensureDir(cwd);
+  await writeTextFile(targetPath, mergedContent, 'utf8');
+
+  const relativePath = relative(cwd, targetPath);
+  if (fileExists) {
+    result.updated.push(relativePath);
+    logger.debug(`Updated universal AGENTS.md at ${targetPath}`);
+  } else {
+    result.created.push(relativePath);
+    logger.debug(`Created universal AGENTS.md at ${targetPath}`);
+  }
 
   return result;
 }

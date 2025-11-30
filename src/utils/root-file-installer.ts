@@ -31,9 +31,32 @@ export async function installRootFilesFromMap(
   const result: RootFileInstallResult = { installed: [], skipped: [], updated: [] };
   if (rootFilesMap.size === 0) return result;
 
+  // Always install/merge universal AGENTS.md regardless of platform detection
+  const agentsContent = rootFilesMap.get(FILE_PATTERNS.AGENTS_MD);
+  if (agentsContent && agentsContent.trim()) {
+    try {
+      const wasUpdated = await installSingleRootFile(
+        cwd,
+        FILE_PATTERNS.AGENTS_MD,
+        packageName,
+        agentsContent
+      );
+      if (wasUpdated) result.updated.push(FILE_PATTERNS.AGENTS_MD);
+      else result.installed.push(FILE_PATTERNS.AGENTS_MD);
+      logger.debug(`Installed universal root file ${FILE_PATTERNS.AGENTS_MD} for ${packageName}`);
+    } catch (error) {
+      logger.error(`Failed to install universal root file ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
+      result.skipped.push(FILE_PATTERNS.AGENTS_MD);
+    }
+  }
+
   for (const platform of detectedPlatforms) {
     const platformDef = getPlatformDefinition(platform);
     if (!platformDef.rootFile) continue;
+
+    if (platformDef.rootFile === FILE_PATTERNS.AGENTS_MD) {
+      continue; // Already handled by the universal install above
+    }
 
     // Prefer platform-specific, otherwise use AGENTS.md if present
     let content = rootFilesMap.get(platformDef.rootFile);
