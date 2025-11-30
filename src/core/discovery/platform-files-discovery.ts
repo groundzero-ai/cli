@@ -1,14 +1,13 @@
 import { join } from 'path';
-import { isJunk } from 'junk';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {
   getPlatformDefinition,
-  isUniversalSubdirPath
+  getDetectedPlatforms,
+  isUniversalSubdirPath,
+  type Platform
 } from '../../core/platforms.js';
 import type { DiscoveredFile } from '../../types/index.js';
 
-// Import the shared type
-import { buildPlatformSearchConfig, PlatformSearchConfig } from './platform-discovery.js';
 import { discoverFiles } from './file-discovery.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import { WORKSPACE_DISCOVERY_EXCLUDES } from '../../constants/workspace.js';
@@ -18,11 +17,11 @@ import { WORKSPACE_DISCOVERY_EXCLUDES } from '../../constants/workspace.js';
  * Common logic shared between different discovery methods
  */
 async function discoverPlatformFiles(
-  config: PlatformSearchConfig,
-  packageName: string,
+  cwd: string,
+  platform: Platform,
+  packageName: string
 ): Promise<DiscoveredFile[]> {
-
-  const definition = getPlatformDefinition(config.platform);
+  const definition = getPlatformDefinition(platform);
   const allFiles: DiscoveredFile[] = [];
 
   // Process each universal subdir that this platform supports
@@ -30,7 +29,7 @@ async function discoverPlatformFiles(
     if (!subdirDef) {
       continue;
     }
-    const subdirPath = join(config.rootDir, subdirDef.path);
+    const subdirPath = join(cwd, definition.rootDir, subdirDef.path);
     const allowedExts = subdirDef.exts;
 
     if (allowedExts && allowedExts.length === 0) {
@@ -42,9 +41,9 @@ async function discoverPlatformFiles(
         subdirPath,
         packageName,
         {
-          platform: config.platform,
+          platform,
           registryPathPrefix: subdirName,
-          sourceDirLabel: config.platform,
+          sourceDirLabel: platform,
           fileExtensions: allowedExts
         }
       );
@@ -94,12 +93,12 @@ async function discoverWorkspaceFiles(cwd: string, packageName: string): Promise
 }
 
 export async function discoverPlatformFilesUnified(cwd: string, packageName: string): Promise<DiscoveredFile[]> {
-  const platformConfigs = await buildPlatformSearchConfig(cwd);
+  const detectedPlatforms = await getDetectedPlatforms(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
 
   // Process all platform configurations in parallel
-  const discoveryPromises = platformConfigs.map(async (config) => {
-    return discoverPlatformFiles(config, packageName);
+  const discoveryPromises = detectedPlatforms.map(async (platform) => {
+    return discoverPlatformFiles(cwd, platform, packageName);
   });
 
   const discoveredFiles = await Promise.all(discoveryPromises);

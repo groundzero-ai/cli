@@ -1,7 +1,6 @@
 import { join, dirname } from 'path';
 import { FILE_PATTERNS } from '../../constants/index.js';
-import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
-import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
+import { getDetectedPlatforms, getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
 import { extractPackageContentFromRootFile } from '../../utils/root-file-extractor.js';
 
@@ -41,11 +40,11 @@ export async function discoverPackagesForStatus(
   }
 
   // Use same platform detection as uninstall
-  const configs = await buildPlatformSearchConfig(cwd);
+  const platforms = await getDetectedPlatforms(cwd);
 
-  // Process each platform configuration
-  for (const cfg of configs) {
-    await discoverPlatformForPackages(cwd, cfg.platform, result, packageNames);
+  // Process each platform
+  for (const platform of platforms) {
+    await discoverPlatformForPackages(cwd, platform, result, packageNames);
   }
 
   // Check root files for all packages
