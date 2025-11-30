@@ -26,11 +26,11 @@ export async function resolvePlatforms(
   }
 
   const auto = await detectPlatforms(cwd);
-  if (auto.length > 0) return auto as Platform[];
+  if (auto.length > 0) return auto;
 
   if (interactive) {
     const selected = await promptForPlatformSelection();
-    return selected as Platform[];
+    return selected;
   }
 
   return [] as Platform[];
