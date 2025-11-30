@@ -13,8 +13,7 @@ import { packageVersionExists } from "../../utils/package-versioning.js";
  */
 export async function savePackageToRegistry(
   packageInfo: PackageYmlInfo,
-  files: PackageFile[],
-  silent: boolean = true
+  files: PackageFile[]
 ): Promise<{ success: boolean; error?: string; updatedConfig?: PackageYml }> {
 
   const config = packageInfo.config;
@@ -57,9 +56,6 @@ export async function savePackageToRegistry(
     
     await Promise.all(savePromises);
     
-    if (!silent) {
-      logger.info(`Package '${normalizedConfig.name}@${normalizedConfig.version}' saved to local registry`);
-    }
     return { success: true, updatedConfig: normalizedConfig };
   } catch (error) {
     logger.error(`Failed to save package: ${error}`);

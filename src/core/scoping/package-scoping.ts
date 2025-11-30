@@ -23,9 +23,24 @@ export function getLocalPart(name: string): string {
 /**
  * Get all scoped package names in the local registry that share the same local name.
  */
+const PACKAGE_LIST_CACHE_TTL_MS = 5000;
+let cachedPackageList: string[] | null = null;
+let cachedPackageListTimestamp = 0;
+
+async function getCachedPackageList(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedPackageList && now - cachedPackageListTimestamp < PACKAGE_LIST_CACHE_TTL_MS) {
+    return cachedPackageList;
+  }
+
+  cachedPackageList = await listAllPackages();
+  cachedPackageListTimestamp = now;
+  return cachedPackageList;
+}
+
 export async function findScopedVariantsInRegistry(baseName: string): Promise<string[]> {
   const normalizedBase = normalizePackageName(baseName);
-  const packages = await listAllPackages();
+  const packages = await getCachedPackageList();
 
   return packages.filter(candidate => {
     const match = candidate.match(SCOPED_PACKAGE_REGEX);

@@ -9,6 +9,7 @@ import { getLocalPackageDir } from "../../utils/paths.js";
 import { ValidationError } from "../../utils/errors.js";
 import { ensureLocalOpenPackageStructure } from "../../utils/package-management.js";
 import { DEFAULT_VERSION, ERROR_MESSAGES, LOG_PREFIXES } from "./constants.js";
+import { applyWorkspacePackageRename } from "./workspace-rename.js";
 
 export type PackageYmlInfo = {
   fullPath: string;
@@ -17,18 +18,18 @@ export type PackageYmlInfo = {
   isRootPackage: boolean;
 };
 
+export interface LoadPackageOptions {
+  renameTo?: string;
+}
+
 /**
  * Create package.yml automatically in a directory without user prompts
  * Reuses init command logic but makes it non-interactive
  */
-async function createPackageYmlInDirectory(packageDir: string, packageName: string): Promise<{ fullPath: string; config: PackageYml; isNewPackage: boolean }> {
-  const cwd = process.cwd();
-  
-  // Ensure the target directory exists (including packages subdirectory)
-  await ensureLocalOpenPackageStructure(cwd);
-  await ensureDir(packageDir);
-  
-  // Create package.yml in the package directory (rTnot the main .openpackage directory)
+async function createPackageYmlInDirectory(
+  packageDir: string,
+  packageName: string
+): Promise<{ fullPath: string; config: PackageYml; isNewPackage: boolean }> {
   const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
   
   // Create default package config
@@ -101,5 +102,34 @@ export async function readOrCreateBasePackageYml(
     config: updatedConfig,
     isNewPackage,
     isRootPackage: false
+  };
+}
+
+export async function loadAndPreparePackage(
+  cwd: string,
+  packageName: string,
+  options: LoadPackageOptions = {}
+): Promise<PackageYmlInfo> {
+  const renameTarget = options.renameTo ? normalizePackageName(options.renameTo) : undefined;
+  const info = await readOrCreateBasePackageYml(cwd, packageName);
+
+  if (!renameTarget || renameTarget === info.config.name) {
+    return info;
+  }
+
+  logger.debug(`Renaming package during workspace load`, {
+    from: info.config.name,
+    to: renameTarget
+  });
+
+  await applyWorkspacePackageRename(cwd, info, renameTarget);
+
+  const targetDir = getLocalPackageDir(cwd, renameTarget);
+  const packageYmlPath = join(targetDir, FILE_PATTERNS.PACKAGE_YML);
+
+  return {
+    ...info,
+    fullPath: packageYmlPath,
+    config: { ...info.config, name: renameTarget }
   };
 }

@@ -7,7 +7,7 @@ import { getFileMtime } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { logger } from '../../utils/logger.js';
 import { extractPackageSection } from '../../utils/root-file-extractor.js';
-import { SaveCandidate } from './save-candidate-types.js';
+import { SaveCandidate } from './save-types.js';
 import { getAllPlatforms, getPlatformDefinition, type Platform } from '../platforms.js';
 
 export async function loadLocalRootSaveCandidates(

@@ -11,7 +11,7 @@ import { exists, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
-import { SaveCandidate } from './save-candidate-types.js';
+import { SaveCandidate } from './save-types.js';
 import {
   splitFrontmatter,
   dumpYaml,

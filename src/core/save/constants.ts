@@ -37,3 +37,8 @@ export const LOG_PREFIXES = {
   WARNING_SUFFIX: 'is already stable.',
   ARROW_SEPARATOR: ' → '
 } as const;
+
+export const MODE_LABELS = {
+  wip: { label: 'Save', op: 'save', opCap: 'Save' },
+  stable: { label: 'Pack', op: 'pack', opCap: 'Pack' }
+} as const;

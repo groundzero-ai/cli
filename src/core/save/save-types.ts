@@ -28,3 +28,9 @@ export interface SaveCandidate {
   isMarkdown?: boolean;
 }
 
+export interface SaveConflictResolution {
+  selection: SaveCandidate;
+  platformSpecific: SaveCandidate[];
+}
+
+
