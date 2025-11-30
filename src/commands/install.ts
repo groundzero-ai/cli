@@ -3,29 +3,11 @@ import { Command } from 'commander';
 import type { CommandResult, InstallOptions } from '../types/index.js';
 import type { InstallResolutionMode } from '../core/install/types.js';
 import { runBulkInstallPipeline } from '../core/install/bulk-install-pipeline.js';
-import { runInstallPipeline } from '../core/install/install-pipeline.js';
+import { runInstallPipeline, determineResolutionMode } from '../core/install/install-pipeline.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import { parsePackageInput } from '../utils/package-name.js';
 import { logger } from '../utils/logger.js';
-
-export function determineResolutionMode(
-  options: InstallOptions & { local?: boolean; remote?: boolean; resolutionMode?: InstallResolutionMode }
-): InstallResolutionMode {
-  if (options.resolutionMode) {
-    return options.resolutionMode;
-  }
-
-  if (options.remote) {
-    return 'remote-primary';
-  }
-
-  if (options.local) {
-    return 'local-only';
-  }
-
-  return 'default';
-}
 
 export function validateResolutionFlags(options: InstallOptions & { local?: boolean; remote?: boolean }): void {
   if (options.remote && options.local) {

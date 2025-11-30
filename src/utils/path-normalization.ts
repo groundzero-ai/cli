@@ -1,16 +1,9 @@
-import { basename, dirname, normalize, relative, sep, isAbsolute, resolve } from 'path';
+import { basename, normalize, relative, sep, isAbsolute, resolve } from 'path';
 
 /**
  * Centralized path normalization utilities for cross-platform compatibility
  * Provides consistent path handling across different filesystem types (Windows, macOS, Linux)
  */
-
-/**
- * Determine if we're on a case-insensitive filesystem (primarily Windows)
- */
-export function isCaseInsensitiveFilesystem(): boolean {
-  return process.platform === 'win32';
-}
 
 /**
  * Normalize a path to use consistent forward slashes for internal processing
@@ -21,31 +14,12 @@ export function normalizePathForProcessing(path: string): string {
 }
 
 /**
- * Split a path into components using the appropriate separator for the current platform
- * This replaces hard-coded split('/') operations that fail on Windows
- */
-export function splitPath(path: string): string[] {
-  // Normalize first to handle mixed separators, then split on the platform separator
-  const normalized = normalize(path);
-  return normalized.split(sep);
-}
-
-/**
  * Get the last component of a path (equivalent to basename but cross-platform safe)
  */
 export function getPathLeaf(path: string): string {
   // First normalize backslashes to forward slashes, then normalize, then get basename
   const normalizedSlashes = path.replace(/\\/g, '/');
   return basename(normalizedSlashes);
-}
-
-/**
- * Get the parent directory of a path (equivalent to dirname but cross-platform safe)
- */
-export function getPathParent(path: string): string {
-  // First normalize backslashes to forward slashes, then get dirname
-  const normalizedSlashes = path.replace(/\\/g, '/');
-  return dirname(normalizedSlashes);
 }
 
 /**
@@ -74,31 +48,6 @@ export function getFirstPathComponent(relativePath: string): string {
 export function getPathAfterFirstComponent(relativePath: string): string {
   const parts = getRelativePathParts(relativePath);
   return parts.length > 1 ? parts.slice(1).join(sep) : '';
-}
-
-/**
- * Check if a path contains a specific component at any level
- * Performs case-insensitive matching on case-insensitive filesystems
- */
-export function pathContainsComponent(path: string, component: string): boolean {
-  const parts = splitPath(path);
-  const isCaseInsensitive = process.platform === 'win32';
-
-  const searchComponent = isCaseInsensitive ? component.toLowerCase() : component;
-
-  return parts.some(part => {
-    const comparePart = isCaseInsensitive ? part.toLowerCase() : part;
-    return comparePart === searchComponent;
-  });
-}
-
-/**
- * Create a platform-safe relative path from components
- * This replaces manual path.join() operations in some cases
- */
-export function joinRelativePath(...components: string[]): string {
-  // Filter out empty components and join with platform separator
-  return components.filter(comp => comp && comp !== '.').join(sep);
 }
 
 /**
@@ -180,21 +129,6 @@ export function findSubpathIndex(fullPath: string, subpath: string): number {
  * - 'package-name' -> 'package-name' (unchanged)
  * - './already/normalized' -> './already/normalized' (unchanged)
  * - '/absolute/path' -> '/absolute/path' (unchanged)
- */
-export function autoNormalizeDirectoryPath(input: string): string {
-  // If it contains path separators but doesn't start with ./ or ../, treat as relative directory
-  if ((input.includes('/') || input.includes('\\')) &&
-      !input.startsWith('./') &&
-      !input.startsWith('../') &&
-      !isAbsolute(input)) {
-    return `./${input}`;
-  }
-  return input;
-}
-
-/**
- * Check whether targetPath is the same as or contained within parentDir.
- * Paths are resolved to absolute form before comparison to avoid traversal tricks.
  */
 export function isWithinDirectory(parentDir: string, targetPath: string): boolean {
   const resolvedParent = resolve(parentDir);

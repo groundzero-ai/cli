@@ -42,11 +42,29 @@ export interface InstallPipelineResult {
   totalGroundzeroFiles: number;
 }
 
+export function determineResolutionMode(
+  options: InstallOptions & { local?: boolean; remote?: boolean }
+): InstallResolutionMode {
+  if (options.resolutionMode) {
+    return options.resolutionMode;
+  }
+
+  if ((options as any).remote) {
+    return 'remote-primary';
+  }
+
+  if ((options as any).local) {
+    return 'local-only';
+  }
+
+  return 'default';
+}
+
 export async function runInstallPipeline(
   options: InstallPipelineOptions
 ): Promise<CommandResult<InstallPipelineResult>> {
   const cwd = process.cwd();
-  const resolutionMode: InstallResolutionMode = options.resolutionMode ?? deriveResolutionMode(options);
+  const resolutionMode = determineResolutionMode(options);
   const dryRun = Boolean(options.dryRun);
   const warnings: string[] = [];
   const warnedPackages = new Set<string>();
@@ -304,20 +322,3 @@ export async function runInstallPipeline(
     warnings: warnings.length > 0 ? Array.from(new Set(warnings)) : undefined
   };
 }
-
-function deriveResolutionMode(options: InstallOptions): InstallResolutionMode {
-  if (options.resolutionMode) {
-    return options.resolutionMode;
-  }
-
-  if ((options as any).remote) {
-    return 'remote-primary';
-  }
-
-  if ((options as any).local) {
-    return 'local-only';
-  }
-
-  return 'default';
-}
-
