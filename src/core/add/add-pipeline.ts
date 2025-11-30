@@ -19,6 +19,7 @@ import {
   type PlatformPathTransformOptions
 } from './platform-path-transformer.js';
 import { copyFilesWithConflictResolution } from './add-conflict-handler.js';
+import { detectPackageContext, getNoPackageDetectedMessage } from '../save/package-detection.js';
 
 export interface AddPipelineOptions {
   platformSpecific?: boolean;
@@ -30,10 +31,11 @@ export interface AddPipelineResult {
 }
 
 export async function runAddPipeline(
-  packageName: string,
-  inputPath: string,
+  packageOrPath: string | undefined,
+  pathArg: string | undefined,
   options: AddPipelineOptions = {}
 ): Promise<CommandResult<AddPipelineResult>> {
+  const { packageName, inputPath } = await resolveAddTargets(packageOrPath, pathArg);
   const cwd = process.cwd();
 
   const resolvedInputPath = resolve(cwd, inputPath);
@@ -74,6 +76,44 @@ export async function runAddPipeline(
       filesAdded: changedFiles.length
     }
   };
+}
+
+interface ResolvedAddTargets {
+  packageName: string;
+  inputPath: string;
+}
+
+async function resolveAddTargets(
+  packageOrPath: string | undefined,
+  pathArg: string | undefined
+): Promise<ResolvedAddTargets> {
+  if (!packageOrPath && !pathArg) {
+    throw new Error(
+      "You must provide at least a path to add files from (e.g. 'opkg add ./ai/helpers')."
+    );
+  }
+
+  const cwd = process.cwd();
+
+  if (packageOrPath && pathArg) {
+    return { packageName: packageOrPath, inputPath: pathArg };
+  }
+
+  const singleArg = packageOrPath ?? pathArg!;
+  const resolvedPath = resolve(cwd, singleArg);
+
+  if (await exists(resolvedPath)) {
+    const detectedContext = await detectPackageContext(cwd);
+    if (!detectedContext) {
+      throw new Error(getNoPackageDetectedMessage());
+    }
+    return { packageName: detectedContext.config.name, inputPath: singleArg };
+  }
+
+  throw new Error(
+    `Path '${singleArg}' does not exist. ` +
+      `To add files to a named package, run: opkg add <package-name> <path>`
+  );
 }
 
 async function validateSourcePath(resolvedPath: string, cwd: string): Promise<void> {
