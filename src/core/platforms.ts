@@ -16,16 +16,19 @@ import { readJsoncFileSync } from '../utils/jsonc.js';
 export type Platform = string;
 
 // New unified platform definition structure
+export interface SubdirFileTransformation {
+  packageExt: string;
+  workspaceExt: string;
+}
+
 export interface SubdirDef {
   // Base path under the platform root directory for this subdir
   // Examples: 'rules', 'memories', 'commands'
   path: string;
-  // File patterns/extensions to read from this subdir (supports multiple, e.g. '.md', '.mdc', '.toml')
-  // Empty array [] means allow all file extensions
-  readExts: string[];
-  // Preferred write extension for this subdir (e.g. '.mdc' for Cursor rules; '.md' default)
-  // If undefined, preserve original file extension without conversion
-  writeExt?: string;
+  // Allowed workspace file extensions; undefined = all allowed, [] = none allowed
+  exts?: string[];
+  // Optional extension transformations between package (registry) and workspace
+  transformations?: SubdirFileTransformation[];
 }
 
 export interface PlatformDefinition {
@@ -39,17 +42,11 @@ export interface PlatformDefinition {
 }
 
 // Types for JSONC config structure
-interface SubdirConfig {
-  path: string;
-  readExts: string[];
-  writeExt?: string | null;
-}
-
 interface PlatformConfig {
   name: string;
   rootDir: string;
   rootFile?: string;
-  subdirs: Partial<Record<string, SubdirConfig>>;
+  subdirs: Partial<Record<string, SubdirDef>>;
   aliases?: string[];
   enabled?: boolean;
 }
@@ -60,7 +57,7 @@ type PlatformsConfig = Record<string, PlatformConfig>;
  * Normalize subdir config from JSONC to internal SubdirDef format
  */
 function normalizeSubdirs(
-  subdirs: Partial<Record<string, SubdirConfig>> | undefined
+  subdirs: Partial<Record<string, SubdirDef>> | undefined
 ): Partial<Record<UniversalSubdir, SubdirDef>> {
   if (!subdirs) {
     return {};
@@ -80,12 +77,7 @@ function normalizeSubdirs(
       continue;
     }
 
-    normalized[subdirKey as UniversalSubdir] = {
-      path: subdirConfig.path,
-      readExts: subdirConfig.readExts,
-      // Convert null to undefined for writeExt
-      writeExt: subdirConfig.writeExt === null ? undefined : subdirConfig.writeExt
-    };
+    normalized[subdirKey as UniversalSubdir] = subdirConfig;
   }
 
   return normalized;
@@ -374,7 +366,7 @@ export async function validatePlatformStructure(
  */
 export function getPlatformRulesDirFilePatterns(platform: Platform): string[] {
   const definition = getPlatformDefinition(platform);
-  return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [];
+  return definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.exts || [];
 }
 
 /**
@@ -415,6 +407,50 @@ export function isValidUniversalSubdir(subKey: string): boolean {
  */
 export function isPlatformId(value: string | undefined): value is Platform {
   return !!value && value in PLATFORM_DEFINITIONS;
+}
+
+/**
+ * Determine whether an extension is allowed for a given subdir definition.
+ */
+export function isExtAllowed(subdirDef: SubdirDef | undefined, ext: string): boolean {
+  if (!subdirDef) {
+    return false;
+  }
+  if (subdirDef.exts === undefined) {
+    return true;
+  }
+  if (subdirDef.exts.length === 0) {
+    return false;
+  }
+  return subdirDef.exts.includes(ext);
+}
+
+/**
+ * Convert a package (registry) extension to the workspace extension.
+ * Falls back to the original extension if no transformation applies.
+ */
+export function getWorkspaceExt(subdirDef: SubdirDef, packageExt: string): string {
+  if (!subdirDef.transformations || packageExt === '') {
+    return packageExt;
+  }
+  const transformation = subdirDef.transformations.find(
+    ({ packageExt: candidate }) => candidate === packageExt
+  );
+  return transformation?.workspaceExt ?? packageExt;
+}
+
+/**
+ * Convert a workspace extension to the package (registry) extension.
+ * Falls back to the original extension if no transformation applies.
+ */
+export function getPackageExt(subdirDef: SubdirDef, workspaceExt: string): string {
+  if (!subdirDef.transformations || workspaceExt === '') {
+    return workspaceExt;
+  }
+  const transformation = subdirDef.transformations.find(
+    ({ workspaceExt: candidate }) => candidate === workspaceExt
+  );
+  return transformation?.packageExt ?? workspaceExt;
 }
 
 /**

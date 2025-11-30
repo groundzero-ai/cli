@@ -19,8 +19,8 @@ Each platform entry in `platforms.jsonc` has the shape:
 - `rootFile?` (string): Optional root file at the project root (e.g. `CLAUDE.md`, `QWEN.md`).
 - `subdirs` (object): Map from universal subdir keys (`rules`, `commands`, `agents`, `skills`) to:
   - `path` (string): Directory path under `rootDir`.
-  - `readExts` (string[]): Allowed file extensions for discovery.
-  - `writeExt?` (string|null): Preferred write extension (null/omitted = preserve original).
+  - `exts?` (string[]): Allowed workspace file extensions. When omitted, all extensions are allowed; when an empty array, no extensions are allowed.
+  - `transformations?` (array): Optional extension conversion rules with `{ packageExt, workspaceExt }` entries that describe how files convert between registry and workspace formats.
 - `aliases?` (string[]): Optional CLI aliases that resolve to this platform.
 - `enabled?` (boolean): When `false`, the platform exists in config but is treated as disabled.
 
@@ -60,8 +60,8 @@ Each platform defines:
 
 For each subdirectory, the platform definition specifies:
 - **Path** under the platform root (e.g. `.cursor/rules`, `.factory/droids`, `.kilo/workflows`).
-- **Readable extensions**: which file extensions are considered part of that subdir (e.g. `.md`, `.mdc`, `.toml`).
-- **Preferred write extension**: which extension is used when the CLI creates or updates files (e.g. cursor rules prefer `.mdc`).
+- **Allowed extensions**: which workspace file extensions are considered part of that subdir (e.g. `.md`, `.mdc`, `.toml`). Omit to allow any extension or set an empty list to disallow all files.
+- **Extension transformations**: optional `{ packageExt, workspaceExt }` pairs that describe how files convert between registry/universal formats and platform-specific workspace formats (e.g. Cursor rules convert `.md` registry files to `.mdc` in the workspace).
 
 **Examples**
 

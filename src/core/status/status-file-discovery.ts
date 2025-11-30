@@ -85,9 +85,11 @@ async function discoverPlatformForPackages(
     if (!(await exists(targetDir))) continue;
 
     for await (const fp of walkFiles(targetDir)) {
-      const allowedExts: string[] = (subDef as any).readExts;
-      // If readExts is empty, include all files (don't filter by extension)
-      if (allowedExts.length > 0 && !allowedExts.some((ext) => fp.endsWith(ext))) continue;
+      const allowedExts: string[] | undefined = (subDef as any).exts;
+      if (allowedExts) {
+        if (allowedExts.length === 0) continue;
+        if (!allowedExts.some((ext) => fp.endsWith(ext))) continue;
+      }
 
       // Frontmatter support removed - cannot determine package ownership
     }

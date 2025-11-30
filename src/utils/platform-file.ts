@@ -4,7 +4,13 @@
  */
 
 import { basename } from 'path';
-import { getPlatformDefinition, getAllPlatforms, isPlatformId, type Platform } from '../core/platforms.js';
+import {
+  getPlatformDefinition,
+  getAllPlatforms,
+  isPlatformId,
+  getWorkspaceExt,
+  type Platform
+} from '../core/platforms.js';
 import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
 
@@ -94,14 +100,16 @@ export function getPlatformSpecificFilename(universalPath: string, platform: Pla
     return registryFileName;
   }
 
-  // Get the base name without extension
-  const baseName = registryFileName.replace(/\.[^.]+$/, '');
+  const extensionMatch = registryFileName.match(/\.[^.]+$/);
+  const packageExt = extensionMatch?.[0] ?? '';
 
-  // Apply platform-specific write extension, or preserve original if undefined
-  if (subdirDef.writeExt === undefined) {
-    return registryFileName; // Preserve original extension
+  if (!packageExt) {
+    return registryFileName;
   }
-  return baseName + subdirDef.writeExt;
+
+  const baseName = registryFileName.slice(0, -packageExt.length);
+  const workspaceExt = getWorkspaceExt(subdirDef, packageExt);
+  return baseName + workspaceExt;
 }
 
 /**

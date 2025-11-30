@@ -84,6 +84,8 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
   for (const platform of detectedPlatforms) {
     const definition = getPlatformDefinition(platform);
 
+    const rulesExts = definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.exts;
+
     config.push({
       name: platform,
       platform,
@@ -91,7 +93,7 @@ export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSe
       rulesDir: join(cwd, definition.rootDir, definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.path || ''),
       commandsDir: definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS] ? join(cwd, definition.rootDir, definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS]!.path) : undefined,
       agentsDir: definition.subdirs[UNIVERSAL_SUBDIRS.AGENTS] ? join(cwd, definition.rootDir, definition.subdirs[UNIVERSAL_SUBDIRS.AGENTS]!.path) : undefined,
-      filePatterns: definition.subdirs[UNIVERSAL_SUBDIRS.RULES]?.readExts || [],
+      filePatterns: rulesExts ?? [],
       registryPath: ''
     });
   }

@@ -287,7 +287,7 @@ export async function checkExistingPackageInMarkdownFiles(
   packageName: string
 ): Promise<{ found: boolean; version?: string; location?: string }> {
   // Build search targets: ai directory + all detected platform subdirectories
-  const targets: Array<{ dir: string; exts: string[]; label: string }> = [];
+  const targets: Array<{ dir: string; exts?: string[]; label: string }> = [];
 
   // Always include workspace install root
   targets.push({
@@ -303,7 +303,10 @@ export async function checkExistingPackageInMarkdownFiles(
       const def = getPlatformDefinition(platform as Platform);
       for (const [_, subdirDef] of Object.entries(def.subdirs)) {
         const dirPath = join(cwd, def.rootDir, subdirDef.path);
-        targets.push({ dir: dirPath, exts: subdirDef.readExts, label: def.id });
+        if (subdirDef.exts && subdirDef.exts.length === 0) {
+          continue;
+        }
+        targets.push({ dir: dirPath, exts: subdirDef.exts, label: def.id });
       }
     }
   } catch (error) {
@@ -314,8 +317,13 @@ export async function checkExistingPackageInMarkdownFiles(
 
   // Search each target directory for files with supported extensions
   for (const target of targets) {
+    const extensions = target.exts;
+    if (extensions && extensions.length === 0) {
+      continue;
+    }
+
     try {
-      const files = await findFilesByExtension(target.dir, target.exts);
+      const files = await findFilesByExtension(target.dir, extensions ?? []);
       for (const file of files) {
         // Frontmatter support removed - cannot determine package ownership
       }

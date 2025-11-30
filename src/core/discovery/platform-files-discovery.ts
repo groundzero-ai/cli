@@ -31,6 +31,11 @@ async function discoverPlatformFiles(
       continue;
     }
     const subdirPath = join(config.rootDir, subdirDef.path);
+    const allowedExts = subdirDef.exts;
+
+    if (allowedExts && allowedExts.length === 0) {
+      continue;
+    }
 
     if (await exists(subdirPath) && await isDirectory(subdirPath)) {
       const files = await discoverFiles(
@@ -40,7 +45,7 @@ async function discoverPlatformFiles(
           platform: config.platform,
           registryPathPrefix: subdirName,
           sourceDirLabel: config.platform,
-          fileExtensions: subdirDef.readExts
+          fileExtensions: allowedExts
         }
       );
       allFiles.push(...files);

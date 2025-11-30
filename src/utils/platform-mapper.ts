@@ -1,5 +1,12 @@
 import { join, basename } from 'path';
-import { getPlatformDefinition, getDetectedPlatforms, getAllPlatforms, type Platform } from '../core/platforms.js';
+import {
+  getPlatformDefinition,
+  getDetectedPlatforms,
+  getAllPlatforms,
+  getWorkspaceExt,
+  getPackageExt,
+  type Platform
+} from '../core/platforms.js';
 import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { normalizePathForProcessing, getRelativePathParts, findSubpathIndex } from './path-normalization.js';
 import { getAllPlatformDirs } from './platform-utils.js';
@@ -38,9 +45,11 @@ export function mapUniversalToPlatform(
   // Build the absolute directory path
   const absDir = join(definition.rootDir, subdirDef.path);
 
-  // Build the absolute file path with correct extension
-  const baseName = relPath.replace(/\.[^.]+$/, ''); // Remove any existing extension from full relPath
-  const targetFileName = subdirDef.writeExt === undefined ? relPath : baseName + subdirDef.writeExt;
+  const packageExtMatch = relPath.match(/\.[^.]+$/);
+  const packageExt = packageExtMatch?.[0] ?? '';
+  const baseName = packageExt ? relPath.slice(0, -packageExt.length) : relPath;
+  const targetExt = packageExt ? getWorkspaceExt(subdirDef, packageExt) : '';
+  const targetFileName = packageExt ? `${baseName}${targetExt}` : relPath;
   const absFile = join(absDir, targetFileName);
 
   return { absDir, absFile };
@@ -77,10 +86,13 @@ export function mapPlatformFileToUniversal(
 
         let relPath = normalizedPath.substring(relPathStart);
 
-        // Normalize extension to canonical form (.md)
-        // Only normalize if writeExt is defined
-        if (subdirDef.writeExt !== undefined && relPath.endsWith(subdirDef.writeExt)) {
-          relPath = relPath.replace(new RegExp(`${subdirDef.writeExt}$`), FILE_PATTERNS.MD_FILES);
+        const workspaceExtMatch = relPath.match(/\.[^.]+$/);
+        if (workspaceExtMatch) {
+          const workspaceExt = workspaceExtMatch[0];
+          const packageExt = getPackageExt(subdirDef, workspaceExt);
+          if (packageExt !== workspaceExt) {
+            relPath = relPath.slice(0, -workspaceExt.length) + packageExt;
+          }
         }
 
         return { platform, subdir, relPath };

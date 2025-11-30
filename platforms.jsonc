@@ -8,13 +8,11 @@
     "subdirs": {
       "rules": {
         "path": "rules",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "commands": {
         "path": "commands",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -27,18 +25,14 @@
     "subdirs": {
       "commands": {
         "path": "commands",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "agents": {
         "path": "agents",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "skills": {
-        "path": "skills",
-        "readExts": [],
-        "writeExt": null
+        "path": "skills"
       }
     }
   },
@@ -51,8 +45,7 @@
     "subdirs": {
       "commands": {
         "path": "prompts",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -64,13 +57,17 @@
     "subdirs": {
       "rules": {
         "path": "rules",
-        "readExts": [".mdc", ".md"],
-        "writeExt": ".mdc"
+        "exts": [".mdc", ".md"],
+        "transformations": [
+          {
+            "packageExt": ".md",
+            "workspaceExt": ".mdc"
+          }
+        ]
       },
       "commands": {
         "path": "commands",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -82,28 +79,11 @@
     "subdirs": {
       "commands": {
         "path": "commands",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "agents": {
         "path": "droids",
-        "readExts": [".md"],
-        "writeExt": ".md"
-      }
-    }
-  },
-
-  "gemini": {
-    "name": "Gemini CLI",
-    "rootDir": ".gemini",
-    "rootFile": "GEMINI.md",
-    "aliases": ["geminicli"],
-    "enabled": false,
-    "subdirs": {
-      "commands": {
-        "path": "commands",
-        "readExts": [".toml"],
-        "writeExt": ".toml"
+        "exts": [".md"]
       }
     }
   },
@@ -116,13 +96,11 @@
     "subdirs": {
       "rules": {
         "path": "rules",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "commands": {
         "path": "workflows",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -133,8 +111,7 @@
     "subdirs": {
       "rules": {
         "path": "steering",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -146,13 +123,11 @@
     "subdirs": {
       "commands": {
         "path": "command",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       },
       "agents": {
         "path": "agent",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -165,8 +140,7 @@
     "subdirs": {
       "agents": {
         "path": "agents",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -178,8 +152,7 @@
     "subdirs": {
       "commands": {
         "path": "commands",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   },
@@ -197,8 +170,7 @@
     "subdirs": {
       "rules": {
         "path": "rules",
-        "readExts": [".md"],
-        "writeExt": ".md"
+        "exts": [".md"]
       }
     }
   }
