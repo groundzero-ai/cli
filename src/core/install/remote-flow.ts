@@ -1,13 +1,16 @@
 import type { RemotePackageMetadataSuccess, RemoteBatchPullResult, RemotePullFailure } from '../remote-pull.js';
 import type { ResolvedPackage } from '../dependency-resolver.js';
+import type { PackageRemoteResolutionOutcome } from './types.js';
 import { fetchRemotePackageMetadata, pullDownloadsBatchFromRemote, aggregateRecursiveDownloads, parseDownloadName } from '../remote-pull.js';
 import { hasPackageVersion } from '../directory.js';
 import { getVersionInfoFromDependencyTree } from '../../utils/install-helpers.js';
 import { promptOverwriteConfirmation } from '../../utils/prompts.js';
 import { Spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
-import { createDownloadKey } from './download-keys.js';
+import { computeMissingDownloadKeys, createDownloadKey } from './download-keys.js';
 import { extractRemoteErrorReason } from '../../utils/error-reasons.js';
+import { recordBatchOutcome } from './remote-reporting.js';
+import { mapReasonLabelToOutcome } from './install-errors.js';
 
 function extractReasonFromFailure(failure: RemotePullFailure): string {
   switch (failure.reason) {
@@ -137,6 +140,104 @@ export async function pullMissingDependencies(
   }
 
   return batchResults;
+}
+
+export function updateRemoteOutcomesFromBatch(
+  batchResult: RemoteBatchPullResult,
+  remoteOutcomes: Record<string, PackageRemoteResolutionOutcome>
+): void {
+  if (!batchResult.failed || batchResult.failed.length === 0) {
+    return;
+  }
+
+  for (const failure of batchResult.failed) {
+    const reasonLabel = extractRemoteErrorReason(failure.error ?? 'Unknown error');
+    const reasonTag = mapReasonLabelToOutcome(reasonLabel);
+    const packageName = failure.name;
+    const message = `Remote pull failed for \`${packageName}\` (reason: ${reasonLabel})`;
+
+    remoteOutcomes[packageName] = {
+      name: packageName,
+      reason: reasonTag,
+      message
+    };
+  }
+}
+
+function computeRetryEligibleMissing(
+  names: string[],
+  remoteOutcomes: Record<string, PackageRemoteResolutionOutcome>
+): string[] {
+  return names.filter(name => {
+    const outcome = remoteOutcomes[name];
+    if (!outcome) {
+      return true;
+    }
+    return outcome.reason !== 'not-found' && outcome.reason !== 'access-denied';
+  });
+}
+
+export interface PullMissingDependenciesContext {
+  missingPackages: string[];
+  resolvedPackages: ResolvedPackage[];
+  remoteOutcomes: Record<string, PackageRemoteResolutionOutcome>;
+  warnedPackages: Set<string>;
+  dryRun: boolean;
+  profile?: string;
+  apiKey?: string;
+}
+
+export interface PullMissingDependenciesResult {
+  pulledAny: boolean;
+  warnings: string[];
+}
+
+export async function pullMissingDependenciesIfNeeded(
+  context: PullMissingDependenciesContext
+): Promise<PullMissingDependenciesResult> {
+  const retryEligibleMissing = computeRetryEligibleMissing(context.missingPackages, context.remoteOutcomes);
+  if (retryEligibleMissing.length === 0) {
+    return { pulledAny: false, warnings: [] };
+  }
+
+  const metadataResults = await fetchMissingDependencyMetadata(retryEligibleMissing, context.resolvedPackages, {
+    dryRun: context.dryRun,
+    profile: context.profile,
+    apiKey: context.apiKey,
+    alreadyWarnedPackages: context.warnedPackages,
+    onFailure: (name, failure) => {
+      context.remoteOutcomes[name] = {
+        name,
+        reason: failure.reason,
+        message: failure.message ?? `Remote pull failed for \`${name}\``
+      };
+    }
+  });
+
+  if (metadataResults.length === 0) {
+    return { pulledAny: false, warnings: [] };
+  }
+
+  const keysToDownload = new Set<string>();
+  for (const metadata of metadataResults) {
+    const aggregated = aggregateRecursiveDownloads([metadata.response]);
+    const missingKeys = await computeMissingDownloadKeys(aggregated);
+    missingKeys.forEach(key => keysToDownload.add(key));
+  }
+
+  const batchResults = await pullMissingDependencies(metadataResults, keysToDownload, {
+    dryRun: context.dryRun,
+    profile: context.profile,
+    apiKey: context.apiKey
+  });
+
+  const warnings: string[] = [];
+  for (const batchResult of batchResults) {
+    recordBatchOutcome('Pulled dependencies', batchResult, warnings, context.dryRun);
+    updateRemoteOutcomesFromBatch(batchResult, context.remoteOutcomes);
+  }
+
+  return { pulledAny: metadataResults.length > 0, warnings };
 }
 
 /**
