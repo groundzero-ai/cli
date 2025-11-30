@@ -1,4 +1,4 @@
-import { basename, dirname, normalize, relative, sep, isAbsolute } from 'path';
+import { basename, dirname, normalize, relative, sep, isAbsolute, resolve } from 'path';
 
 /**
  * Centralized path normalization utilities for cross-platform compatibility
@@ -190,4 +190,20 @@ export function autoNormalizeDirectoryPath(input: string): string {
     return `./${input}`;
   }
   return input;
+}
+
+/**
+ * Check whether targetPath is the same as or contained within parentDir.
+ * Paths are resolved to absolute form before comparison to avoid traversal tricks.
+ */
+export function isWithinDirectory(parentDir: string, targetPath: string): boolean {
+  const resolvedParent = resolve(parentDir);
+  const resolvedTarget = resolve(targetPath);
+
+  if (resolvedParent === resolvedTarget) {
+    return true;
+  }
+
+  const rel = relative(resolvedParent, resolvedTarget);
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel);
 }

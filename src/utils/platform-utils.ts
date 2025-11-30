@@ -13,6 +13,7 @@ import {
 } from './fs.js';
 import { logger } from './logger.js';
 import { getPathLeaf } from './path-normalization.js';
+import { FILE_PATTERNS } from '../constants/index.js';
 import {
   getAllPlatforms,
   PLATFORM_DEFINITIONS,
@@ -264,6 +265,31 @@ export function getAllPlatformDirs(): string[] {
     dirs.add(PLATFORM_DEFINITIONS[platform].rootDir);
   }
   return Array.from(dirs);
+}
+
+let platformRootFilesCache: Set<string> | null = null;
+
+function buildPlatformRootFiles(): Set<string> {
+  const rootFiles = new Set<string>();
+  for (const platform of getAllPlatforms()) {
+    const def = getPlatformDefinition(platform);
+    if (def.rootFile) {
+      rootFiles.add(def.rootFile);
+    }
+  }
+  rootFiles.add(FILE_PATTERNS.AGENTS_MD);
+  return rootFiles;
+}
+
+export function getPlatformRootFiles(): Set<string> {
+  if (!platformRootFilesCache) {
+    platformRootFilesCache = buildPlatformRootFiles();
+  }
+  return platformRootFilesCache;
+}
+
+export function isPlatformRootFile(fileName: string): boolean {
+  return getPlatformRootFiles().has(fileName);
 }
 
 

@@ -12,6 +12,7 @@ import { normalizePackageName, arePackageNamesEquivalent } from './package-name.
 import { packageManager } from '../core/package.js';
 import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import { FILE_PATTERNS } from '../constants/index.js';
+import { promptPackageDetailsForNamed } from './prompts.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -59,6 +60,69 @@ export async function createBasicPackageYml(cwd: string, force: boolean = false)
   logger.info(`Initialized workspace package.yml`);
   console.log(`📋 Initialized workspace package.yml in .openpackage/`);
   return basicPackageYml;
+}
+
+export interface EnsurePackageWithYmlOptions {
+  interactive?: boolean;
+  defaultVersion?: string;
+}
+
+export interface EnsurePackageWithYmlResult {
+  normalizedName: string;
+  packageDir: string;
+  packageYmlPath: string;
+  packageConfig: PackageYml;
+  isNew: boolean;
+}
+
+/**
+ * Ensure a package directory and package.yml exist, optionally prompting for details.
+ */
+export async function ensurePackageWithYml(
+  cwd: string,
+  packageName: string,
+  options: EnsurePackageWithYmlOptions = {}
+): Promise<EnsurePackageWithYmlResult> {
+  await ensureLocalOpenPackageStructure(cwd);
+
+  const normalizedName = normalizePackageName(packageName);
+  const packageDir = getLocalPackageDir(cwd, normalizedName);
+  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
+
+  await ensureDir(packageDir);
+
+  let packageConfig: PackageYml;
+  let isNew = false;
+
+  if (await exists(packageYmlPath)) {
+    packageConfig = await parsePackageYml(packageYmlPath);
+  } else {
+    isNew = true;
+    if (options.interactive) {
+      packageConfig = await promptPackageDetailsForNamed(normalizedName);
+    } else {
+      packageConfig = {
+        name: normalizedName,
+        version: options.defaultVersion ?? '0.1.0'
+      };
+    }
+    await writePackageYml(packageYmlPath, packageConfig);
+    logger.info(`Created new package '${packageConfig.name}@${packageConfig.version}' at ${relative(cwd, packageDir)}`);
+  }
+
+  if (packageConfig.name !== normalizedName) {
+    const updatedConfig = { ...packageConfig, name: normalizedName };
+    await writePackageYml(packageYmlPath, updatedConfig);
+    packageConfig = updatedConfig;
+  }
+
+  return {
+    normalizedName,
+    packageDir,
+    packageYmlPath,
+    packageConfig,
+    isNew
+  };
 }
 
 /**
