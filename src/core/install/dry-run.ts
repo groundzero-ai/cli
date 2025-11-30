@@ -1,7 +1,7 @@
 import type { InstallOptions, CommandResult } from '../../types/index.js';
 import type { ResolvedPackage } from '../dependency-resolver.js';
 import { CONFLICT_RESOLUTION } from '../../constants/index.js';
-import { installAiFiles } from '../../utils/install-orchestrator.js';
+import { installWorkspaceFiles } from '../../utils/install-orchestrator.js';
 
 /**
  * Handle dry run mode for package installation
@@ -36,7 +36,7 @@ export async function handleDryRunMode(
       continue;
     }
 
-    const dryRunResult = await installAiFiles(resolved.name, targetDir, options, resolved.version, true);
+    const dryRunResult = await installWorkspaceFiles(resolved.name, targetDir, options, resolved.version, true);
 
     if (dryRunResult.skipped) {
       console.log(`✓ Would skip ${resolved.name}@${resolved.version} (same or newer version already installed)`);

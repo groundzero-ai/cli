@@ -1,5 +1,5 @@
 import { join, dirname } from 'path';
-import { FILE_PATTERNS, PLATFORM_AI, DIR_PATTERNS } from '../../constants/index.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { buildPlatformSearchConfig } from '../discovery/platform-discovery.js';
 import { getPlatformDefinition, getAllPlatforms, isValidUniversalSubdir } from '../platforms.js';
 import { exists, walkFiles, readTextFile } from '../../utils/fs.js';
@@ -45,11 +45,7 @@ export async function discoverPackagesForStatus(
 
   // Process each platform configuration
   for (const cfg of configs) {
-    if (cfg.platform === PLATFORM_AI) {
-      await discoverAIForPackages(cwd, result, packageNames);
-    } else {
-      await discoverPlatformForPackages(cwd, cfg.platform, result, packageNames);
-    }
+    await discoverPlatformForPackages(cwd, cfg.platform, result, packageNames);
   }
 
   // Check root files for all packages
@@ -72,28 +68,6 @@ export async function discoverPackagesForStatus(
 /**
  * Discover AI files for requested packages using same logic as uninstall
  */
-async function discoverAIForPackages(
-  cwd: string,
-  result: Map<string, any>,
-  packageNames: string[]
-): Promise<void> {
-  const aiDir = DIR_PATTERNS.AI;
-  const fullAIDir = join(cwd, aiDir);
-
-  if (!(await exists(fullAIDir))) return;
-
-  // Use same file discovery as uninstall
-  for await (const filePath of walkFiles(fullAIDir)) {
-    if (!filePath.endsWith(FILE_PATTERNS.MD_FILES) && !filePath.endsWith(FILE_PATTERNS.MDC_FILES)) {
-      continue;
-    }
-
-    // Frontmatter support removed - cannot determine package ownership
-  }
-
-  // Index.yml support removed
-}
-
 /**
  * Discover platform files for requested packages using same logic as uninstall
  */

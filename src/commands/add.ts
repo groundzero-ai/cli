@@ -12,7 +12,6 @@ import {
   PackageYml
 } from '../types/index.js';
 import {
-  DIR_PATTERNS,
   FILE_PATTERNS
 } from '../constants/index.js';
 import {
@@ -218,13 +217,6 @@ function deriveSourceEntry(absFilePath: string, cwd: string): SourceEntry | null
   const relativePath = relative(cwd, absFilePath);
   const normalizedRelPath = normalizePathForProcessing(relativePath);
 
-  if (normalizedRelPath.startsWith(`${DIR_PATTERNS.AI}/`)) {
-    return {
-      sourcePath: absFilePath,
-      registryPath: normalizedRelPath
-    };
-  }
-
   const mapping = mapPlatformFileToUniversal(absFilePath);
   if (mapping) {
     return {
@@ -241,7 +233,10 @@ function deriveSourceEntry(absFilePath: string, cwd: string): SourceEntry | null
     };
   }
 
-  return null;
+  return {
+    sourcePath: absFilePath,
+    registryPath: normalizedRelPath
+  };
 }
 
 function joinPathSegments(...parts: string[]): string {
@@ -261,10 +256,6 @@ function applyPlatformSpecificPaths(
 
   for (const entry of entries) {
     const { registryPath, sourcePath } = entry;
-
-    if (isAiRegistryPath(registryPath)) {
-      continue;
-    }
 
     const fileName = registryPath.split('/').pop();
     if (fileName && isPlatformRootFile(fileName)) {
@@ -309,10 +300,6 @@ function applyPlatformSpecificPaths(
   }
 
   return entries;
-}
-
-function isAiRegistryPath(registryPath: string): boolean {
-  return registryPath === DIR_PATTERNS.AI || registryPath.startsWith(`${DIR_PATTERNS.AI}/`);
 }
 
 // computeDirKeyFromRegistryPath and directory collapsing moved to core/add/package-index-updater.ts

@@ -16,7 +16,6 @@ import {
 } from '../../utils/index-based-installer.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
 import type { PackageFile } from '../../types/index.js';
-import { DIR_PATTERNS } from '../../constants/index.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
 import { isPlatformId, type Platform } from '../platforms.js';
@@ -244,13 +243,6 @@ function buildExactFileMapping(
 
     const key = normalized.replace(/\\/g, '/');
     const values = new Set<string>();
-
-    if (key.startsWith(`${DIR_PATTERNS.AI}/`)) {
-      // ai/ paths: keep as-is
-      values.add(key);
-      addTargets(key, values);
-      continue;
-    }
 
     const parsed = parseUniversalPath(key);
     if (parsed) {

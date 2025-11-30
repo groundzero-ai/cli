@@ -8,7 +8,7 @@ import { join, relative } from 'path';
 import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { getPathLeaf } from '../utils/path-normalization.js';
-import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { mapPlatformFileToUniversal } from '../utils/platform-mapper.js';
 import { parseUniversalPath } from '../utils/platform-file.js';
 import { readJsoncFileSync } from '../utils/jsonc.js';
@@ -421,7 +421,7 @@ export function isPlatformId(value: string | undefined): value is Platform {
  * Infer platform from workspace file information.
  * Attempts multiple strategies to determine the platform:
  * 1. Maps full path to universal path (if platform can be inferred from path structure)
- * 2. Checks if source directory or registry path indicates AI directory
+ * 2. Checks if source directory or registry path indicates workspace install content
  * 3. Looks up platform from source directory using PLATFORM_DIR_LOOKUP
  * 4. Parses registry path for platform suffix (e.g., file.cursor.md)
  * 
@@ -434,16 +434,11 @@ export function inferPlatformFromWorkspaceFile(
   fullPath: string,
   sourceDir: string,
   registryPath: string
-): Platform | 'ai' | undefined {
+): Platform | undefined {
   // First try to get platform from full path using existing mapper
   const mapping = mapPlatformFileToUniversal(fullPath);
   if (mapping?.platform) {
     return mapping.platform;
-  }
-
-  // Check for AI directory
-  if (sourceDir === DIR_PATTERNS.AI || registryPath.startsWith(`${DIR_PATTERNS.AI}/`)) {
-    return 'ai';
   }
 
   // Look up platform from source directory

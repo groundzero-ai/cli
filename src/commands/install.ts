@@ -23,7 +23,7 @@ import {
 } from '../core/install/install-flow.js';
 import {
   getLocalPackageYmlPath,
-  getAIDir,
+  getInstallRootDir,
   isRootPackage
 } from '../utils/paths.js';
 import { createBasicPackageYml, addPackageToYml, writeLocalPackageFromRegistry } from '../utils/package-management.js';
@@ -88,7 +88,7 @@ async function installAllPackagesCommand(
   options: InstallOptions
 ): Promise<CommandResult> {
   const cwd = process.cwd();
-  logger.info(`Installing all packages from package.yml to: ${getAIDir(cwd)}`, { options });
+  logger.info(`Installing all packages from package.yml to: ${getInstallRootDir(cwd)}`, { options });
   
   await ensureRegistryDirectories();
   
@@ -336,7 +336,7 @@ async function installPackageCommand(
     };
   }
 
-  logger.debug(`Installing package '${packageName}' with dependencies to: ${getAIDir(cwd)}`, { options });
+  logger.debug(`Installing package '${packageName}' with dependencies to: ${getInstallRootDir(cwd)}`, { options });
 
   const dryRun = !!options.dryRun;
   const forceRemote = resolutionMode === 'remote-primary';
@@ -541,7 +541,7 @@ async function installPackageCommand(
       success: true,
       data: {
         packageName,
-        targetDir: getAIDir(cwd),
+        targetDir: getInstallRootDir(cwd),
         resolvedPackages: [],
         totalPackages: 0,
         installed: 0,
@@ -616,7 +616,7 @@ async function installPackageCommand(
     success: true,
     data: {
       packageName,
-      targetDir: getAIDir(cwd),
+      targetDir: getInstallRootDir(cwd),
       resolvedPackages: finalResolvedPackages,
       totalPackages: finalResolvedPackages.length,
       installed: installationOutcome.installedCount,
@@ -935,7 +935,7 @@ export function setupInstallCommand(program: Command): void {
     .alias('i')
     .description('Install packages from the local (and optional remote) registry into this workspace. Works with WIP copies from `opkg save` and stable releases from `opkg pack`.')
     .argument('[package-name]', 'name of the package to install (optional - installs all from package.yml if not specified). Supports package@version syntax.')
-    .argument('[target-dir]', 'target directory relative to cwd/ai for /ai files only (defaults to ai root)', '.')
+    .argument('[target-dir]', 'target directory relative to the workspace install root (defaults to ./ai)', '.')
     .option('--dry-run', 'preview changes without applying them')
     .option('--force', 'overwrite existing files')
     .option('--conflicts <strategy>', 'conflict handling strategy: keep-both, overwrite, skip, or ask')

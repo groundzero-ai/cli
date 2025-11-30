@@ -166,8 +166,8 @@ The platforms system helps determine which platform a given file belongs to by:
 1. **Using path‑to‑platform mappings**:
    - A dedicated mapper converts full workspace paths into a *universal* representation that includes the platform id where possible (e.g. `.cursor/rules/foo.mdc` → platform `cursor` + `rules/foo.mdc`).
 
-2. **Checking for the generic `ai` directory**:
-   - Files under the generic AI directory (e.g. `ai/rules/...`) are treated as platform `ai`, representing content not tied to a specific vendor.
+2. **Checking for generic workspace directories**:
+   - Files that do not live under a known platform root (for example, a conventional `ai/` folder) are treated as workspace-level content rather than being assigned to a specific platform.
 
 3. **Looking at source directory names**:
    - If a file lives under a known platform root directory (e.g. `.cursor`, `.claude`), the system infers that platform from the directory.
@@ -175,7 +175,7 @@ The platforms system helps determine which platform a given file belongs to by:
 4. **Parsing registry paths with platform suffixes**:
    - As a final fallback, the system inspects registry paths for explicit platform suffixes (e.g. `rules/file.cursor.md`) and maps them back to a platform id when possible.
 
-The result is a best‑effort platform id (or `ai`) for a given file, which other components use to route content to the right registry paths and conflict‑resolution logic.
+The result is a best‑effort platform id (or a `workspace` classification) for a given file, which other components use to route content to the right registry paths and conflict‑resolution logic.
 
 ---
 

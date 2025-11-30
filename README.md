@@ -155,7 +155,7 @@ OpenPackage performs installation and platform sync of files for supported AI co
 Files and paths will be automatically converted to platform specific designations during `save` and `install`.
 
 > [!NOTE]  
-> OpenPackage only searches and includes markdown files under supported platform directories and the root `ai/` directory.
+> OpenPackage searches and includes markdown files under supported platform directories as well as any other workspace directories.
 
 | Platform | Directory | Root file | Rules | Commands | Agents | Skills |
 | --- | --- | --- | --- | --- | --- | --- |

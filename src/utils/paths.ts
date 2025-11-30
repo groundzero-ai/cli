@@ -1,5 +1,6 @@
 import { join } from 'path';
 import { DIR_PATTERNS, FILE_PATTERNS, OPENPACKAGE_DIRS } from '../constants/index.js';
+import { DEFAULT_INSTALL_ROOT } from '../constants/workspace.js';
 import { exists } from './fs.js';
 import { arePackageNamesEquivalent, SCOPED_PACKAGE_REGEX } from './package-name.js';
 import { parsePackageYml } from './package-yml.js';
@@ -61,9 +62,9 @@ export function getLocalPackageDir(cwd: string, packageName: string): string {
 }
 
 /**
- * Get the AI directory path
+ * Get the default workspace install root path
  */
-export function getAIDir(cwd: string): string {
-  return join(cwd, DIR_PATTERNS.AI);
+export function getInstallRootDir(cwd: string): string {
+  return join(cwd, DEFAULT_INSTALL_ROOT);
 }
 

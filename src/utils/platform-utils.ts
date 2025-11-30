@@ -26,7 +26,6 @@ import {
   getPlatformRulesDirFilePatterns,
   getPlatformUniversalSubdirs
 } from '../core/platforms.js';
-import { DIR_PATTERNS } from '../constants/index.js';
 import { discoverFiles } from '../core/discovery/file-discovery.js';
 
 /**
@@ -121,13 +120,15 @@ export async function cleanupPlatformFiles(
 
     // const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
-    for (const { dir, label, leaf } of subdirs) {
-
+    for (const { dir, label } of subdirs) {
       const discovered = await discoverFiles(
         dir,
         packageName,
-        platform,
-        label,
+        {
+          platform,
+          registryPathPrefix: label,
+          sourceDirLabel: platform
+        }
       );
 
       const removalPromises = discovered.map(async (file) => {
@@ -227,11 +228,6 @@ export async function setupDetectedPlatforms(cwd: string): Promise<{
  * Uses platform definitions for scalable platform detection
  */
 export function getPlatformNameFromSource(sourceDir: string): string {
-  // Handle special case for AI directory
-  if (sourceDir === DIR_PATTERNS.AI) {
-    return DIR_PATTERNS.AI;
-  }
-
   // Use platform definitions to find matching platform
   for (const platform of getAllPlatforms()) {
     const definition = PLATFORM_DEFINITIONS[platform];
@@ -259,7 +255,7 @@ export function getPlatformNameFromSource(sourceDir: string): string {
  * Returns an array of all supported platform directory names
  */
 export function getAllPlatformDirs(): string[] {
-  const dirs = new Set<string>([DIR_PATTERNS.AI]);
+  const dirs = new Set<string>();
   for (const platform of getAllPlatforms({ includeDisabled: true })) {
     dirs.add(PLATFORM_DEFINITIONS[platform].rootDir);
   }

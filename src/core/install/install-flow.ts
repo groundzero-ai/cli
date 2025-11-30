@@ -281,9 +281,5 @@ function formatPackageLabel(packageName: string, version?: string): string {
   return version ? `${packageName}@${version}` : packageName;
 }
 
-function getAIDir(cwd: string): string {
-  return `${cwd}/ai`;
-}
-
 // Import the resolvePlatforms function from the platform-resolution file
 import { resolvePlatforms } from './platform-resolution.js';

@@ -1,12 +1,12 @@
 import { join, dirname, relative } from 'path';
 import { InstallOptions } from '../types/index.js';
-import { DIR_PATTERNS } from '../constants/index.js';
+import { DEFAULT_INSTALL_ROOT } from '../constants/workspace.js';
 import { logger } from './logger.js';
 import { packageManager } from '../core/package.js';
 import { exists, ensureDir, writeTextFile } from './fs.js';
 
 /**
- * Install package files to ai directory
+ * Install package files to the workspace install root directory
  * @param packageName - Name of the package to install
  * @param targetDir - Target directory for installation
  * @param options - Installation options including force and dry-run flags
@@ -14,33 +14,33 @@ import { exists, ensureDir, writeTextFile } from './fs.js';
  * @param forceOverwrite - Force overwrite existing files
  * @returns Object containing installation results including file counts and status flags
  */
-export async function installAiFiles(
+export async function installWorkspaceFiles(
   packageName: string,
   targetDir: string,
   options: InstallOptions,
   version?: string,
   forceOverwrite?: boolean
 ): Promise<{ installedCount: number; files: string[]; overwritten: boolean; skipped: boolean }> {
-  logger.debug(`Installing AI directory files for ${packageName} to ${targetDir}`, { version, forceOverwrite });
+  logger.debug(`Installing workspace files for ${packageName} to ${targetDir}`, { version, forceOverwrite });
 
   try {
     // Get package from registry
     const pkg = await packageManager.loadPackage(packageName, version);
 
-    // Filter to only install AI directory files (those starting with ai/) - allow all file types
-    const aiPrefix = `${DIR_PATTERNS.AI}/`;
-    const filesToInstall = pkg.files.filter(file => file.path.startsWith(aiPrefix))
+    // Only install files that live under the workspace install root prefix
+    const installRootPrefix = `${DEFAULT_INSTALL_ROOT}/`;
+    const filesToInstall = pkg.files.filter(file => file.path.startsWith(installRootPrefix))
 
     if (filesToInstall.length === 0) {
-      logger.debug(`No AI directory files to install for ${packageName}@${version || 'latest'}`);
+      logger.debug(`No workspace files to install for ${packageName}@${version || 'latest'}`);
       return { installedCount: 0, files: [], overwritten: false, skipped: true };
     }
 
-    // Check for existing files in parallel, rebasing paths under ai/<targetDir>/...
+    // Check for existing files in parallel, rebasing paths under <installRoot>/<targetDir>/...
     const existenceChecks = await Promise.all(
       filesToInstall.map(async (file) => {
-        const aiRelPath = file.path.slice(aiPrefix.length); // strip "ai/"
-        const targetPath = join(DIR_PATTERNS.AI, targetDir || '.', aiRelPath);
+        const installRelPath = file.path.slice(installRootPrefix.length);
+        const targetPath = join(DEFAULT_INSTALL_ROOT, targetDir || '.', installRelPath);
         const fileExists = await exists(targetPath);
         return { file, targetPath, exists: fileExists };
       })
@@ -69,12 +69,12 @@ export async function installAiFiles(
     const installPromises = existenceChecks.map(async ({ file, targetPath }) => {
       await writeTextFile(targetPath, file.content);
       installedFiles.push(targetPath);
-      logger.debug(`Installed AI file: ${targetPath}`);
+      logger.debug(`Installed workspace file: ${targetPath}`);
     });
 
     await Promise.all(installPromises);
 
-    logger.info(`Successfully installed ${installedFiles.length} AI directory files for ${packageName}@${version || 'latest'}`);
+    logger.info(`Successfully installed ${installedFiles.length} workspace files for ${packageName}@${version || 'latest'}`);
 
     return {
       installedCount: installedFiles.length,
@@ -84,7 +84,7 @@ export async function installAiFiles(
     };
 
   } catch (error) {
-    logger.error(`Failed to install AI files for package ${packageName}: ${error}`);
+    logger.error(`Failed to install workspace files for package ${packageName}: ${error}`);
     return {
       installedCount: 0,
       files: [],
@@ -95,9 +95,9 @@ export async function installAiFiles(
 }
 
 /**
- * Install AI files from a pre-filtered list of package files (avoids re-loading registry)
+ * Install workspace files from a pre-filtered list of package files (avoids re-loading registry)
  */
-export async function installAiFilesFromList(
+export async function installWorkspaceFilesFromList(
   cwd: string,
   targetDir: string,
   files: { path: string; content: string }[],
@@ -109,13 +109,13 @@ export async function installAiFilesFromList(
       return { installedCount: 0, files: [], overwritten: false, skipped: true };
     }
 
-    const aiPrefix = `${DIR_PATTERNS.AI}/`;
+    const installRootPrefix = `${DEFAULT_INSTALL_ROOT}/`;
 
     // Pre-create dirs
     const directories = new Set<string>();
     const targets = await Promise.all(files.map(async (file) => {
-      const aiRelPath = file.path.startsWith(aiPrefix) ? file.path.slice(aiPrefix.length) : file.path;
-      const targetPath = join(DIR_PATTERNS.AI, targetDir || '.', aiRelPath);
+      const installRelPath = file.path.startsWith(installRootPrefix) ? file.path.slice(installRootPrefix.length) : file.path;
+      const targetPath = join(DEFAULT_INSTALL_ROOT, targetDir || '.', installRelPath);
       directories.add(dirname(targetPath));
       const existsFlag = await exists(targetPath);
       return { file, targetPath, existsFlag };
@@ -134,12 +134,12 @@ export async function installAiFilesFromList(
     await Promise.all(targets.map(async ({ file, targetPath }) => {
       await writeTextFile(targetPath, file.content);
       installedFiles.push(targetPath);
-      logger.debug(`Installed AI file: ${targetPath}`);
+      logger.debug(`Installed workspace file: ${targetPath}`);
     }));
 
     return { installedCount: installedFiles.length, files: installedFiles, overwritten: hasOverwritten, skipped: false };
   } catch (error) {
-    logger.error(`Failed to install AI files from list: ${error}`);
+    logger.error(`Failed to install workspace files from list: ${error}`);
     return { installedCount: 0, files: [], overwritten: false, skipped: true };
   }
 }

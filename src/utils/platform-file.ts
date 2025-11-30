@@ -5,7 +5,7 @@
 
 import { basename } from 'path';
 import { getPlatformDefinition, getAllPlatforms, isPlatformId, type Platform } from '../core/platforms.js';
-import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
 
 /**
@@ -69,58 +69,6 @@ export function parseUniversalPath(
         relPath: normalizedRelPath,
         platformSuffix
       };
-    }
-  }
-
-  // Check if path starts with ai/ followed by universal subdirs (for AI directory files)
-  const aiParsed = parsePathWithPrefix(path, DIR_PATTERNS.AI);
-  if (aiParsed) {
-    const aiPath = aiParsed.remaining;
-
-    for (const subdir of universalSubdirs) {
-      const subdirParsed = parsePathWithPrefix(aiPath, subdir);
-      if (subdirParsed) {
-        const remainingPath = subdirParsed.remaining;
-        let platformSuffix: string | undefined;
-        let normalizedRelPath = remainingPath;
-
-        // Platform suffix detection is always enabled
-        if (options.allowPlatformSuffix !== false) {
-          // Check for directory-level platform suffix
-          const segments = remainingPath.split('/');
-          for (let i = 0; i < segments.length - 1; i++) {
-            const segment = segments[i];
-            for (const platform of knownPlatforms) {
-              if (segment.endsWith(`.${platform}`) && isPlatformId(platform)) {
-                platformSuffix = platform;
-                segments[i] = segment.slice(0, -platform.length - 1);
-                normalizedRelPath = segments.join('/');
-                break;
-              }
-            }
-            if (platformSuffix) break;
-          }
-
-          // Check for file-level platform suffix if not already found
-          if (!platformSuffix) {
-            const parts = remainingPath.split('.');
-            if (parts.length >= 3 && parts[parts.length - 1] === 'md') {
-              const possiblePlatformSuffix = parts[parts.length - 2];
-              if (isPlatformId(possiblePlatformSuffix)) {
-                platformSuffix = possiblePlatformSuffix;
-                const baseName = parts.slice(0, -2).join('.');
-                normalizedRelPath = baseName + FILE_PATTERNS.MD_FILES;
-              }
-            }
-          }
-        }
-
-        return {
-          universalSubdir: subdir,
-          relPath: normalizedRelPath,
-          platformSuffix
-        };
-      }
     }
   }
 

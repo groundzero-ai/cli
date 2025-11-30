@@ -4,11 +4,8 @@
  * file patterns, and other constants used throughout the application.
  */
 
-export const PLATFORM_AI = 'ai';
-
 export const DIR_PATTERNS = {
-  OPENPACKAGE: '.openpackage',
-  AI: 'ai',
+  OPENPACKAGE: '.openpackage'
 } as const;
 
 export const FILE_PATTERNS = {

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
-import { formatSelectionSummary } from '../src/commands/install.js';
-import { selectInstallVersionUnified } from '../src/core/install/version-selection.js';
+
+const { formatSelectionSummary } = await import(
+  new URL('../src/commands/install.js', import.meta.url).href
+);
+const { selectInstallVersionUnified } = await import(
+  new URL('../src/core/install/version-selection.js', import.meta.url).href
+);
 
 console.log('install-selection tests starting');
 

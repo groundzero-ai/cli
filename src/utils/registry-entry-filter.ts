@@ -70,12 +70,7 @@ export function isAllowedRegistryPath(registryPath: string): boolean {
     return false;
   }
 
-  const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
-  const firstComponent = getFirstPathComponent(normalized);
-  const isAi = firstComponent === DIR_PATTERNS.AI;
-  const isUniversal = universalValues.includes(firstComponent);
-
-  return isAi || isUniversal;
+  return true;
 }
 
 

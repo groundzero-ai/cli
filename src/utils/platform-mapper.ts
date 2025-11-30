@@ -165,10 +165,6 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
 
   const platformDirectories = getAllPlatformDirs();
   if (platformDirectories.includes(firstPart)) {
-    // Special case: AI directory should not be prefixed again since it's already the base
-    if (firstPart === DIR_PATTERNS.AI) {
-      return targetPath;
-    }
     return join(targetPath, firstPart);
   }
 

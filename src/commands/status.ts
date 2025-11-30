@@ -14,7 +14,7 @@ import {
   getLocalPackageYmlPath,
   getLocalPackagesDir,
   getLocalOpenPackageDir,
-  getAIDir
+  getInstallRootDir
 } from '../utils/paths.js';
 import { 
   satisfiesVersion, 
@@ -413,7 +413,7 @@ async function performStatusAnalysis(
     getLocalOpenPackageDir(cwd),
     getLocalPackageYmlPath(cwd),
     getLocalPackagesDir(cwd),
-    getAIDir(cwd)
+    getInstallRootDir(cwd)
   ];
   
   const [openpackageExists, packageYmlExists, packagesDirExists, aiDirExists] = await Promise.all([

@@ -1,6 +1,5 @@
 import { join } from 'path';
 import { isJunk } from 'junk';
-import { PLATFORM_AI, DIR_PATTERNS } from '../../constants/index.js';
 import { exists, isDirectory } from '../../utils/fs.js';
 import {
   getPlatformDefinition,
@@ -12,6 +11,7 @@ import type { DiscoveredFile } from '../../types/index.js';
 import { buildPlatformSearchConfig, PlatformSearchConfig } from './platform-discovery.js';
 import { discoverFiles } from './file-discovery.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
+import { WORKSPACE_DISCOVERY_EXCLUDES } from '../../constants/workspace.js';
 
 /**
  * Process platform subdirectories (rules/commands/agents) within a base directory
@@ -21,16 +21,6 @@ async function discoverPlatformFiles(
   config: PlatformSearchConfig,
   packageName: string,
 ): Promise<DiscoveredFile[]> {
-
-  // Handle AI directory separately - does not contain platform subdirectory structure
-  if (config.platform === PLATFORM_AI) {
-    return discoverFiles(
-      DIR_PATTERNS.AI,
-      packageName,
-      config.platform,
-      DIR_PATTERNS.AI, // AI directory uses 'ai' prefix
-    );
-  }
 
   const definition = getPlatformDefinition(config.platform);
   const allFiles: DiscoveredFile[] = [];
@@ -43,8 +33,11 @@ async function discoverPlatformFiles(
       const files = await discoverFiles(
         subdirPath,
         packageName,
-        config.platform,
-        subdirName, // Universal registry path
+        {
+          platform: config.platform,
+          registryPathPrefix: subdirName,
+          sourceDirLabel: config.platform
+        }
       );
       allFiles.push(...files);
     }
@@ -61,8 +54,7 @@ function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): Discover
     // Normalize registry path to use forward slashes for consistent comparison
     const normalizedPath = normalizePathForProcessing(file.registryPath);
 
-    if (isUniversalSubdirPath(normalizedPath)) return 3;
-    if (normalizedPath.startsWith(`${DIR_PATTERNS.AI}/`) || normalizedPath === DIR_PATTERNS.AI) return 2;
+    if (isUniversalSubdirPath(normalizedPath)) return 2;
     return 1;
   };
 
@@ -83,6 +75,14 @@ function dedupeDiscoveredFilesPreferUniversal(files: DiscoveredFile[]): Discover
 /**
  * Unified file discovery function that searches platform-specific directories
  */
+async function discoverWorkspaceFiles(cwd: string, packageName: string): Promise<DiscoveredFile[]> {
+  return await discoverFiles(cwd, packageName, {
+    registryPathPrefix: '',
+    sourceDirLabel: 'workspace',
+    excludeDirs: WORKSPACE_DISCOVERY_EXCLUDES
+  });
+}
+
 export async function discoverPlatformFilesUnified(cwd: string, packageName: string): Promise<DiscoveredFile[]> {
   const platformConfigs = await buildPlatformSearchConfig(cwd);
   const allDiscoveredFiles: DiscoveredFile[] = [];
@@ -94,6 +94,9 @@ export async function discoverPlatformFilesUnified(cwd: string, packageName: str
 
   const discoveredFiles = await Promise.all(discoveryPromises);
   allDiscoveredFiles.push(...discoveredFiles.flat());
+
+  const workspaceDiscovered = await discoverWorkspaceFiles(cwd, packageName);
+  allDiscoveredFiles.push(...workspaceDiscovered);
 
   return dedupeDiscoveredFilesPreferUniversal(allDiscoveredFiles);
 }

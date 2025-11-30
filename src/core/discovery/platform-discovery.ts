@@ -1,5 +1,5 @@
-import { join,  normalize } from 'path';
-import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
+import { join, normalize } from 'path';
+import { FILE_PATTERNS, UNIVERSAL_SUBDIRS } from '../../constants/index.js';
 import {
   getDetectedPlatforms,
   getPlatformDefinition,
@@ -8,13 +8,10 @@ import {
 } from '../../core/platforms.js';
 import { matchPlatformPattern, isExactPlatformMatch } from '../../utils/path-matching.js';
 
-// Import the shared type
-import type { Platformish } from '../../utils/file-processing.js';
-
 // Platform search configuration interface
 export interface PlatformSearchConfig {
   name: string;
-  platform: Platformish;
+  platform: PlatformName;
   rootDir: string;
   rulesDir: string;
   commandsDir?: string;
@@ -27,7 +24,11 @@ export interface PlatformSearchConfig {
  * Check if a path matches a platform pattern and extract platform info
  * This function works across different filesystem types (Windows, macOS, Linux, etc.)
  */
-function checkPlatformMatch(normalizedPath: string, platform: Platformish, platformDir: string): { platform: string; relativePath: string; platformName: Platformish } | null {
+function checkPlatformMatch(
+  normalizedPath: string,
+  platform: PlatformName,
+  platformDir: string
+): { platform: string; relativePath: string; platformName: PlatformName } | null {
   // Use the cross-platform path matching utility
   const match = matchPlatformPattern(normalizedPath, platformDir);
 
@@ -55,15 +56,9 @@ function checkPlatformMatch(normalizedPath: string, platform: Platformish, platf
 /**
  * Parse a directory path to determine if it's a platform-specific directory
  */
-export function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: Platformish } | null {
+export function parsePlatformDirectory(directoryPath: string): { platform: string; relativePath: string; platformName: PlatformName } | null {
   // Use proper path normalization for cross-platform compatibility
   const normalizedPath = normalize(directoryPath);
-
-  // Check for AI directory first (special case)
-  const aiMatch = checkPlatformMatch(normalizedPath, DIR_PATTERNS.AI, DIR_PATTERNS.AI);
-  if (aiMatch) {
-    return aiMatch;
-  }
 
   // Check for other platforms
   const platforms = getAllPlatforms({ includeDisabled: true }) as PlatformName[];
@@ -84,16 +79,6 @@ export function parsePlatformDirectory(directoryPath: string): { platform: strin
 export async function buildPlatformSearchConfig(cwd: string): Promise<PlatformSearchConfig[]> {
   const detectedPlatforms = await getDetectedPlatforms(cwd);
   const config: PlatformSearchConfig[] = [];
-
-  // Add AI directory as required feature
-  config.push({
-    name: DIR_PATTERNS.AI,
-    platform: DIR_PATTERNS.AI as Platformish,
-    rootDir: DIR_PATTERNS.AI,
-    rulesDir: join(cwd, DIR_PATTERNS.AI),
-    filePatterns: [FILE_PATTERNS.MD_FILES],
-    registryPath: ''
-  });
 
   // Add detected platform configurations
   for (const platform of detectedPlatforms) {

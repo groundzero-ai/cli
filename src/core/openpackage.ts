@@ -3,7 +3,8 @@ import { PackageYml, PackageDependency } from '../types/index.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { exists, isDirectory, listDirectories } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
-import { FILE_PATTERNS, DIR_PATTERNS } from '../constants/index.js';
+import { FILE_PATTERNS } from '../constants/index.js';
+import { DEFAULT_INSTALL_ROOT } from '../constants/workspace.js';
 import { getLocalPackageYmlPath, getLocalPackagesDir } from '../utils/paths.js';
 import { findFilesByExtension, findDirectoriesContainingFile } from '../utils/file-processing.js';
 import { getDetectedPlatforms, getPlatformDefinition, type Platform } from './platforms.js';
@@ -41,7 +42,7 @@ async function findPackageConfigFile(directoryPath: string): Promise<string | nu
  * Get the version of an installed package by package name
  */
 export async function getInstalledPackageVersion(packageName: string, targetDir: string): Promise<string | null> {
-  const openpackagePath = join(targetDir, DIR_PATTERNS.AI);
+  const openpackagePath = join(targetDir, DEFAULT_INSTALL_ROOT);
   const packageGroundzeroPath = join(openpackagePath, packageName);
   
   if (!(await exists(packageGroundzeroPath))) {
@@ -103,7 +104,7 @@ export async function scanGroundzeroPackages(openpackagePath: string): Promise<M
   const packages = new Map<string, GroundzeroPackage>();
 
   if (!(await exists(openpackagePath)) || !(await isDirectory(openpackagePath))) {
-    logger.debug('AI directory not found or not a directory', { openpackagePath });
+    logger.debug('Install root directory not found or not a directory', { openpackagePath });
     return packages;
   }
 
@@ -288,11 +289,11 @@ export async function checkExistingPackageInMarkdownFiles(
   // Build search targets: ai directory + all detected platform subdirectories
   const targets: Array<{ dir: string; exts: string[]; label: string }> = [];
 
-  // Always include AI directory
+  // Always include workspace install root
   targets.push({
-    dir: join(cwd, DIR_PATTERNS.AI),
+    dir: join(cwd, DEFAULT_INSTALL_ROOT),
     exts: [FILE_PATTERNS.MD_FILES],
-    label: DIR_PATTERNS.AI
+    label: DEFAULT_INSTALL_ROOT
   });
 
   // Add detected platforms' subdirectories (rules/commands/agents, etc.)

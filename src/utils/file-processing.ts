@@ -1,23 +1,13 @@
 import { join } from 'path';
-import { PLATFORM_AI, DIR_PATTERNS } from '../constants/index.js';
 import { logger } from './logger.js';
 import {
   exists,
-  readTextFile,
   listFiles,
   listDirectories,
   isDirectory,
   getStats
 } from './fs.js';
-import { calculateFileHash } from './hash-utils.js';
-import { mapPlatformFileToUniversal } from './platform-mapper.js';
 import { getRelativePathFromBase } from './path-normalization.js';
-import type { DiscoveredFile } from '../types/index.js';
-import { getPlatformDefinition, type Platform } from '../core/platforms.js';
-import { shouldIncludeMarkdownFile } from '../core/discovery/md-files-discovery.js';
-
-// Union type for modules that need to handle AI directory alongside platforms
-export type Platformish = Platform | typeof PLATFORM_AI;
 
 /**
  * Get file modification time
@@ -34,7 +24,8 @@ export async function getFileMtime(filePath: string): Promise<number> {
 export async function findFilesByExtension(
   dir: string,
   extensions: string[] = [],
-  baseDir: string = dir
+  baseDir: string = dir,
+  options: { excludeDirs?: Set<string> } = {}
 ): Promise<Array<{ fullPath: string; relativePath: string }>> {
   if (!(await exists(dir)) || !(await isDirectory(dir))) {
     return [];
@@ -57,9 +48,11 @@ export async function findFilesByExtension(
 
   // Recursively search subdirectories
   const subdirs = await listDirectories(dir);
-  const subFilesPromises = subdirs.map(subdir =>
-    findFilesByExtension(join(dir, subdir), extensions, baseDir)
-  );
+  const subFilesPromises = subdirs
+    .filter(subdir => !(options.excludeDirs && options.excludeDirs.has(subdir)))
+    .map(subdir =>
+      findFilesByExtension(join(dir, subdir), extensions, baseDir, options)
+    );
   const subFiles = await Promise.all(subFilesPromises);
   files.push(...subFiles.flat());
 
@@ -121,62 +114,4 @@ export async function findDirectoriesContainingFile<T = void>(
 
   await recurse(rootDir);
   return results;
-}
-
-/**
- * Process a single markdown file for discovery - common logic used by multiple discovery methods
- */
-export async function processMdFileForDiscovery(
-  file: { fullPath: string; relativePath: string },
-  packageName: string,
-  platform: Platformish,
-  registryPathPrefix: string,
-): Promise<DiscoveredFile | null> {
-  try {
-    const content = await readTextFile(file.fullPath);
-    // Frontmatter support removed - always include markdown files
-    const shouldInclude = true;
-
-    if (shouldInclude) {
-      try {
-        const mtime = await getFileMtime(file.fullPath);
-        const contentHash = await calculateFileHash(content);
-
-        // Compute registry path using new universal mapping
-        let registryPath: string;
-        if (platform !== PLATFORM_AI) {
-          // Universal file from platform directory - use the mapper to get universal path
-          const mapping = mapPlatformFileToUniversal(file.fullPath);
-          if (mapping) {
-            registryPath = join(mapping.subdir, mapping.relPath);
-          } else {
-            // Fallback to old logic
-            registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
-          }
-        } else {
-          // Platform-specific file or directory mode - use normal registry path logic
-          registryPath = registryPathPrefix ? join(registryPathPrefix, file.relativePath) : file.relativePath;
-        }
-
-        const sourceDir = platform === PLATFORM_AI ? DIR_PATTERNS.AI : getPlatformDefinition(platform).rootDir;
-        const result: DiscoveredFile = {
-          fullPath: file.fullPath,
-          relativePath: file.relativePath,
-          sourceDir,
-          registryPath,
-          mtime,
-          contentHash
-        };
-
-        // Frontmatter support removed - platformSpecific detection disabled
-
-        return result;
-      } catch (error) {
-        logger.warn(`Failed to process file metadata for ${file.relativePath}: ${error}`);
-      }
-    }
-  } catch (error) {
-    logger.warn(`Failed to read ${file.relativePath}: ${error}`);
-  }
-  return null;
 }

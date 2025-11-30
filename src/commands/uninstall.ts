@@ -14,7 +14,7 @@ import {
   FILE_PATTERNS,
   DEPENDENCY_ARRAYS,
 } from '../constants/index.js';
-import { getLocalPackageYmlPath, getAIDir, getLocalPackagesDir, getLocalPackageDir } from '../utils/paths.js';
+import { getLocalPackageYmlPath, getInstallRootDir, getLocalPackagesDir, getLocalPackageDir } from '../utils/paths.js';
 import { computeRootFileRemovalPlan, applyRootFileRemovals } from '../utils/root-file-uninstaller.js';
 import { normalizePathForProcessing } from '../utils/path-normalization.js';
 import { getAllPlatformDirs } from '../utils/platform-utils.js';
@@ -285,10 +285,10 @@ async function uninstallPackageCommand(
   await ensureRegistryDirectories();
   
   const cwd = process.cwd();
-  const aiRootPath = getAIDir(cwd);
+  const installRootPath = getInstallRootDir(cwd);
   const openpackagePath = targetDir && targetDir !== '.'
-    ? join(aiRootPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
-    : aiRootPath;
+    ? join(installRootPath, targetDir.startsWith('/') ? targetDir.slice(1) : targetDir)
+    : installRootPath;
   
 
   // Helper now available in fs utils: removeEmptyDirectories
