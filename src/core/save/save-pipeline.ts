@@ -1,10 +1,12 @@
+import { join } from 'path';
+
 import { CommandResult, PackageFile } from '../../types/index.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { logger } from '../../utils/logger.js';
 import { addPackageToYml, createBasicPackageYml } from '../../utils/package-management.js';
 import { performPlatformSync, PlatformSyncResult } from '../sync/platform-sync.js';
 import { LOG_PREFIXES, ERROR_MESSAGES, MODE_LABELS } from './constants.js';
-import { type PackageYmlInfo, loadAndPreparePackage } from './package-yml-generator.js';
+import { type PackageYmlInfo } from './package-yml-generator.js';
 import { isPackageTransitivelyCovered } from '../../utils/dependency-coverage.js';
 import { readPackageIndex, writePackageIndex } from '../../utils/package-index-yml.js';
 import { createWorkspaceHash, createWorkspaceTag } from '../../utils/version-generator.js';
@@ -16,6 +18,10 @@ import { writePackageYml } from '../../utils/package-yml.js';
 import { formatRegistryPathForDisplay } from '../../utils/registry-paths.js';
 import { resolveWorkspaceNames, SaveMode } from './name-resolution.js';
 import { resolvePackageFilesWithConflicts } from './save-conflict-resolution.js';
+import { detectPackageContext, getNoPackageDetectedMessage } from './package-detection.js';
+import { applyWorkspacePackageRename } from './workspace-rename.js';
+import { getLocalPackageDir } from '../../utils/paths.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 
 export { SaveMode } from './name-resolution.js';
 
@@ -32,25 +38,51 @@ export interface SavePipelineResult {
 }
 
 export async function runSavePipeline(
-  packageName: string,
+  packageName: string | undefined,
   options: SavePipelineOptions
 ): Promise<CommandResult<SavePipelineResult>> {
   const cwd = process.cwd();
   const { mode, force, rename } = options;
   const { op, opCap } = MODE_LABELS[mode];
 
+  const detectedContext = await detectPackageContext(cwd, packageName);
+  if (!detectedContext) {
+    return { success: false, error: getNoPackageDetectedMessage(packageName) };
+  }
+
   await createBasicPackageYml(cwd);
   await ensureRegistryDirectories();
 
-  const nameResolution = await resolveWorkspaceNames(packageName, rename, mode);
+  const packageInput = packageName ?? detectedContext.config.name;
+  const nameResolution = await resolveWorkspaceNames(packageInput, rename, mode);
 
   if (nameResolution.renameReason === 'scoping' && nameResolution.needsRename) {
     console.log(`✓ Using scoped package name '${nameResolution.finalName}' for ${op} operation`);
   }
 
-  let packageInfo: PackageYmlInfo = await loadAndPreparePackage(cwd, nameResolution.inputName, {
-    renameTo: nameResolution.needsRename ? nameResolution.finalName : undefined
-  });
+  let packageInfo: PackageYmlInfo = {
+    fullPath: detectedContext.packageYmlPath,
+    config: detectedContext.config,
+    isNewPackage: false,
+    isRootPackage: detectedContext.isCwdPackage
+  };
+
+  if (nameResolution.needsRename) {
+    await applyWorkspacePackageRename(cwd, packageInfo, nameResolution.finalName);
+
+    const updatedFullPath = packageInfo.isRootPackage
+      ? packageInfo.fullPath
+      : join(
+          getLocalPackageDir(cwd, nameResolution.finalName),
+          FILE_PATTERNS.PACKAGE_YML
+        );
+
+    packageInfo = {
+      ...packageInfo,
+      fullPath: updatedFullPath,
+      config: { ...packageInfo.config, name: nameResolution.finalName }
+    };
+  }
 
   const indexRecord = await readPackageIndex(cwd, packageInfo.config.name);
   const workspaceHash = createWorkspaceHash(cwd);
@@ -119,7 +151,11 @@ export async function runSavePipeline(
     effectiveConfig.name,
     effectiveConfig.version,
     packageFiles,
-    { force, conflictStrategy: force ? 'overwrite' : 'ask' }
+    {
+      force,
+      conflictStrategy: force ? 'overwrite' : 'ask',
+      skipRootSync: packageInfo.isRootPackage
+    }
   );
 
   if (!packageInfo.isRootPackage) {

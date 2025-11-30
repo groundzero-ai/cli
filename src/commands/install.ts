@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 
 import type { CommandResult, InstallOptions } from '../types/index.js';
-import type { InstallResolutionMode } from '../core/install/types.js';
 import { runBulkInstallPipeline } from '../core/install/bulk-install-pipeline.js';
 import { runInstallPipeline, determineResolutionMode } from '../core/install/install-pipeline.js';
 import { withErrorHandling } from '../utils/errors.js';

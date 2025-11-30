@@ -6,7 +6,7 @@
 import { getDetectedPlatforms } from '../platforms.js';
 import { logger } from '../../utils/logger.js';
 import type { PackageFile, InstallOptions } from '../../types/index.js';
-import { syncRootFiles } from './root-files-sync.js';
+import { syncRootFiles, type RootFileSyncResult } from './root-files-sync.js';
 import { applyPlannedSyncForPackageFiles } from '../../utils/index-based-installer.js';
 
 /**
@@ -18,13 +18,18 @@ export interface PlatformSyncResult {
   deleted?: string[];
 }
 
+export interface PlatformSyncOptions extends InstallOptions {
+  skipRootSync?: boolean;
+}
+
 export async function performPlatformSync(
   cwd: string,
   packageName: string,
   packageVersion: string,
   packageFiles: PackageFile[],
-  options: InstallOptions = {}
+  options: PlatformSyncOptions = {}
 ): Promise<PlatformSyncResult> {
+  const { skipRootSync, ...installOptions } = options;
   const detectedPlatforms = await getDetectedPlatforms(cwd);
 
   logger.debug(
@@ -32,8 +37,8 @@ export async function performPlatformSync(
   );
 
   const syncOptions: InstallOptions = {
-    ...options,
-    dryRun: options?.dryRun ?? false,
+    ...installOptions,
+    dryRun: installOptions?.dryRun ?? false,
     resolvedPlatforms: detectedPlatforms
   };
 
@@ -46,7 +51,9 @@ export async function performPlatformSync(
     syncOptions
   );
 
-  const rootSyncResult = await syncRootFiles(cwd, packageFiles, packageName, detectedPlatforms);
+  const rootSyncResult: RootFileSyncResult = skipRootSync
+    ? { created: [], updated: [], skipped: [] }
+    : await syncRootFiles(cwd, packageFiles, packageName, detectedPlatforms);
 
   return {
     created: [...plannerOutcome.operation.installedFiles, ...rootSyncResult.created],
