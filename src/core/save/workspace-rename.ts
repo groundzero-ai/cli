@@ -1,7 +1,5 @@
 import { dirname } from 'path';
 
-import { FILE_PATTERNS } from '../../constants/index.js';
-import { discoverPlatformFilesUnified } from '../discovery/platform-files-discovery.js';
 import { discoverAllRootFiles } from '../../utils/package-discovery.js';
 import { PackageYmlInfo } from './package-yml-generator.js';
 import { extractPackageSection, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';

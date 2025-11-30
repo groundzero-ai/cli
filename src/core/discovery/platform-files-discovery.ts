@@ -27,6 +27,9 @@ async function discoverPlatformFiles(
 
   // Process each universal subdir that this platform supports
   for (const [subdirName, subdirDef] of Object.entries(definition.subdirs)) {
+    if (!subdirDef) {
+      continue;
+    }
     const subdirPath = join(config.rootDir, subdirDef.path);
 
     if (await exists(subdirPath) && await isDirectory(subdirPath)) {
@@ -36,7 +39,8 @@ async function discoverPlatformFiles(
         {
           platform: config.platform,
           registryPathPrefix: subdirName,
-          sourceDirLabel: config.platform
+          sourceDirLabel: config.platform,
+          fileExtensions: subdirDef.readExts
         }
       );
       allFiles.push(...files);
@@ -79,7 +83,8 @@ async function discoverWorkspaceFiles(cwd: string, packageName: string): Promise
   return await discoverFiles(cwd, packageName, {
     registryPathPrefix: '',
     sourceDirLabel: 'workspace',
-    excludeDirs: WORKSPACE_DISCOVERY_EXCLUDES
+    excludeDirs: WORKSPACE_DISCOVERY_EXCLUDES,
+    fileExtensions: []
   });
 }
 

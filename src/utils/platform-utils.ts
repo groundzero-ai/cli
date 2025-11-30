@@ -24,7 +24,8 @@ import {
   createPlatformDirectories,
   validatePlatformStructure,
   getPlatformRulesDirFilePatterns,
-  getPlatformUniversalSubdirs
+  getPlatformUniversalSubdirs,
+  getPlatformDefinition
 } from '../core/platforms.js';
 import { discoverFiles } from '../core/discovery/file-discovery.js';
 
@@ -117,17 +118,20 @@ export async function cleanupPlatformFiles(
   try {
     // Build subdir list using centralized helper
     const subdirs = getPlatformUniversalSubdirs(targetDir, platform);
+    const definition = getPlatformDefinition(platform);
 
     // const filePatterns = getPlatformRulesDirFilePatterns(platform);
 
     for (const { dir, label } of subdirs) {
+      const subdirDef = definition.subdirs[label as keyof typeof definition.subdirs];
       const discovered = await discoverFiles(
         dir,
         packageName,
         {
           platform,
           registryPathPrefix: label,
-          sourceDirLabel: platform
+          sourceDirLabel: platform,
+          fileExtensions: subdirDef?.readExts ?? []
         }
       );
 

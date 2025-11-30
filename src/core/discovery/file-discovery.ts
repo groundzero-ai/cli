@@ -2,15 +2,24 @@ import { join } from 'path';
 import type { Platform } from '../platforms.js';
 import { getPlatformDefinition } from '../platforms.js';
 import { mapPlatformFileToUniversal } from '../../utils/platform-mapper.js';
-import { exists, isDirectory } from '../../utils/fs.js';
+import { exists, isDirectory, readTextFile } from '../../utils/fs.js';
 import { DiscoveredFile } from '../../types';
-import { discoverMdFiles } from './md-files-discovery.js';
+import { getFileMtime, findFilesByExtension } from '../../utils/file-processing.js';
+import { calculateFileHash } from '../../utils/hash-utils.js';
+import { logger } from '../../utils/logger.js';
 
 export interface DiscoveryPathContext {
   platform?: Platform;
   registryPathPrefix?: string;
   sourceDirLabel?: string;
   excludeDirs?: Set<string>;
+  /**
+   * Optional list of file extensions to consider when discovering files.
+   * - undefined -> include all files
+   * - [] -> include all files
+   * - ['.toml'] -> include only matching extensions
+   */
+  fileExtensions?: string[];
 }
 
 export async function obtainSourceDirAndRegistryPath(
@@ -43,35 +52,46 @@ export async function discoverFiles(
     return [];
   }
 
-  return await discoverMdFiles(rootDir, packageName, context);
+  const fileExtensions = context.fileExtensions ?? [];
+  const files = await findFilesByExtension(rootDir, fileExtensions, rootDir, {
+    excludeDirs: context.excludeDirs
+  });
+
+  const processPromises = files.map(async (file) =>
+    processFileForDiscovery(file, packageName, context)
+  );
+
+  const results = await Promise.all(processPromises);
+  return results.filter((result): result is DiscoveredFile => result !== null);
 }
 
-/**
- * Discover markdown files in a directory with specified patterns and inclusion rules
- */
-// export async function discoverFiles(
-//   directoryPath: string,
-//   packageName: string,
-//   platform: Platformish,
-//   registryPathPrefix: string = '',
-// ): Promise<DiscoveredFile[]> {
+async function processFileForDiscovery(
+  file: { fullPath: string; relativePath: string },
+  packageName: string,
+  context: DiscoveryPathContext
+): Promise<DiscoveredFile | null> {
+  try {
+    const content = await readTextFile(file.fullPath);
 
-//   if (!(await exists(directoryPath)) || !(await isDirectory(directoryPath))) {
-//     return [];
-//   }
+    try {
+      const mtime = await getFileMtime(file.fullPath);
+      const contentHash = await calculateFileHash(content);
+      const { sourceDir, registryPath } = await obtainSourceDirAndRegistryPath(file, context);
 
-//   // Find files with the specified patterns
-//   const allFiles: Array<{ fullPath: string; relativePath: string }> = [];
+      return {
+        fullPath: file.fullPath,
+        relativePath: file.relativePath,
+        sourceDir,
+        registryPath,
+        mtime,
+        contentHash
+      };
+    } catch (error) {
+      logger.warn(`Failed to process file metadata for ${file.relativePath}: ${error}`);
+    }
+  } catch (error) {
+    logger.warn(`Failed to read ${file.relativePath}: ${error}`);
+  }
 
-//   // Recursive search using findFilesByExtension
-//   const files = await findFilesByExtension(directoryPath, filePatterns);
-//   allFiles.push(...files);
-
-//   // Process files in parallel using the extracted helper
-//   const processPromises = allFiles.map(async (file) =>
-//     processMdFileForDiscovery(file, packageName, platform, registryPathPrefix)
-//   );
-
-//   const results = await Promise.all(processPromises);
-//   return results.filter((result): result is DiscoveredFile => result !== null);
-// }
+  return null;
+}
