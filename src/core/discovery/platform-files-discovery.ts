@@ -11,6 +11,7 @@ import type { DiscoveredFile } from '../../types/index.js';
 import { discoverFiles } from './file-discovery.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import { WORKSPACE_DISCOVERY_EXCLUDES } from '../../constants/workspace.js';
+import { DIR_PATTERNS } from '../../constants/index.js';
 
 /**
  * Process platform subdirectories (rules/commands/agents) within a base directory
@@ -37,16 +38,12 @@ async function discoverPlatformFiles(
     }
 
     if (await exists(subdirPath) && await isDirectory(subdirPath)) {
-      const files = await discoverFiles(
-        subdirPath,
-        packageName,
-        {
-          platform,
-          registryPathPrefix: subdirName,
-          sourceDirLabel: platform,
-          fileExtensions: allowedExts
-        }
-      );
+      const files = await discoverFiles(subdirPath, packageName, {
+        platform,
+        registryPathPrefix: `${DIR_PATTERNS.OPENPACKAGE}/${subdirName}`,
+        sourceDirLabel: platform,
+        fileExtensions: allowedExts
+      });
       allFiles.push(...files);
     }
   }

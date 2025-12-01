@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { determineResolutionMode, validateResolutionFlags } from '../src/commands/install.js';
+import { determineResolutionMode } from '../src/core/install/install-pipeline.js';
+import { validateResolutionFlags } from '../src/commands/install.js';
 
 const defaultMode = determineResolutionMode({});
 assert.equal(defaultMode, 'default');

@@ -4,7 +4,7 @@ import type { CommandResult } from '../../types/index.js';
 import type { Platform } from '../platforms.js';
 import { getDetectedPlatforms } from '../platforms.js';
 import { buildMappingAndWriteIndex } from './package-index-updater.js';
-import { readLocalPackageFilesForIndex } from '../../utils/package-local-files.js';
+import { readPackageFilesForRegistry } from '../../utils/package-copy.js';
 import {
   ensurePackageWithYml,
   type EnsurePackageWithYmlResult
@@ -135,7 +135,7 @@ async function updatePackageIndex(
   cwd: string,
   ensuredPackage: EnsurePackageWithYmlResult
 ): Promise<void> {
-  const packageFiles = await readLocalPackageFilesForIndex(ensuredPackage.packageDir);
+  const packageFiles = await readPackageFilesForRegistry(ensuredPackage.packageDir);
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
   await buildMappingAndWriteIndex(
     cwd,

@@ -13,6 +13,7 @@ import { packageManager } from '../core/package.js';
 import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { promptPackageDetailsForNamed } from './prompts.js';
+import { writePackageFilesToDirectory } from './package-copy.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -268,46 +269,9 @@ export async function writeLocalPackageFromRegistry(
   const pkg = await packageManager.loadPackage(packageName, version);
   const localPackageDir = getLocalPackageDir(cwd, packageName);
 
-  await ensureDir(localPackageDir);
-
-  // Build set of files that should exist after installation
-  const filesToKeep = new Set<string>(
-    pkg.files.map(file => file.path)
-  );
-  // Always preserve package.index.yml
-  filesToKeep.add(PACKAGE_INDEX_FILENAME);
-
-  // List all existing files in the directory
-  const existingFiles: string[] = [];
-  if (await exists(localPackageDir)) {
-    for await (const filePath of walkFiles(localPackageDir)) {
-      const relPath = relative(localPackageDir, filePath);
-      existingFiles.push(relPath);
-    }
-  }
-
-  // Remove files that are no longer in the package (except package.index.yml)
-  const filesToRemove = existingFiles.filter(file => !filesToKeep.has(file));
-  await Promise.all(
-    filesToRemove.map(async (file) => {
-      const filePath = join(localPackageDir, file);
-      try {
-        await remove(filePath);
-        logger.debug(`Removed residual file: ${filePath}`);
-      } catch (error) {
-        logger.warn(`Failed to remove residual file ${filePath}: ${error}`);
-      }
-    })
-  );
-
-  // Write all files from the package
-  await Promise.all(
-    pkg.files.map(async (file) => {
-      const targetPath = join(localPackageDir, file.path);
-      const encoding = (file.encoding ?? 'utf8') as BufferEncoding;
-      await writeTextFile(targetPath, file.content, encoding);
-    })
-  );
+  await writePackageFilesToDirectory(localPackageDir, pkg.files, {
+    preserveIndexFile: true
+  });
 }
 
 function rangeIncludesVersion(range: string, version: string): boolean {

@@ -11,8 +11,8 @@ import {
   getWorkspaceExt,
   type Platform
 } from '../core/platforms.js';
-import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
-import { getFirstPathComponent, parsePathWithPrefix } from './path-normalization.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { getFirstPathComponent, parsePathWithPrefix, normalizePathForProcessing } from './path-normalization.js';
 
 /**
  * Parse a registry or universal path to extract subdir and relative path info
@@ -28,9 +28,13 @@ export function parseUniversalPath(
   // Check if path starts with universal subdirs
   const universalSubdirs = Object.values(UNIVERSAL_SUBDIRS) as UniversalSubdir[];
   const knownPlatforms = getAllPlatforms({ includeDisabled: true }) as readonly Platform[];
+  const normalized = normalizePathForProcessing(path);
+  const withoutPrefix = normalized.startsWith(`${DIR_PATTERNS.OPENPACKAGE}/`)
+    ? normalized.slice(DIR_PATTERNS.OPENPACKAGE.length + 1)
+    : normalized;
 
   for (const subdir of universalSubdirs) {
-    const parsed = parsePathWithPrefix(path, subdir);
+    const parsed = parsePathWithPrefix(withoutPrefix, subdir);
     if (parsed) {
       const remainingPath = parsed.remaining;
       let platformSuffix: string | undefined;

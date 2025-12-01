@@ -6,7 +6,7 @@
 
 import { join } from 'path';
 import * as yaml from 'js-yaml';
-import { FILE_PATTERNS } from '../../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS } from '../../constants/index.js';
 import { exists, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { safePrompts } from '../../utils/prompts.js';
@@ -202,7 +202,7 @@ function getOverrideRelativePath(registryPath: string, platform: Platform): stri
   }
 
   const base = parsed.relPath.replace(/\.md$/, '');
-  return `${parsed.universalSubdir}/${base}.${platform}.yml`;
+  return `${DIR_PATTERNS.OPENPACKAGE}/${parsed.universalSubdir}/${base}.${platform}.yml`;
 }
 
 /**

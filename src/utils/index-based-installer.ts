@@ -19,12 +19,13 @@ import {
   UNIVERSAL_SUBDIRS
 } from '../constants/index.js';
 import type { Platform } from '../core/platforms.js';
-import { getFirstPathComponent, getPathAfterFirstComponent, normalizePathForProcessing } from './path-normalization.js';
+import { normalizePathForProcessing } from './path-normalization.js';
 import {
   isAllowedRegistryPath,
   isRootRegistryPath,
   isSkippableRegistryPath,
-  normalizeRegistryPath
+  normalizeRegistryPath,
+  extractUniversalSubdirInfo
 } from './registry-entry-filter.js';
 import { mapUniversalToPlatform } from './platform-mapper.js';
 import { safePrompts } from './prompts.js';
@@ -990,12 +991,11 @@ function mapRegistryPathToTargets(
   platforms: Platform[]
 ): PlannedTarget[] {
   const normalized = normalizeRegistryPath(registryPath);
-  const first = getFirstPathComponent(normalized);
   const targets: PlannedTarget[] = [];
 
-  const universalValues = Object.values(UNIVERSAL_SUBDIRS) as string[];
+  const universalInfo = extractUniversalSubdirInfo(normalized);
 
-  if (universalValues.includes(first)) {
+  if (universalInfo) {
     // Parse the universal path to detect platform suffix and normalized relative path
     const parsed = parseUniversalPath(normalized);
 
@@ -1023,10 +1023,10 @@ function mapRegistryPathToTargets(
     }
 
     // No platform suffix: map to all detected/selected platforms
-    const rel = parsed ? parsed.relPath : getPathAfterFirstComponent(normalized);
+    const rel = parsed ? parsed.relPath : universalInfo.relPath;
     for (const platform of platforms) {
       try {
-        const mapped = mapUniversalToPlatform(platform, first as UniversalSubdir, rel);
+        const mapped = mapUniversalToPlatform(platform, universalInfo.universalSubdir as UniversalSubdir, rel);
         const targetAbs = join(cwd, mapped.absFile);
         targets.push({
           absPath: targetAbs,

@@ -3,26 +3,19 @@ import {
   FILE_PATTERNS,
   UNIVERSAL_SUBDIRS
 } from '../constants/index.js';
-import { getFirstPathComponent, normalizePathForProcessing } from './path-normalization.js';
+import {
+  getFirstPathComponent,
+  getPathAfterFirstComponent,
+  normalizePathForProcessing
+} from './path-normalization.js';
 import { getAllRootFiles, isPlatformId } from '../core/platforms.js';
 
 const ROOT_REGISTRY_FILE_NAMES = getAllRootFiles();
+const UNIVERSAL_VALUES: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
+const OPENPACKAGE_PREFIX = `${DIR_PATTERNS.OPENPACKAGE}/`;
 
 export function normalizeRegistryPath(registryPath: string): string {
-  let normalized = normalizePathForProcessing(registryPath);
-
-  const openpackagePrefix = `${DIR_PATTERNS.OPENPACKAGE}/`;
-  if (normalized.startsWith(openpackagePrefix)) {
-    const withoutPrefix = normalized.slice(openpackagePrefix.length);
-    const firstComponent = getFirstPathComponent(withoutPrefix);
-    const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
-
-    if (firstComponent && universalValues.includes(firstComponent)) {
-      normalized = withoutPrefix;
-    }
-  }
-
-  return normalized;
+  return normalizePathForProcessing(registryPath);
 }
 
 export function isRootRegistryPath(registryPath: string): boolean {
@@ -38,24 +31,27 @@ export function isSkippableRegistryPath(registryPath: string): boolean {
     return true;
   }
 
-  const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
-
-  if (!universalValues.some(subdir => normalized.startsWith(`${subdir}/`))) {
+  const universalInfo = extractUniversalSubdirInfo(normalized);
+  if (!universalInfo) {
     return false;
   }
 
-  if (!normalized.endsWith(FILE_PATTERNS.YML_FILE)) {
+  const normalizedRel = normalizePathForProcessing(universalInfo.relPath);
+  if (!normalizedRel.endsWith(FILE_PATTERNS.YML_FILE)) {
     return false;
   }
 
-  const lastDot = normalized.lastIndexOf('.');
-  const secondLastDot = normalized.lastIndexOf('.', lastDot - 1);
-
-  if (secondLastDot === -1) {
+  const fileName = normalizedRel.split('/').pop();
+  if (!fileName) {
     return false;
   }
 
-  const possiblePlatform = normalized.slice(secondLastDot + 1, lastDot);
+  const parts = fileName.split('.');
+  if (parts.length < 3) {
+    return false;
+  }
+
+  const possiblePlatform = parts[parts.length - 2];
   return isPlatformId(possiblePlatform);
 }
 
@@ -71,6 +67,28 @@ export function isAllowedRegistryPath(registryPath: string): boolean {
   }
 
   return true;
+}
+
+export function extractUniversalSubdirInfo(
+  registryPath: string
+): { universalSubdir: string; relPath: string } | null {
+  const normalized = normalizeRegistryPath(registryPath);
+  if (!normalized.startsWith(OPENPACKAGE_PREFIX)) {
+    return null;
+  }
+
+  const afterPrefix = normalized.slice(OPENPACKAGE_PREFIX.length);
+  const firstComponent = getFirstPathComponent(afterPrefix);
+
+  if (!firstComponent || !UNIVERSAL_VALUES.includes(firstComponent)) {
+    return null;
+  }
+
+  const relPath = getPathAfterFirstComponent(afterPrefix) ?? '';
+  return {
+    universalSubdir: firstComponent,
+    relPath
+  };
 }
 
 

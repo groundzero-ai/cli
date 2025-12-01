@@ -2,10 +2,9 @@ import { dirname, join } from 'path';
 import type { PackageFile } from '../../types/index.js';
 import type { PackageYmlInfo } from './package-yml-generator.js';
 import { FILE_PATTERNS } from '../../constants/index.js';
-import { PACKAGE_INDEX_FILENAME, readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
+import { readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
 import { ensureDir, exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
-import { findFilesByExtension } from '../../utils/file-processing.js';
 import {
   isAllowedRegistryPath,
   normalizeRegistryPath,
@@ -32,6 +31,7 @@ import {
   resolveGroup,
   resolveRootGroup
 } from './save-conflict-resolver.js';
+import { readPackageFilesForRegistry } from '../../utils/package-copy.js';
 
 export interface SaveConflictResolutionOptions {
   force?: boolean;
@@ -128,7 +128,7 @@ export async function resolvePackageFilesWithConflicts(
     }
 
     // After resolving root conflicts, return filtered files from local dir
-    return await readFilteredLocalPackageFiles(packageDir);
+    return await readPackageFilesForRegistry(packageDir);
   }
 
   const fileKeys = new Set<string>();
@@ -263,7 +263,7 @@ export async function resolvePackageFilesWithConflicts(
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
   await applyFrontmatterMergePlans(packageDir, frontmatterPlans);
-  return await readFilteredLocalPackageFiles(packageDir);
+  return await readPackageFilesForRegistry(packageDir);
 }
 
 async function writeRootSelection(
@@ -290,44 +290,6 @@ async function writeRootSelection(
   } catch (error) {
     logger.warn(`Failed to write root file ${FILE_PATTERNS.AGENTS_MD}: ${error}`);
   }
-}
-
-/**
- * Check if a path is a YAML override file that should be included despite isAllowedRegistryPath filtering.
- * YAML override files are files like "rules/agent.claude.yml" that contain platform-specific frontmatter.
- */
-function isYamlOverrideFileForSave(normalizedPath: string): boolean {
-  // Must be skippable (which includes YAML override check) but not package.yml
-  return normalizedPath !== FILE_PATTERNS.PACKAGE_YML && isSkippableRegistryPath(normalizedPath);
-}
-
-async function readFilteredLocalPackageFiles(packageDir: string): Promise<PackageFile[]> {
-  const entries = await findFilesByExtension(packageDir, [], packageDir);
-  const files: PackageFile[] = [];
-
-  for (const entry of entries) {
-    const normalizedPath = normalizeRegistryPath(entry.relativePath);
-    if (normalizedPath === PACKAGE_INDEX_FILENAME) continue;
-
-    // Allow files that are either allowed by normal rules, root files, YAML override files,
-    // or any root-level files adjacent to package.yml (including package.yml itself)
-    const isAllowed = isAllowedRegistryPath(normalizedPath);
-    const isRoot = isRootRegistryPath(normalizedPath);
-    const isYamlOverride = isYamlOverrideFileForSave(normalizedPath);
-    const isPackageYml = normalizedPath === FILE_PATTERNS.PACKAGE_YML;
-    const isRootLevelFile = !normalizedPath.includes('/');
-
-    if (!isAllowed && !isRoot && !isYamlOverride && !isPackageYml && !isRootLevelFile) continue;
-
-    const content = await readTextFile(entry.fullPath);
-    files.push({
-      path: normalizedPath,
-      content,
-      encoding: UTF8_ENCODING
-    });
-  }
-
-  return files;
 }
 
 

@@ -1,4 +1,4 @@
-import { join, basename } from 'path';
+import { join, basename, dirname } from 'path';
 import {
   getPlatformDefinition,
   getDetectedPlatforms,
@@ -7,9 +7,8 @@ import {
   getPackageExt,
   type Platform
 } from '../core/platforms.js';
-import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
-import { normalizePathForProcessing, getRelativePathParts, findSubpathIndex } from './path-normalization.js';
-import { getAllPlatformDirs } from './platform-utils.js';
+import { UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { normalizePathForProcessing, findSubpathIndex } from './path-normalization.js';
 
 /**
  * Normalize platform names from command line input
@@ -167,26 +166,12 @@ export function getAllPlatformSubdirs(
  * Uses platform definitions for scalable platform detection
  */
 export function resolveTargetDirectory(targetPath: string, registryPath: string): string {
-  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
+  const normalized = normalizePathForProcessing(registryPath);
+  const dir = dirname(normalized);
+  if (!dir || dir === '.' || dir === '') {
     return targetPath;
   }
-
-  // Check if the first part is a known platform directory
-  const pathParts = getRelativePathParts(registryPath);
-  const firstPart = pathParts[0];
-
-  const platformDirectories = getAllPlatformDirs();
-  if (platformDirectories.includes(firstPart)) {
-    return join(targetPath, firstPart);
-  }
-
-  const universalValues: string[] = Object.values(UNIVERSAL_SUBDIRS as Record<string, string>);
-  if (universalValues.includes(firstPart)) {
-    return join(targetPath, DIR_PATTERNS.OPENPACKAGE);
-  }
-
-  // For all other paths, return target path as-is
-  return targetPath;
+  return join(targetPath, dir);
 }
 
 /**
@@ -194,20 +179,7 @@ export function resolveTargetDirectory(targetPath: string, registryPath: string)
  * Handles platform-specific file naming conventions using platform definitions
  */
 export function resolveTargetFilePath(targetDir: string, registryPath: string): string {
-  if (!registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
-    return join(targetDir, registryPath);
-  }
-
-  // Check if the file is in a platform-specific commands directory
-  // If so, just use the basename (they already have the correct structure)
-  for (const platform of getAllPlatforms()) {
-    const definition = getPlatformDefinition(platform);
-    const commandsSubdir = definition.subdirs[UNIVERSAL_SUBDIRS.COMMANDS];
-    if (commandsSubdir && registryPath.includes(join(definition.rootDir, commandsSubdir.path))) {
-      return join(targetDir, basename(registryPath));
-    }
-  }
-
-  // For all other files, preserve the full relative path structure
-  return join(targetDir, registryPath);
+  const normalized = normalizePathForProcessing(registryPath);
+  const fileName = basename(normalized);
+  return join(targetDir, fileName || normalized);
 }

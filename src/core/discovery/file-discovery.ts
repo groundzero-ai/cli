@@ -7,6 +7,7 @@ import { DiscoveredFile } from '../../types';
 import { getFileMtime, findFilesByExtension } from '../../utils/file-processing.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { logger } from '../../utils/logger.js';
+import { DIR_PATTERNS } from '../../constants/index.js';
 
 export interface DiscoveryPathContext {
   platform?: Platform;
@@ -32,7 +33,9 @@ export async function obtainSourceDirAndRegistryPath(
 
   if (context.platform) {
     const mapping = mapPlatformFileToUniversal(file.fullPath);
-    const registryPath = mapping ? join(mapping.subdir, mapping.relPath) : fallbackPath;
+    const registryPath = mapping
+      ? join(DIR_PATTERNS.OPENPACKAGE, mapping.subdir, mapping.relPath)
+      : fallbackPath;
     const sourceDir = context.sourceDirLabel ?? getPlatformDefinition(context.platform).rootDir;
     return { sourceDir, registryPath };
   }

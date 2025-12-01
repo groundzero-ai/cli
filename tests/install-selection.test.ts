@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 const { formatSelectionSummary } = await import(
-  new URL('../src/commands/install.js', import.meta.url).href
+  new URL('../src/core/install/install-reporting.js', import.meta.url).href
 );
 const { selectInstallVersionUnified } = await import(
   new URL('../src/core/install/version-selection.js', import.meta.url).href

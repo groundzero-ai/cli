@@ -11,20 +11,23 @@ assert.equal(isAllowedRegistryPath('src/features/foo/bar.md'), true);
 
 // Root and YAML override paths remain blocked
 assert.equal(isAllowedRegistryPath('AGENTS.md'), false);
-assert.equal(isAllowedRegistryPath('rules/agent.cursor.yml'), false);
+// YAML override paths with canonical .openpackage/ prefix should be blocked
+assert.equal(isAllowedRegistryPath('.openpackage/rules/agent.cursor.yml'), false);
+// Legacy paths without .openpackage/ prefix are allowed (not recognized as universal subdir)
+assert.equal(isAllowedRegistryPath('rules/agent.cursor.yml'), true);
 
 // Resolve target directory/file for generic workspace paths should preserve structure
 const packageDir = '/tmp/package-example';
 const genericDir = resolveTargetDirectory(packageDir, 'guides/intro.md');
-assert.equal(genericDir, packageDir);
+assert.equal(genericDir, join(packageDir, 'guides'));
 const genericPath = resolveTargetFilePath(genericDir, 'guides/intro.md');
-assert.equal(genericPath, join(packageDir, 'guides/intro.md'));
+assert.equal(genericPath, join(packageDir, 'guides', 'intro.md'));
 
-// Universal subdir paths still map under .openpackage
-const universalDir = resolveTargetDirectory(packageDir, 'rules/example.md');
-assert.equal(universalDir, join(packageDir, DIR_PATTERNS.OPENPACKAGE));
-const universalPath = resolveTargetFilePath(universalDir, 'rules/example.md');
-assert.equal(universalPath, join(universalDir, 'rules/example.md'));
+// Universal subdir paths with .openpackage prefix preserve the full structure
+const universalDir = resolveTargetDirectory(packageDir, '.openpackage/rules/example.md');
+assert.equal(universalDir, join(packageDir, DIR_PATTERNS.OPENPACKAGE, 'rules'));
+const universalPath = resolveTargetFilePath(universalDir, '.openpackage/rules/example.md');
+assert.equal(universalPath, join(universalDir, 'example.md'));
 
 console.log('workspace path handling tests passed');
 

@@ -8,7 +8,7 @@ import { join, relative } from 'path';
 import { exists, ensureDir } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import { getPathLeaf } from '../utils/path-normalization.js';
-import { FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS, UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { mapPlatformFileToUniversal } from '../utils/platform-mapper.js';
 import { parseUniversalPath } from '../utils/platform-file.js';
 import { readJsoncFileSync } from '../utils/jsonc.js';
@@ -389,9 +389,14 @@ export function getPlatformUniversalSubdirs(cwd: string, platform: Platform): Ar
  * Check if a normalized path represents a universal subdir
  */
 export function isUniversalSubdirPath(normalizedPath: string): boolean {
-  return Object.values(UNIVERSAL_SUBDIRS).some(subdir =>
-    normalizedPath.startsWith(`${subdir}/`) || normalizedPath === subdir
-  );
+  return Object.values(UNIVERSAL_SUBDIRS).some(subdir => {
+    return (
+      normalizedPath.startsWith(`${subdir}/`) ||
+      normalizedPath === subdir ||
+      normalizedPath.startsWith(`${DIR_PATTERNS.OPENPACKAGE}/${subdir}/`) ||
+      normalizedPath === `${DIR_PATTERNS.OPENPACKAGE}/${subdir}`
+    );
+  });
 }
 
 /**
