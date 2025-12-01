@@ -7,7 +7,7 @@
 import { join } from 'path';
 import * as yaml from 'js-yaml';
 import { DIR_PATTERNS, FILE_PATTERNS } from '../../constants/index.js';
-import { exists, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
+import { exists, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
@@ -290,6 +290,14 @@ export async function resolveOverrideDecisions(
       } else if (localMtime !== undefined && localMtime >= workspaceMtime) {
         finalFrontmatter = normalizedLocal;
         source = 'local';
+      } else if (localMtime === undefined) {
+        // SAFETY: If we cannot determine mtime, preserve local data.
+        // The workspace local cache is the source of truth - when in doubt, don't discard it.
+        logger.debug(
+          `Unable to determine mtime for override ${relativePath}, preserving local data as source of truth`
+        );
+        finalFrontmatter = normalizedLocal;
+        source = 'local';
       }
     } else if (normalizedLocal !== undefined && normalizedWorkspace === undefined) {
       finalFrontmatter = normalizedLocal;
@@ -418,8 +426,14 @@ async function applyOverrideFiles(
     const finalFrontmatter = resolution.finalFrontmatter;
 
     if (finalFrontmatter === undefined) {
+      // SAFETY: Never automatically delete override files from local cache.
+      // The workspace local cache is the source of truth for package content.
+      // If cleanup is needed, it should be done through explicit user action
+      // (e.g., manually deleting the file or using a dedicated prune command).
       if (await exists(overridePath)) {
-        await remove(overridePath);
+        logger.debug(
+          `Preserving existing override file (computed frontmatter is empty): ${resolution.relativePath}`
+        );
       }
       continue;
     }
