@@ -4,10 +4,10 @@
  * and platform-specific override files during save operations.
  */
 
-import { join } from 'path';
+import { dirname, join } from 'path';
 import * as yaml from 'js-yaml';
 import { DIR_PATTERNS, FILE_PATTERNS } from '../../constants/index.js';
-import { exists, readTextFile, writeTextFile } from '../../utils/fs.js';
+import { ensureDir, exists, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { getFileMtime } from '../../utils/file-processing.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
@@ -49,12 +49,14 @@ export interface OverrideResolution {
   localMtime?: number;
   finalFrontmatter?: any;
   source: 'workspace' | 'local';
+  hadConflict: boolean;
+  effectiveFrontmatter: any;
 }
 
 export interface FrontmatterMergePlan {
   registryPath: string;
   workspaceEntries: WorkspaceFrontmatterEntry[];
-  universalFrontmatter?: Record<string, any>;
+  localUniversalFrontmatter?: Record<string, any>;
   platformOverrides: Map<Platform, any>;
   overrideDecisions?: Map<Platform, OverrideResolution>;
 }
@@ -62,8 +64,12 @@ export interface FrontmatterMergePlan {
 
 /**
  * Build frontmatter merge plans for all markdown files with platform-specific variants.
+ * Uses the local universal frontmatter as the source of truth.
  */
-export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): FrontmatterMergePlan[] {
+export async function buildFrontmatterMergePlans(
+  packageDir: string,
+  groups: SaveCandidateGroup[]
+): Promise<FrontmatterMergePlan[]> {
   const plans: FrontmatterMergePlan[] = [];
 
   for (const group of groups) {
@@ -74,6 +80,11 @@ export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): Frontm
     // Only create merge plans for files that exist locally for this package
     // This prevents creating overrides for workspace-only files from other packages
     if (!group.local) {
+      continue;
+    }
+
+    const universalPath = group.local.fullPath ?? join(packageDir, group.registryPath);
+    if (!(await exists(universalPath))) {
       continue;
     }
 
@@ -104,12 +115,17 @@ export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): Frontm
       });
     }
 
-    const universalFrontmatter = computeSharedFrontmatter(workspaceEntries);
+    const localUniversalFrontmatter = group.local.frontmatter
+      ? normalizeFrontmatter(group.local.frontmatter)
+      : {};
     const platformOverrides = new Map<Platform, any>();
 
     for (const entry of workspaceEntries) {
       const base = cloneYaml(entry.frontmatter);
-      const override = universalFrontmatter ? subtractKeys(base, universalFrontmatter) : base;
+      const override =
+        Object.keys(localUniversalFrontmatter).length > 0
+          ? subtractKeys(base, localUniversalFrontmatter)
+          : base;
       const normalizedOverride =
         override && (!isPlainObject(override) || Object.keys(override).length > 0)
           ? override
@@ -120,7 +136,10 @@ export function buildFrontmatterMergePlans(groups: SaveCandidateGroup[]): Frontm
     plans.push({
       registryPath: group.registryPath,
       workspaceEntries,
-      universalFrontmatter: universalFrontmatter && Object.keys(universalFrontmatter).length > 0 ? universalFrontmatter : undefined,
+      localUniversalFrontmatter:
+        localUniversalFrontmatter && Object.keys(localUniversalFrontmatter).length > 0
+          ? cloneYaml(localUniversalFrontmatter)
+          : undefined,
       platformOverrides
     });
   }
@@ -195,7 +214,7 @@ function intersectFrontmatter(
 /**
  * Get the relative path for a platform-specific override file.
  */
-function getOverrideRelativePath(registryPath: string, platform: Platform): string | null {
+export function getOverrideRelativePath(registryPath: string, platform: Platform): string | null {
   const parsed = parseUniversalPath(registryPath, { allowPlatformSuffix: false });
   if (!parsed) {
     return null;
@@ -251,14 +270,9 @@ export async function resolveOverrideDecisions(
       localFrontmatter = undefined;
     }
 
-    const adjustedLocal =
-      localFrontmatter && plan.universalFrontmatter
-        ? subtractKeys(cloneYaml(localFrontmatter), plan.universalFrontmatter)
-        : localFrontmatter;
-
     const normalizedLocal =
-      adjustedLocal && (!isPlainObject(adjustedLocal) || Object.keys(adjustedLocal).length > 0)
-        ? adjustedLocal
+      localFrontmatter && (!isPlainObject(localFrontmatter) || Object.keys(localFrontmatter).length > 0)
+        ? localFrontmatter
         : undefined;
 
     const normalizedWorkspace =
@@ -268,12 +282,16 @@ export async function resolveOverrideDecisions(
 
     // Deep-merge-based equality: compare merged results (base + override)
     // This matches the runtime behavior of mergePlatformYamlOverride
-    const baseForMerge = plan.universalFrontmatter ? cloneYaml(plan.universalFrontmatter) : {};
+    const baseForMerge = plan.localUniversalFrontmatter
+      ? cloneYaml(plan.localUniversalFrontmatter)
+      : {};
     const mergedWorkspace = deepMerge(cloneYaml(baseForMerge), normalizedWorkspace ?? {});
     const mergedLocal = deepMerge(cloneYaml(baseForMerge), normalizedLocal ?? {});
     const differs = !deepEqualYaml(mergedWorkspace, mergedLocal);
+    const hadConflict = differs && normalizedLocal !== undefined;
     let finalFrontmatter = normalizedWorkspace;
     let source: 'workspace' | 'local' = 'workspace';
+    let effectiveFrontmatter = mergedWorkspace;
 
     if (differs && normalizedLocal !== undefined) {
       if (localMtime !== undefined && workspaceMtime > localMtime) {
@@ -286,10 +304,12 @@ export async function resolveOverrideDecisions(
         if (decision === 'local') {
           finalFrontmatter = normalizedLocal;
           source = 'local';
+          effectiveFrontmatter = mergedLocal;
         }
       } else if (localMtime !== undefined && localMtime >= workspaceMtime) {
         finalFrontmatter = normalizedLocal;
         source = 'local';
+        effectiveFrontmatter = mergedLocal;
       } else if (localMtime === undefined) {
         // SAFETY: If we cannot determine mtime, preserve local data.
         // The workspace local cache is the source of truth - when in doubt, don't discard it.
@@ -298,10 +318,12 @@ export async function resolveOverrideDecisions(
         );
         finalFrontmatter = normalizedLocal;
         source = 'local';
+        effectiveFrontmatter = mergedLocal;
       }
     } else if (normalizedLocal !== undefined && normalizedWorkspace === undefined) {
       finalFrontmatter = normalizedLocal;
       source = 'local';
+      effectiveFrontmatter = mergedLocal;
     }
 
     resolutions.set(platform, {
@@ -312,7 +334,9 @@ export async function resolveOverrideDecisions(
       localFrontmatter: normalizedLocal,
       localMtime,
       finalFrontmatter,
-      source
+      source,
+      hadConflict,
+      effectiveFrontmatter
     });
   }
 
@@ -348,22 +372,6 @@ async function promptYamlOverrideDecision(
 }
 
 /**
- * Create a preview string from YAML data for display in prompts.
- */
-function createYamlPreview(data: any): string {
-  if (!data || (isPlainObject(data) && Object.keys(data).length === 0)) {
-    return '[empty]';
-  }
-
-  const yamlText = dumpYaml(data);
-  const lines = yamlText.split('\n');
-  if (lines.length <= 5) {
-    return yamlText;
-  }
-  return `${lines.slice(0, 5).join('\n')}…`;
-}
-
-/**
  * Apply frontmatter merge plans: resolve conflicts, update universal files, and write overrides.
  */
 export async function applyFrontmatterMergePlans(
@@ -371,8 +379,15 @@ export async function applyFrontmatterMergePlans(
   plans: FrontmatterMergePlan[]
 ): Promise<void> {
   for (const plan of plans) {
-    plan.overrideDecisions = await resolveOverrideDecisions(packageDir, plan);
-    await updateUniversalMarkdown(packageDir, plan);
+    const overrideDecisions = await resolveOverrideDecisions(packageDir, plan);
+    plan.overrideDecisions = overrideDecisions;
+    const hasConflicts = Array.from(overrideDecisions.values()).some(
+      resolution => resolution.hadConflict
+    );
+
+    if (!hasConflicts) {
+      await updateUniversalMarkdown(packageDir, plan);
+    }
     await applyOverrideFiles(packageDir, plan);
   }
 }
@@ -392,10 +407,7 @@ async function updateUniversalMarkdown(
 
   const originalContent = await readTextFile(universalPath);
   const split = splitFrontmatter(originalContent);
-  const desiredFrontmatter =
-    plan.universalFrontmatter && Object.keys(plan.universalFrontmatter).length > 0
-      ? cloneYaml(plan.universalFrontmatter)
-      : undefined;
+  const desiredFrontmatter = computeSharedFrontmatter(plan.workspaceEntries);
   const updatedContent = composeMarkdown(desiredFrontmatter, split.body);
 
   if (updatedContent !== originalContent) {
@@ -421,15 +433,43 @@ async function applyOverrideFiles(
     return;
   }
 
+  const universalContent = await readTextFile(universalPath);
+  const universalSplit = splitFrontmatter(universalContent);
+  const diskUniversalFrontmatter =
+    universalSplit.frontmatter !== null
+      ? normalizeFrontmatter(universalSplit.frontmatter)
+      : {};
+
   for (const resolution of plan.overrideDecisions.values()) {
     const overridePath = join(packageDir, resolution.relativePath);
-    const finalFrontmatter = resolution.finalFrontmatter;
+    const { hadConflict, source, effectiveFrontmatter } = resolution;
 
-    if (finalFrontmatter === undefined) {
-      // SAFETY: Never automatically delete override files from local cache.
-      // The workspace local cache is the source of truth for package content.
-      // If cleanup is needed, it should be done through explicit user action
-      // (e.g., manually deleting the file or using a dedicated prune command).
+    // Start from the resolved override (may be workspace or local)
+    const selectedFrontmatter = effectiveFrontmatter ?? {};
+
+    // Only when there was a YAML conflict AND user explicitly chose "Workspace",
+    // we should update the .yml file even if workspace override is empty.
+    // This ensures the local override is replaced with the workspace state.
+    const overrideDiff = subtractKeys(cloneYaml(selectedFrontmatter), diskUniversalFrontmatter);
+
+    const normalizedOverride =
+      overrideDiff && (!isPlainObject(overrideDiff) || Object.keys(overrideDiff).length > 0)
+        ? overrideDiff
+        : undefined;
+
+    const userChoseWorkspaceInConflict = hadConflict && source === 'workspace';
+
+    if (normalizedOverride === undefined) {
+      if (userChoseWorkspaceInConflict) {
+        await ensureDir(dirname(overridePath));
+        const emptyYaml = '{}\n';
+        if ((await exists(overridePath)) && (await readTextFile(overridePath)) === emptyYaml) {
+          continue;
+        }
+        await writeTextFile(overridePath, emptyYaml, UTF8_ENCODING);
+        continue;
+      }
+
       if (await exists(overridePath)) {
         logger.debug(
           `Preserving existing override file (computed frontmatter is empty): ${resolution.relativePath}`
@@ -438,7 +478,8 @@ async function applyOverrideFiles(
       continue;
     }
 
-    const yamlContent = `${dumpYaml(finalFrontmatter)}\n`;
+    await ensureDir(dirname(overridePath));
+    const yamlContent = `${dumpYaml(normalizedOverride)}\n`;
     if ((await exists(overridePath)) && (await readTextFile(overridePath)) === yamlContent) {
       continue;
     }

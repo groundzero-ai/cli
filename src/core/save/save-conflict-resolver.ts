@@ -1,12 +1,14 @@
 import { join } from 'path';
 
 import { exists } from '../../utils/fs.js';
+import { DIR_PATTERNS, FILE_PATTERNS } from '../../constants/index.js';
 import { logger } from '../../utils/logger.js';
 import { safePrompts, promptPlatformSpecificSelection, getContentPreview } from '../../utils/prompts.js';
 import { createPlatformSpecificRegistryPath } from '../../utils/platform-specific-paths.js';
 import { SaveCandidate } from './save-types.js';
 import type { SaveConflictResolution } from './save-types.js';
 import type { SaveCandidateGroup } from './save-yml-resolution.js';
+import { getOverrideRelativePath } from './save-yml-resolution.js';
 
 export function buildCandidateGroups(
   localCandidates: SaveCandidate[],
@@ -37,6 +39,7 @@ export async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
     }
 
     const filtered: SaveCandidate[] = [];
+    const isUniversalSubdirPath = group.registryPath.startsWith(`${DIR_PATTERNS.OPENPACKAGE}/`);
     for (const candidate of group.workspace) {
       const platform = candidate.platform;
       if (!platform || platform === 'ai') {
@@ -51,10 +54,34 @@ export async function pruneWorkspaceCandidatesWithLocalPlatformVariants(
       }
 
       const platformFullPath = join(packageDir, platformRegistryPath);
-      if (await exists(platformFullPath)) {
+      const hasPlatformFile = await exists(platformFullPath);
+
+      let hasPlatformOverride = false;
+      let overrideRelative: string | null = null;
+      if (group.registryPath.endsWith(FILE_PATTERNS.MD_FILES)) {
+        overrideRelative = getOverrideRelativePath(group.registryPath, platform);
+        if (overrideRelative) {
+          const overrideFullPath = join(packageDir, overrideRelative);
+          hasPlatformOverride = await exists(overrideFullPath);
+        }
+      }
+
+      // For universal subdir content (e.g. .openpackage/agents/foo.md), we should not
+      // suppress workspace candidates just because a YAML override exists; overrides
+      // are frontmatter-only. We still want body conflicts from workspace to be seen.
+      //
+      // We only prune due to overrides for non-universal paths; for universal paths,
+      // we only prune when there is an actual platform-specific file.
+      const shouldPrune =
+        hasPlatformFile || (!isUniversalSubdirPath && hasPlatformOverride);
+
+      if (shouldPrune) {
+        const reason = hasPlatformFile
+          ? platformRegistryPath
+          : overrideRelative;
         logger.debug(
           `Skipping workspace candidate ${candidate.displayPath} for ${group.registryPath} ` +
-            `because local platform-specific file ${platformRegistryPath} already exists`
+            `because local platform-specific data (${reason}) already exists`
         );
         continue;
       }

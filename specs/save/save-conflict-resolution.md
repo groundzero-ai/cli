@@ -123,3 +123,24 @@ This mechanism lets a user:
 - Keep a single universal file.
 - Simultaneously maintain richer, platform‑specific versions where needed.
 
+---
+
+#### 8. Escalation from YAML Overrides to Full Platform Markdown
+
+When a registry path participates in the frontmatter/YAML override pipeline (e.g. `.openpackage/agents/*.md`) **and** the user marks one or more workspace candidates as platform‑specific during conflict resolution:
+
+- **Universal body update**
+  - The universal markdown file keeps its existing frontmatter.
+  - If the selected universal candidate’s body differs, only the **markdown body** is updated.
+  - Frontmatter for that path continues to be managed by the YAML override pipeline.
+
+- **Escalating a platform to full `.platform.md`**
+  - Each marked platform‑specific workspace candidate is written to a platform‑specific markdown path (e.g. `yaml-test.qwen.md`) using the **full candidate content** (frontmatter + body).
+  - For root conflicts, only the section body is used (consistent with root handling elsewhere).
+
+- **Interaction with YAML overrides**
+  - If a platform has an existing YAML override file (e.g. `yaml-test.qwen.yml`) and is escalated to a full `.platform.md`:
+    - The corresponding YAML override file is removed as redundant.
+    - That platform is removed from the frontmatter merge plan for that registry path.
+  - After escalation, the remaining frontmatter/YAML plans (if any) are applied only for platforms that still use YAML overrides, ensuring universal frontmatter is not recomputed based on escalated full‑markdown variants.
+

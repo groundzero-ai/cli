@@ -4,12 +4,9 @@ import type { PackageYmlInfo } from './package-yml-generator.js';
 import { FILE_PATTERNS } from '../../constants/index.js';
 import { readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
-import { ensureDir, exists, isDirectory, readTextFile, writeTextFile } from '../../utils/fs.js';
+import { ensureDir, exists, isDirectory, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
 import {
-  isAllowedRegistryPath,
   normalizeRegistryPath,
-  isRootRegistryPath,
-  isSkippableRegistryPath
 } from '../../utils/registry-entry-filter.js';
 import { UTF8_ENCODING } from './constants.js';
 import { createPlatformSpecificRegistryPath } from '../../utils/platform-specific-paths.js';
@@ -22,7 +19,7 @@ import {
 import {
   buildFrontmatterMergePlans,
   applyFrontmatterMergePlans,
-  type SaveCandidateGroup
+  getOverrideRelativePath,
 } from './save-yml-resolution.js';
 import { loadLocalCandidates, discoverWorkspaceCandidates } from './save-candidate-loader.js';
 import {
@@ -32,6 +29,7 @@ import {
   resolveRootGroup
 } from './save-conflict-resolver.js';
 import { readPackageFilesForRegistry } from '../../utils/package-copy.js';
+import { composeMarkdown } from '../../utils/markdown-frontmatter.js';
 
 export interface SaveConflictResolutionOptions {
   force?: boolean;
@@ -166,7 +164,9 @@ export async function resolvePackageFilesWithConflicts(
   const workspaceCandidates = [...filteredWorkspacePlatformCandidates, ...filteredWorkspaceRootCandidates];
 
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
-  const frontmatterPlans = buildFrontmatterMergePlans(groups);
+  let frontmatterPlans = await buildFrontmatterMergePlans(packageDir, groups);
+  const frontmatterPlanMap = new Map(frontmatterPlans.map(plan => [plan.registryPath, plan]));
+  const pathsWithFrontmatterPlans = new Set(frontmatterPlanMap.keys());
 
   // Prune platform-specific workspace candidates that already have local platform-specific files
   await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageDir, groups);
@@ -200,6 +200,27 @@ export async function resolvePackageFilesWithConflicts(
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
       await writeRootSelection(packageDir, packageInfo.config.name, group.local, selection);
       // Continue to platform-specific persistence below (don't skip it)
+    } else if (pathsWithFrontmatterPlans.has(group.registryPath)) {
+      // Only update markdown body; frontmatter will be handled by merge plans
+      if (group.local) {
+        const localBody = group.local.markdownBody ?? group.local.content;
+        const selectionBody = selection.markdownBody ?? selection.content;
+
+        if ((selectionBody ?? '').trim() !== (localBody ?? '').trim()) {
+          const targetPath = join(packageDir, group.registryPath);
+          const localFrontmatter = group.local.frontmatter;
+          const updatedContent = composeMarkdown(localFrontmatter, selectionBody);
+
+          try {
+            await writeTextFile(targetPath, updatedContent, UTF8_ENCODING);
+            logger.debug(
+              `Updated markdown body (frontmatter deferred to merge plan): ${group.registryPath}`
+            );
+          } catch (error) {
+            logger.warn(`Failed to update markdown body for ${group.registryPath}: ${error}`);
+          }
+        }
+      }
     } else {
       if (group.local && selection.contentHash !== group.local.contentHash) {
         // Overwrite local file content with selected content
@@ -255,6 +276,27 @@ export async function resolvePackageFilesWithConflicts(
 
         await writeTextFile(targetPath, contentToWrite, UTF8_ENCODING);
         logger.debug(`Wrote platform-specific file: ${platformRegistryPath}`);
+
+        if (pathsWithFrontmatterPlans.has(group.registryPath)) {
+          const overrideRelativePath = getOverrideRelativePath(group.registryPath, platform);
+          if (overrideRelativePath) {
+            const overrideFullPath = join(packageDir, overrideRelativePath);
+            if (await exists(overrideFullPath)) {
+              await remove(overrideFullPath);
+              logger.debug(`Removed redundant platform override: ${overrideRelativePath}`);
+            }
+          }
+
+          const plan = frontmatterPlanMap.get(group.registryPath);
+          if (plan) {
+            plan.workspaceEntries = plan.workspaceEntries.filter(entry => entry.platform !== platform);
+            plan.platformOverrides.delete(platform);
+            if (plan.workspaceEntries.length === 0) {
+              frontmatterPlanMap.delete(group.registryPath);
+              pathsWithFrontmatterPlans.delete(group.registryPath);
+            }
+          }
+        }
       } catch (error) {
         logger.warn(`Failed to write platform-specific file ${platformRegistryPath}: ${error}`);
       }
@@ -262,6 +304,7 @@ export async function resolvePackageFilesWithConflicts(
   }
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
+  frontmatterPlans = frontmatterPlans.filter(plan => plan.workspaceEntries.length > 0);
   await applyFrontmatterMergePlans(packageDir, frontmatterPlans);
   return await readPackageFilesForRegistry(packageDir);
 }
