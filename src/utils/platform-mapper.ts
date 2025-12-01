@@ -5,8 +5,10 @@ import {
   getAllPlatforms,
   getWorkspaceExt,
   getPackageExt,
+  isExtAllowed,
   type Platform
 } from '../core/platforms.js';
+import { logger } from './logger.js';
 import { UNIVERSAL_SUBDIRS, type UniversalSubdir } from '../constants/index.js';
 import { normalizePathForProcessing, findSubpathIndex } from './path-normalization.js';
 
@@ -48,6 +50,14 @@ export function mapUniversalToPlatform(
   const packageExt = packageExtMatch?.[0] ?? '';
   const baseName = packageExt ? relPath.slice(0, -packageExt.length) : relPath;
   const targetExt = packageExt ? getWorkspaceExt(subdirDef, packageExt) : '';
+  if (targetExt && !isExtAllowed(subdirDef, targetExt)) {
+    logger.warn(
+      `Skipped ${relPath} for platform ${platform}: extension ${targetExt} is not allowed in ${subdir}`
+    );
+    throw new Error(
+      `Extension ${targetExt} is not allowed for subdir ${subdir} on platform ${platform}`
+    );
+  }
   const targetFileName = packageExt ? `${baseName}${targetExt}` : relPath;
   const absFile = join(absDir, targetFileName);
 
