@@ -1,14 +1,23 @@
 ### Registry Payload and 1:1 Copy
 
-The **registry payload** for a given version is defined as:
+The **registry payload** for a given version is defined by two layers of rules:
 
-- All files under `<package-root>/` **except**:
-  - `package.index.yml`
-  - Anything under `packages/` (nested packages are separate units)
-- Optional include/exclude filters in `package.yml` further refine the payload:
-  - `include` (array) lists glob-like patterns relative to the package root; when present, only matching files are considered.
-  - `exclude` (array) removes matching files after the include rules are applied.
-  - These filters can narrow the payload but can never override the hard exclusions above.
+1. **Static rules**
+   - Always exclude:
+     - `package.index.yml`
+     - Anything under `packages/` (nested packages are separate units)
+   - Always include (cannot be excluded):
+     - `.openpackage/package.yml` (or the package-local `package.yml`)
+   - Included by default (but removable via manifest `exclude`):
+     - Every platform root file declared in `platforms.jsonc` (e.g. `CLAUDE.md`, `WARP.md`, `AGENTS.md`) when it exists in the package tree
+     - Any `.openpackage/<universal-subdir>/…` directory (agents, rules, commands, skills, etc.) that exists for the package
+   - Everything else starts excluded by default.
+
+2. **Manifest filters**
+   - `include` (array) expands the payload by listing additional glob-like patterns relative to the package root.
+   - `exclude` (array) removes matches after the include rules are applied (but never overrides the hard includes/excludes above).
+
+   > Note: Newly created packages under `.openpackage/packages/<name>/` default their `package.yml` to `include: ["**"]`, so they start out including all files until the author narrows the list. Root workspace `package.yml` files remain untouched unless the user explicitly adds include/exclude entries.
 
 Concretely:
 

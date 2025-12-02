@@ -9,7 +9,7 @@ import { PackageRemoteResolutionOutcome } from './types.js';
 import { logger } from '../../utils/logger.js';
 import { VersionConflictError, UserCancellationError } from '../../utils/errors.js';
 import { normalizePlatforms } from '../../utils/platform-mapper.js';
-import { createBasicPackageYml } from '../../utils/package-management.js';
+import { createWorkspacePackageYml } from '../../utils/package-management.js';
 import { checkAndHandleAllPackageConflicts } from '../../utils/install-conflict-handler.js';
 import { discoverAndCategorizeFiles } from '../../utils/install-file-discovery.js';
 import { installRootFilesFromMap } from '../../utils/root-file-installer.js';
@@ -75,7 +75,7 @@ export async function prepareInstallEnvironment(
   options: InstallOptions
 ): Promise<{ specifiedPlatforms: string[] | undefined }> {
   await ensureRegistryDirectories();
-  await createBasicPackageYml(cwd);
+  await createWorkspacePackageYml(cwd);
 
   const specifiedPlatforms = normalizePlatforms(options.platforms);
 

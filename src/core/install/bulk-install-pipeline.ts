@@ -1,7 +1,7 @@
 import type { CommandResult, InstallOptions, PackageYml } from '../../types/index.js';
 
 import { ensureRegistryDirectories, listPackageVersions } from '../directory.js';
-import { createBasicPackageYml } from '../../utils/package-management.js';
+import { createWorkspacePackageYml } from '../../utils/package-management.js';
 import { getLocalPackageYmlPath } from '../../utils/paths.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
 import { withOperationErrorHandling } from '../../utils/error-handling.js';
@@ -30,7 +30,7 @@ export async function runBulkInstallPipeline(
   const cwd = process.cwd();
 
   await ensureRegistryDirectories();
-  await createBasicPackageYml(cwd);
+  await createWorkspacePackageYml(cwd);
 
   const packageYmlPath = getLocalPackageYmlPath(cwd);
   const cwdConfig: PackageYml = await withOperationErrorHandling(

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 
 import { createPackageFileFilter } from '../src/utils/package-filters.js';
 import { readPackageFilesForRegistry } from '../src/utils/package-copy.js';
+import { ensurePackageWithYml, createWorkspacePackageYml } from '../src/utils/package-management.js';
+import { parsePackageYml } from '../src/utils/package-yml.js';
 
 async function runUnitTests(): Promise<void> {
   const filter = createPackageFileFilter({
@@ -51,7 +53,71 @@ async function runIntegrationTest(): Promise<void> {
 
     const files = await readPackageFilesForRegistry(tempDir);
     const paths = files.map(file => file.path).sort();
-    assert.deepEqual(paths, ['.openpackage/agents/keep.md', 'README.md']);
+    assert.deepEqual(
+      paths,
+      ['.openpackage/agents/keep.md', '.openpackage/skills/ignore.md', 'README.md', 'package.yml']
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function runDefaultFilteringTest(): Promise<void> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'package-filters-default-'));
+
+  try {
+    await mkdir(join(tempDir, '.openpackage/agents'), { recursive: true });
+
+    await writeFile(
+      join(tempDir, 'package.yml'),
+      ['name: defaults-test', 'version: "1.0.0"', ''].join('\n'),
+      'utf8'
+    );
+    await writeFile(join(tempDir, '.openpackage/agents/keep.md'), 'keep', 'utf8');
+    await writeFile(join(tempDir, 'README.md'), '# Defaults', 'utf8');
+
+    const files = await readPackageFilesForRegistry(tempDir);
+    const paths = files.map(file => file.path).sort();
+    assert.deepEqual(paths, ['.openpackage/agents/keep.md', 'package.yml']);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function runNestedManifestTest(): Promise<void> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'package-filters-nested-'));
+
+  try {
+    await mkdir(join(tempDir, '.openpackage/agents'), { recursive: true });
+
+    await writeFile(
+      join(tempDir, '.openpackage/package.yml'),
+      ['name: nested-test', 'version: "1.0.0"', ''].join('\n'),
+      'utf8'
+    );
+    await writeFile(join(tempDir, '.openpackage/agents/keep.md'), 'keep', 'utf8');
+
+    const files = await readPackageFilesForRegistry(tempDir);
+    const paths = files.map(file => file.path).sort();
+    assert.deepEqual(paths, ['.openpackage/agents/keep.md', '.openpackage/package.yml']);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function runEnsurePackageDefaultsTest(): Promise<void> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'package-ensure-default-'));
+
+  try {
+    const result = await ensurePackageWithYml(tempDir, 'nested-test', { defaultVersion: '0.1.0' });
+    assert.deepEqual(result.packageConfig.include, ['**']);
+
+    const nestedConfig = await parsePackageYml(result.packageYmlPath);
+    assert.deepEqual(nestedConfig.include, ['**']);
+
+    await createWorkspacePackageYml(tempDir);
+    const rootConfig = await parsePackageYml(join(tempDir, '.openpackage', 'package.yml'));
+    assert.equal(rootConfig.include, undefined);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -59,6 +125,9 @@ async function runIntegrationTest(): Promise<void> {
 
 await runUnitTests();
 await runIntegrationTest();
+await runDefaultFilteringTest();
+await runNestedManifestTest();
+await runEnsurePackageDefaultsTest();
 
 console.log('package-filters tests passed');
 

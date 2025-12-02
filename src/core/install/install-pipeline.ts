@@ -19,7 +19,7 @@ import { pullMissingDependenciesIfNeeded } from './remote-flow.js';
 import { handleDryRunMode } from './dry-run.js';
 import { displayInstallationResults, formatSelectionSummary } from './install-reporting.js';
 import { buildNoVersionFoundError } from './install-errors.js';
-import { createBasicPackageYml, addPackageToYml, writeLocalPackageFromRegistry } from '../../utils/package-management.js';
+import { createWorkspacePackageYml, addPackageToYml, writeLocalPackageFromRegistry } from '../../utils/package-management.js';
 import { resolvePlatforms } from './platform-resolution.js';
 import { getLocalPackageYmlPath, getInstallRootDir, isRootPackage } from '../../utils/paths.js';
 import { exists } from '../../utils/fs.js';
@@ -88,7 +88,7 @@ export async function runInstallPipeline(
   }
 
   await ensureRegistryDirectories();
-  await createBasicPackageYml(cwd);
+  await createWorkspacePackageYml(cwd);
 
   const canonicalPlan = await determineCanonicalInstallPlan({
     cwd,

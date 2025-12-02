@@ -30,12 +30,12 @@ export async function ensureLocalOpenPackageStructure(cwd: string): Promise<void
 }
 
 /**
- * Create a basic package.yml file if it doesn't exist
+ * Create a basic package.yml file for workspace if it doesn't exist
  * Shared utility for both install and save commands
  * @param force - If true, overwrite existing package.yml
  * @returns the package.yml if it was created, null if it already existed and force=false
  */
-export async function createBasicPackageYml(cwd: string, force: boolean = false): Promise<PackageYml | null> {
+export async function createWorkspacePackageYml(cwd: string, force: boolean = false): Promise<PackageYml | null> {
   await ensureLocalOpenPackageStructure(cwd);
 
   const packageYmlPath = getLocalPackageYmlPath(cwd);
@@ -107,6 +107,14 @@ export async function ensurePackageWithYml(
         version: options.defaultVersion ?? '0.1.0'
       };
     }
+
+    if (!packageConfig.include || packageConfig.include.length === 0) {
+      packageConfig = {
+        ...packageConfig,
+        include: ['**']
+      };
+    }
+
     await writePackageYml(packageYmlPath, packageConfig);
     logger.info(`Created new package '${packageConfig.name}@${packageConfig.version}' at ${relative(cwd, packageDir)}`);
   }

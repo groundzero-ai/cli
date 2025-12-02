@@ -1,8 +1,8 @@
 import { Command } from 'commander';
-import { basename, join, relative } from 'path';
+import { basename, relative } from 'path';
 import { CommandResult, PackageYml } from '../types/index.js';
 import { parsePackageYml, writePackageYml } from '../utils/package-yml.js';
-import { promptPackageDetails, promptPackageDetailsForNamed } from '../utils/prompts.js';
+import { promptPackageDetails } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 import { displayPackageConfig } from '../utils/formatters.js';
 import { withErrorHandling, UserCancellationError } from '../utils/errors.js';
@@ -10,7 +10,7 @@ import { exists, ensureDir } from '../utils/fs.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { getLocalOpenPackageDir, getLocalPackageYmlPath, getLocalPackageDir } from '../utils/paths.js';
 import { normalizePackageName, validatePackageName } from '../utils/package-name.js';
-import { createBasicPackageYml, addPackageToYml } from '../utils/package-management.js';
+import { createWorkspacePackageYml, addPackageToYml, ensurePackageWithYml } from '../utils/package-management.js';
 
 /**
  * Initialize package.yml command implementation
@@ -115,66 +115,43 @@ async function initPackageInPackagesDir(packageName: string, force?: boolean): P
   const normalizedPackageName = normalizePackageName(packageName);
 
   // Ensure root .openpackage/package.yml exists; do not overwrite if present
-  await createBasicPackageYml(cwd, false);
+  await createWorkspacePackageYml(cwd, false);
 
-  // Get the package directory path (.openpackage/packages/{packageName})
   const packageDir = getLocalPackageDir(cwd, normalizedPackageName);
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
-
   logger.info(`Initializing package.yml for '${packageName}' in directory: ${packageDir}`);
 
-  let packageConfig: PackageYml;
+  try {
+    const ensuredPackage = await ensurePackageWithYml(cwd, normalizedPackageName, {
+      interactive: true
+    });
 
-  // Check if package.yml already exists
-  if (await exists(packageYmlPath)) {
-    logger.info('Found existing package.yml, parsing...');
-    try {
-      packageConfig = await parsePackageYml(packageYmlPath);
-      displayPackageConfig(packageConfig, relative(process.cwd(), packageYmlPath), true);
-
-      // Link package dependency into root package.yml
-      await addPackageToYml(cwd, normalizedPackageName, packageConfig.version);
-
-      return {
-        success: true,
-        data: packageConfig
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `Failed to parse existing package.yml: ${error}`
-      };
+    if (ensuredPackage.isNew) {
+      logger.info('No package.yml found, creating new package...');
+    } else {
+      logger.info('Found existing package.yml, parsing...');
     }
-  } else {
-    logger.info('No package.yml found, creating new package...');
 
-    try {
-      // Ensure the package directory exists
-      await ensureDir(packageDir);
+    displayPackageConfig(
+      ensuredPackage.packageConfig,
+      relative(process.cwd(), ensuredPackage.packageYmlPath),
+      !ensuredPackage.isNew
+    );
 
-      // Prompt for package details (skip name prompt since it's provided)
-      packageConfig = await promptPackageDetailsForNamed(normalizedPackageName);
+    // Link package dependency into root package.yml
+    await addPackageToYml(cwd, ensuredPackage.normalizedName, ensuredPackage.packageConfig.version);
 
-      // Create the package.yml file
-      await writePackageYml(packageYmlPath, packageConfig);
-      displayPackageConfig(packageConfig, relative(process.cwd(), packageYmlPath), false);
-
-      // Link package dependency into root package.yml
-      await addPackageToYml(cwd, normalizedPackageName, packageConfig.version);
-
-      return {
-        success: true,
-        data: packageConfig
-      };
-    } catch (error) {
-      if (error instanceof UserCancellationError) {
-        throw error; // Re-throw to be handled by withErrorHandling
-      }
-      return {
-        success: false,
-        error: `Failed to create package.yml: ${error}`
-      };
+    return {
+      success: true,
+      data: ensuredPackage.packageConfig
+    };
+  } catch (error) {
+    if (error instanceof UserCancellationError) {
+      throw error; // Re-throw to be handled by withErrorHandling
     }
+    return {
+      success: false,
+      error: `Failed to initialize package.yml: ${error}`
+    };
   }
 }
 

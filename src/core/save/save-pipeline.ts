@@ -3,7 +3,7 @@ import { join } from 'path';
 import { CommandResult, PackageFile } from '../../types/index.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { logger } from '../../utils/logger.js';
-import { addPackageToYml, createBasicPackageYml } from '../../utils/package-management.js';
+import { addPackageToYml, createWorkspacePackageYml } from '../../utils/package-management.js';
 import { performPlatformSync, PlatformSyncResult } from '../sync/platform-sync.js';
 import { LOG_PREFIXES, ERROR_MESSAGES, MODE_LABELS } from './constants.js';
 import { type PackageYmlInfo } from './package-yml-generator.js';
@@ -50,7 +50,7 @@ export async function runSavePipeline(
     return { success: false, error: getNoPackageDetectedMessage(packageName) };
   }
 
-  await createBasicPackageYml(cwd);
+  await createWorkspacePackageYml(cwd);
   await ensureRegistryDirectories();
 
   const packageInput = packageName ?? detectedContext.config.name;

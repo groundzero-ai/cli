@@ -11,6 +11,8 @@
 import { join, relative, dirname } from 'path';
 
 import type { PackageFile } from '../types/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS } from '../constants/index.js';
+import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
 import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import {
   exists,
@@ -24,6 +26,21 @@ import { logger } from './logger.js';
 import { normalizePathForProcessing } from './path-normalization.js';
 import { parsePackageYml } from './package-yml.js';
 import { createPackageFileFilter, isExcludedFromPackage } from './package-filters.js';
+
+interface ManifestInfo {
+  fullPath: string;
+  relativePath: string;
+}
+
+interface DefaultIncludeConfig {
+  includePatterns: string[];
+  hardIncludeFiles: Set<string>;
+}
+
+const MANIFEST_RELATIVE_PATHS = Object.freeze([
+  FILE_PATTERNS.PACKAGE_YML,
+  `${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`
+]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reading package files
@@ -74,20 +91,109 @@ export async function readPackageFilesForRegistry(packageDir: string): Promise<P
  * Returns a pass-all filter if no manifest or no patterns are defined.
  */
 async function loadManifestFilter(packageDir: string): Promise<(path: string) => boolean> {
-  const packageYmlPath = join(packageDir, 'package.yml');
+  const manifestInfo = await findPackageManifest(packageDir);
 
-  try {
-    if (await exists(packageYmlPath)) {
-      const config = await parsePackageYml(packageYmlPath);
-      if (config.include || config.exclude) {
-        return createPackageFileFilter({ include: config.include, exclude: config.exclude });
-      }
+  let manifestConfigInclude: string[] | undefined;
+  let manifestConfigExclude: string[] | undefined;
+
+  if (manifestInfo) {
+    try {
+      const config = await parsePackageYml(manifestInfo.fullPath);
+      manifestConfigInclude = config.include;
+      manifestConfigExclude = config.exclude;
+    } catch (error) {
+      logger.warn(`Failed to load manifest filters from ${manifestInfo.fullPath}: ${String(error)}`);
     }
-  } catch (error) {
-    logger.warn(`Failed to load manifest filters from ${packageYmlPath}: ${String(error)}`);
   }
 
-  return () => true;
+  const defaults = await buildDefaultIncludeConfig(packageDir, manifestInfo);
+
+  const includePatterns = [
+    ...defaults.includePatterns,
+    ...(manifestConfigInclude ?? [])
+  ];
+  const excludePatterns = manifestConfigExclude ?? [];
+
+  const baseFilter = createPackageFileFilter({
+    include: includePatterns,
+    exclude: excludePatterns
+  });
+
+  return (relativePath: string): boolean => {
+    const normalized = normalizePathForProcessing(relativePath);
+    if (!normalized) {
+      return false;
+    }
+
+    if (defaults.hardIncludeFiles.has(normalized)) {
+      return true;
+    }
+
+    return baseFilter(relativePath);
+  };
+}
+
+async function findPackageManifest(packageDir: string): Promise<ManifestInfo | null> {
+  for (const relativePath of MANIFEST_RELATIVE_PATHS) {
+    const fullPath = join(packageDir, relativePath);
+    if (await exists(fullPath)) {
+      return { fullPath, relativePath };
+    }
+  }
+  return null;
+}
+
+async function buildDefaultIncludeConfig(
+  packageDir: string,
+  manifestInfo: ManifestInfo | null
+): Promise<DefaultIncludeConfig> {
+  const includePatterns = new Set<string>();
+  const hardIncludeFiles = new Set<string>();
+
+  for (const relPath of MANIFEST_RELATIVE_PATHS) {
+    includePatterns.add(relPath);
+    hardIncludeFiles.add(normalizePathForProcessing(relPath));
+  }
+
+  if (manifestInfo) {
+    includePatterns.add(manifestInfo.relativePath);
+    hardIncludeFiles.add(normalizePathForProcessing(manifestInfo.relativePath));
+  }
+
+  const rootFiles = new Set<string>([FILE_PATTERNS.AGENTS_MD]);
+  const universalSubdirs = new Set<string>();
+
+  for (const platform of getAllPlatforms({ includeDisabled: true })) {
+    const definition = getPlatformDefinition(platform);
+    if (definition.rootFile) {
+      rootFiles.add(definition.rootFile);
+    }
+
+    for (const subdirKey of Object.keys(definition.subdirs ?? {})) {
+      universalSubdirs.add(subdirKey);
+    }
+  }
+
+  for (const rootFile of rootFiles) {
+    includePatterns.add(rootFile);
+  }
+
+  await Promise.all(
+    Array.from(universalSubdirs).map(async subdirName => {
+      const canonicalDir = `${DIR_PATTERNS.OPENPACKAGE}/${subdirName}`;
+      const absoluteDir = join(packageDir, canonicalDir);
+      if (!(await exists(absoluteDir))) {
+        return;
+      }
+
+      includePatterns.add(`${canonicalDir}/**`);
+    })
+  );
+
+  return {
+    includePatterns: Array.from(includePatterns),
+    hardIncludeFiles
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
