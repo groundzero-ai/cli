@@ -1,21 +1,9 @@
-import { join } from 'path';
-
-import { FILE_PATTERNS } from '../../constants/index.js';
-import { PackageYml } from '../../types/index.js';
 import { normalizePackageName } from '../../utils/package-name.js';
-import { writePackageYml } from '../../utils/package-yml.js';
 import { logger } from '../../utils/logger.js';
-import { getLocalPackageDir } from '../../utils/paths.js';
+import { getPackageFilesDir, getPackageYmlPath, type PackageContext } from '../package-context.js';
 import { ensurePackageWithYml } from '../../utils/package-management.js';
 import { DEFAULT_VERSION, LOG_PREFIXES } from './constants.js';
 import { applyWorkspacePackageRename } from './workspace-rename.js';
-
-export type PackageYmlInfo = {
-  fullPath: string;
-  config: PackageYml;
-  isNewPackage: boolean;
-  isRootPackage: boolean;
-};
 
 export interface LoadPackageOptions {
   renameTo?: string;
@@ -24,7 +12,7 @@ export interface LoadPackageOptions {
 export async function readOrCreateBasePackageYml(
   cwd: string,
   name: string
-): Promise<PackageYmlInfo> {
+): Promise<PackageContext> {
   const normalizedName = normalizePackageName(name);
   const ensured = await ensurePackageWithYml(cwd, normalizedName, {
     defaultVersion: DEFAULT_VERSION
@@ -41,10 +29,14 @@ export async function readOrCreateBasePackageYml(
   }
 
   return {
-    fullPath: ensured.packageYmlPath,
+    name: ensured.normalizedName,
+    version: ensured.packageConfig.version,
     config: ensured.packageConfig,
-    isNewPackage: ensured.isNew,
-    isRootPackage: false
+    packageYmlPath: ensured.packageYmlPath,
+    packageFilesDir: ensured.packageDir,
+    location: 'nested',
+    isCwdPackage: false,
+    isNew: ensured.isNew
   };
 }
 
@@ -52,27 +44,29 @@ export async function loadAndPreparePackage(
   cwd: string,
   packageName: string,
   options: LoadPackageOptions = {}
-): Promise<PackageYmlInfo> {
+): Promise<PackageContext> {
   const renameTarget = options.renameTo ? normalizePackageName(options.renameTo) : undefined;
-  const info = await readOrCreateBasePackageYml(cwd, packageName);
+  const ctx = await readOrCreateBasePackageYml(cwd, packageName);
 
-  if (!renameTarget || renameTarget === info.config.name) {
-    return info;
+  if (!renameTarget || renameTarget === ctx.config.name) {
+    return ctx;
   }
 
   logger.debug(`Renaming package during workspace load`, {
-    from: info.config.name,
+    from: ctx.config.name,
     to: renameTarget
   });
 
-  await applyWorkspacePackageRename(cwd, info, renameTarget);
+  await applyWorkspacePackageRename(cwd, ctx, renameTarget);
 
-  const targetDir = getLocalPackageDir(cwd, renameTarget);
-  const packageYmlPath = join(targetDir, FILE_PATTERNS.PACKAGE_YML);
+  const packageYmlPath = getPackageYmlPath(cwd, 'nested', renameTarget);
+  const packageFilesDir = getPackageFilesDir(cwd, 'nested', renameTarget);
 
   return {
-    ...info,
-    fullPath: packageYmlPath,
-    config: { ...info.config, name: renameTarget }
+    ...ctx,
+    name: renameTarget,
+    packageYmlPath,
+    packageFilesDir,
+    config: { ...ctx.config, name: renameTarget }
   };
 }

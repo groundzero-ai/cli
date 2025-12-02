@@ -14,6 +14,7 @@ import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import { FILE_PATTERNS } from '../constants/index.js';
 import { promptPackageDetailsForNamed } from './prompts.js';
 import { writePackageFilesToDirectory } from './package-copy.js';
+import { getPackageFilesDir, getPackageYmlPath } from '../core/package-context.js';
 
 /**
  * Ensure local OpenPackage directory structure exists
@@ -77,7 +78,8 @@ export interface EnsurePackageWithYmlResult {
 }
 
 /**
- * Ensure a package directory and package.yml exist, optionally prompting for details.
+ * Ensure a nested package directory and package.yml exist, optionally prompting for details.
+ * This is for NESTED packages only. Root packages use different flow.
  */
 export async function ensurePackageWithYml(
   cwd: string,
@@ -87,8 +89,8 @@ export async function ensurePackageWithYml(
   await ensureLocalOpenPackageStructure(cwd);
 
   const normalizedName = normalizePackageName(packageName);
-  const packageDir = getLocalPackageDir(cwd, normalizedName);
-  const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
+  const packageDir = getPackageFilesDir(cwd, 'nested', normalizedName);
+  const packageYmlPath = getPackageYmlPath(cwd, 'nested', normalizedName);
 
   await ensureDir(packageDir);
 

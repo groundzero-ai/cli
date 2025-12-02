@@ -6,7 +6,7 @@
  */
 
 import type { PackageFile, PackageYml } from '../../types/index.js';
-import type { PackageYmlInfo } from './package-yml-generator.js';
+import type { PackageContext } from '../package-context.js';
 import { normalizePackageName } from '../../utils/package-name.js';
 import { remove } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
@@ -36,15 +36,15 @@ export interface SaveToRegistryResult {
  * - Clears any existing version directory before writing (idempotent overwrites).
  * - Writes all provided files to the registry version directory.
  *
- * @param packageInfo - Metadata about the package (name, version, paths).
+ * @param packageContext - Metadata about the package (name, version, paths).
  * @param files - The registry payload to persist.
  * @returns Result indicating success/failure and the normalized config.
  */
 export async function savePackageToRegistry(
-  packageInfo: PackageYmlInfo,
+  packageContext: PackageContext,
   files: PackageFile[]
 ): Promise<SaveToRegistryResult> {
-  const { config } = packageInfo;
+  const { config } = packageContext;
   const normalizedName = normalizePackageName(config.name);
   const normalizedConfig: PackageYml = { ...config, name: normalizedName };
 

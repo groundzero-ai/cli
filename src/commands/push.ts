@@ -23,7 +23,7 @@ import { FILE_PATTERNS } from '../constants/index.js';
 import { exists } from '../utils/fs.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
-import type { PackageYmlInfo } from '../core/save/package-yml-generator.js';
+import { type PackageContext } from '../core/package-context.js';
 import { getCurrentUsername } from '../core/api-keys.js';
 
 async function tryRenameWorkspacePackage(
@@ -40,14 +40,20 @@ async function tryRenameWorkspacePackage(
     }
 
     const config = await parsePackageYml(packageYmlPath);
-    const packageInfo: PackageYmlInfo = {
-      fullPath: packageYmlPath,
+    
+    // Construct full PackageContext for nested package
+    const packageContext: PackageContext = {
+      name: config.name,
+      version: config.version,
       config,
-      isNewPackage: false,
-      isRootPackage: false
+      packageYmlPath,
+      packageFilesDir: packageDir,
+      location: 'nested',
+      isCwdPackage: false,
+      isNew: false
     };
 
-    await applyWorkspacePackageRename(cwd, packageInfo, newName);
+    await applyWorkspacePackageRename(cwd, packageContext, newName);
     console.log(`✓ Updated workspace package name: ${oldName} → ${newName}`);
   } catch (error) {
     logger.debug('Workspace package rename skipped', {

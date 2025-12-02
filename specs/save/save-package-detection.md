@@ -45,9 +45,16 @@ Any directory that contains `.openpackage/package.yml` is considered a **valid p
 
 Each detected package context includes:
 
-- Package directory.
-- Path to `package.yml`.
+- **Package directory** (logical package root for reporting).
+- **Path to `package.yml`** (authoritative manifest location).
+- **Package files directory** (`packageFilesDir` in code):
+  - For the **root package**: `<cwd>/.openpackage/…`
+  - For **nested packages**: `<cwd>/.openpackage/packages/<name>/…`
 - Parsed `package.yml` configuration.
 - Whether it is the **root package** or **nested**.
 - Whether the package's directory is the same as `cwd`.
+
+All downstream save/pack logic (file discovery, conflict resolution, registry copy, and platform
+sync) reads and writes package content relative to this **package files directory**, so that
+operations behave consistently for both root and nested packages.
 

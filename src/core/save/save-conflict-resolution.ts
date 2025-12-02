@@ -1,9 +1,8 @@
 import { dirname, join } from 'path';
 import type { PackageFile } from '../../types/index.js';
-import type { PackageYmlInfo } from './package-yml-generator.js';
+import type { PackageContext } from '../package-context.js';
 import { FILE_PATTERNS } from '../../constants/index.js';
 import { readPackageIndex, isDirKey } from '../../utils/package-index-yml.js';
-import { getLocalPackageDir } from '../../utils/paths.js';
 import { ensureDir, exists, isDirectory, readTextFile, writeTextFile, remove } from '../../utils/fs.js';
 import {
   normalizeRegistryPath,
@@ -36,11 +35,12 @@ export interface SaveConflictResolutionOptions {
 }
 
 export async function resolvePackageFilesWithConflicts(
-  packageInfo: PackageYmlInfo,
+  packageContext: PackageContext,
   options: SaveConflictResolutionOptions = {}
 ): Promise<PackageFile[]> {
   const cwd = process.cwd();
-  const packageDir = getLocalPackageDir(cwd, packageInfo.config.name);
+  // Use packageFilesDir from context instead of computing via getLocalPackageDir
+  const packageDir = packageContext.packageFilesDir;
 
   if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
     return [];
@@ -53,14 +53,14 @@ export async function resolvePackageFilesWithConflicts(
     workspaceRootCandidates
   ] = await Promise.all([
     loadLocalCandidates(packageDir),
-    discoverWorkspaceCandidates(cwd, packageInfo.config.name),
-    loadLocalRootSaveCandidates(packageDir, packageInfo.config.name),
-    discoverWorkspaceRootSaveCandidates(cwd, packageInfo.config.name)
+    discoverWorkspaceCandidates(cwd, packageContext.config.name),
+    loadLocalRootSaveCandidates(packageDir, packageContext.config.name),
+    discoverWorkspaceRootSaveCandidates(cwd, packageContext.config.name)
   ]);
 
   const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
 
-  const indexRecord = await readPackageIndex(cwd, packageInfo.config.name);
+  const indexRecord = await readPackageIndex(cwd, packageContext.config.name);
 
   if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
     // No index yet (first save) – run root-only conflict resolution so prompts are shown for CLAUDE.md, WARP.md, etc.
@@ -92,7 +92,7 @@ export async function resolvePackageFilesWithConflicts(
       const { selection, platformSpecific } = resolution;
 
       // Always write universal AGENTS.md from the selected root section
-      await writeRootSelection(packageDir, packageInfo.config.name, group.local, selection);
+      await writeRootSelection(packageDir, packageContext.config.name, group.local, selection);
 
       // Persist platform-specific root selections (e.g., CLAUDE.md, WARP.md)
       for (const candidate of platformSpecific) {
@@ -198,7 +198,7 @@ export async function resolvePackageFilesWithConflicts(
     const { selection, platformSpecific } = resolution;
 
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
-      await writeRootSelection(packageDir, packageInfo.config.name, group.local, selection);
+      await writeRootSelection(packageDir, packageContext.config.name, group.local, selection);
       // Continue to platform-specific persistence below (don't skip it)
     } else if (pathsWithFrontmatterPlans.has(group.registryPath)) {
       // Only update markdown body; frontmatter will be handled by merge plans

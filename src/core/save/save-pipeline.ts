@@ -1,12 +1,9 @@
-import { join } from 'path';
-
 import { CommandResult, PackageFile } from '../../types/index.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { logger } from '../../utils/logger.js';
 import { addPackageToYml, createWorkspacePackageYml } from '../../utils/package-management.js';
 import { performPlatformSync, PlatformSyncResult } from '../sync/platform-sync.js';
 import { LOG_PREFIXES, ERROR_MESSAGES, MODE_LABELS } from './constants.js';
-import { type PackageYmlInfo } from './package-yml-generator.js';
 import { isPackageTransitivelyCovered } from '../../utils/dependency-coverage.js';
 import { readPackageIndex, writePackageIndex } from '../../utils/package-index-yml.js';
 import { createWorkspaceHash, createWorkspaceTag } from '../../utils/version-generator.js';
@@ -18,10 +15,14 @@ import { writePackageYml } from '../../utils/package-yml.js';
 import { formatRegistryPathForDisplay } from '../../utils/registry-paths.js';
 import { resolveWorkspaceNames, SaveMode } from './name-resolution.js';
 import { resolvePackageFilesWithConflicts } from './save-conflict-resolution.js';
-import { detectPackageContext, getNoPackageDetectedMessage } from './package-detection.js';
+import { 
+  detectPackageContext, 
+  getNoPackageDetectedMessage,
+  getPackageYmlPath,
+  getPackageFilesDir,
+  type PackageContext 
+} from '../package-context.js';
 import { applyWorkspacePackageRename } from './workspace-rename.js';
-import { getLocalPackageDir } from '../../utils/paths.js';
-import { FILE_PATTERNS } from '../../constants/index.js';
 
 export { SaveMode } from './name-resolution.js';
 
@@ -45,6 +46,7 @@ export async function runSavePipeline(
   const { mode, force, rename } = options;
   const { op, opCap } = MODE_LABELS[mode];
 
+  // Use unified detection
   const detectedContext = await detectPackageContext(cwd, packageName);
   if (!detectedContext) {
     return { success: false, error: getNoPackageDetectedMessage(packageName) };
@@ -60,31 +62,32 @@ export async function runSavePipeline(
     console.log(`✓ Using scoped package name '${nameResolution.finalName}' for ${op} operation`);
   }
 
-  let packageInfo: PackageYmlInfo = {
-    fullPath: detectedContext.packageYmlPath,
-    config: detectedContext.config,
-    isNewPackage: false,
-    isRootPackage: detectedContext.isCwdPackage
-  };
+  // Build PackageContext directly
+  let packageContext: PackageContext = { ...detectedContext };
 
   if (nameResolution.needsRename) {
-    await applyWorkspacePackageRename(cwd, packageInfo, nameResolution.finalName);
+    await applyWorkspacePackageRename(cwd, packageContext, nameResolution.finalName);
 
-    const updatedFullPath = packageInfo.isRootPackage
-      ? packageInfo.fullPath
-      : join(
-          getLocalPackageDir(cwd, nameResolution.finalName),
-          FILE_PATTERNS.PACKAGE_YML
-        );
+    // For root packages, packageYmlPath stays the same
+    // For nested packages, it moves to the new name's location
+    const updatedPackageYmlPath = packageContext.location === 'root'
+      ? packageContext.packageYmlPath
+      : getPackageYmlPath(cwd, 'nested', nameResolution.finalName);
+    
+    const updatedPackageFilesDir = packageContext.location === 'root'
+      ? packageContext.packageFilesDir
+      : getPackageFilesDir(cwd, 'nested', nameResolution.finalName);
 
-    packageInfo = {
-      ...packageInfo,
-      fullPath: updatedFullPath,
-      config: { ...packageInfo.config, name: nameResolution.finalName }
+    packageContext = {
+      ...packageContext,
+      name: nameResolution.finalName,
+      packageYmlPath: updatedPackageYmlPath,
+      packageFilesDir: updatedPackageFilesDir,
+      config: { ...packageContext.config, name: nameResolution.finalName }
     };
   }
 
-  const indexRecord = await readPackageIndex(cwd, packageInfo.config.name);
+  const indexRecord = await readPackageIndex(cwd, packageContext.config.name);
   const workspaceHash = createWorkspaceHash(cwd);
   const workspaceTag = createWorkspaceTag(cwd);
 
@@ -94,7 +97,7 @@ export async function runSavePipeline(
 
   if (mode === 'wip') {
     const wipInfo = computeWipVersion(
-      packageInfo.config.version,
+      packageContext.config.version,
       indexRecord?.workspace?.version,
       cwd
     );
@@ -104,7 +107,7 @@ export async function runSavePipeline(
     nextStable = wipInfo.nextStable;
   } else {
     const packInfo = computePackTargetVersion(
-      packageInfo.config.version,
+      packageContext.config.version,
       indexRecord?.workspace?.version
     );
     if (packInfo.resetMessage) console.log(packInfo.resetMessage);
@@ -113,9 +116,9 @@ export async function runSavePipeline(
 
   if (mode === 'wip' && shouldBumpPackageYml && nextStable) {
     try {
-      const bumpedConfig = { ...packageInfo.config, version: nextStable };
-      await writePackageYml(packageInfo.fullPath, bumpedConfig);
-      packageInfo = { ...packageInfo, config: bumpedConfig };
+      const bumpedConfig = { ...packageContext.config, version: nextStable };
+      await writePackageYml(packageContext.packageYmlPath, bumpedConfig);
+      packageContext = { ...packageContext, config: bumpedConfig, version: nextStable };
       console.log(`✓ Updated package.yml.version to ${nextStable} for the next cycle`);
     } catch (error) {
       logger.warn(`Failed to auto-bump package.yml before save: ${String(error)}`);
@@ -123,17 +126,17 @@ export async function runSavePipeline(
   }
 
   if (mode === 'stable' && !force) {
-    const exists = await packageVersionExists(packageInfo.config.name, targetVersion);
+    const exists = await packageVersionExists(packageContext.config.name, targetVersion);
     if (exists) {
       throw new Error(ERROR_MESSAGES.VERSION_EXISTS.replace('%s', targetVersion));
     }
   }
 
-  const effectiveConfig = { ...packageInfo.config, version: targetVersion };
-  const packageFiles = await resolvePackageFilesWithConflicts(packageInfo, { force });
+  const effectiveConfig = { ...packageContext.config, version: targetVersion };
+  const packageFiles = await resolvePackageFilesWithConflicts(packageContext, { force });
 
   const registrySave = await savePackageToRegistry(
-    { ...packageInfo, config: effectiveConfig },
+    { ...packageContext, config: effectiveConfig },
     packageFiles
   );
   if (!registrySave.success) {
@@ -154,11 +157,11 @@ export async function runSavePipeline(
     {
       force,
       conflictStrategy: force ? 'overwrite' : 'ask',
-      skipRootSync: packageInfo.isRootPackage
+      skipRootSync: packageContext.location === 'root'
     }
   );
 
-  if (!packageInfo.isRootPackage) {
+  if (packageContext.location !== 'root') {
     const covered = await isPackageTransitivelyCovered(cwd, effectiveConfig.name);
     if (!covered) {
       await addPackageToYml(cwd, effectiveConfig.name, effectiveConfig.version, false, undefined, true);
@@ -174,7 +177,7 @@ export async function runSavePipeline(
     });
   }
 
-  printSummary(packageInfo, effectiveConfig.version, packageFiles, syncResult);
+  printSummary(packageContext, effectiveConfig.version, packageFiles, syncResult);
 
   return {
     success: true,
@@ -183,13 +186,13 @@ export async function runSavePipeline(
 }
 
 function printSummary(
-  packageInfo: PackageYmlInfo,
+  packageContext: PackageContext,
   version: string,
   packageFiles: PackageFile[],
   syncResult: PlatformSyncResult
 ): void {
-  const name = packageInfo.config.name;
-  const type = packageInfo.isRootPackage ? 'root package' : 'package';
+  const name = packageContext.config.name;
+  const type = packageContext.location === 'root' ? 'root package' : 'package';
 
   console.log(`${LOG_PREFIXES.SAVED} ${name}@${version} (${type}, ${packageFiles.length} files):`);
 

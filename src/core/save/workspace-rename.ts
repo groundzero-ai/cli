@@ -1,7 +1,7 @@
 import { dirname } from 'path';
 
 import { discoverAllRootFiles } from '../../utils/package-discovery.js';
-import { PackageYmlInfo } from './package-yml-generator.js';
+import { type PackageContext } from '../package-context.js';
 import { extractPackageSection, buildOpenMarker, buildOpenMarkerRegex } from '../../utils/root-file-extractor.js';
 import { readTextFile, writeTextFile, exists, renameDirectory, removeEmptyDirectories } from '../../utils/fs.js';
 import { writePackageYml, parsePackageYml } from '../../utils/package-yml.js';
@@ -16,17 +16,17 @@ import { logger } from '../../utils/logger.js';
  */
 export async function applyWorkspacePackageRename(
   cwd: string,
-  packageInfo: PackageYmlInfo,
+  packageContext: PackageContext,
   newName: string
 ): Promise<void> {
-  const currentName = packageInfo.config.name;
+  const currentName = packageContext.config.name;
   if (currentName === newName) return;
 
   logger.debug(`Renaming workspace package files`, { from: currentName, to: newName, cwd });
 
   // Update package.yml with the new name before further processing
-  const updatedConfig = { ...packageInfo.config, name: newName };
-  await writePackageYml(packageInfo.fullPath, updatedConfig);
+  const updatedConfig = { ...packageContext.config, name: newName };
+  await writePackageYml(packageContext.packageYmlPath, updatedConfig);
 
   // Frontmatter and index.yml support removed - no metadata updates needed
 
@@ -52,8 +52,8 @@ export async function applyWorkspacePackageRename(
   await updateRootPackageYmlDependencies(cwd, currentName, newName);
 
   // For sub-packages, move the directory to the new normalized name
-  if (!packageInfo.isRootPackage) {
-    const currentDir = dirname(packageInfo.fullPath);
+  if (packageContext.location !== 'root') {
+    const currentDir = dirname(packageContext.packageYmlPath);
     const targetDir = getLocalPackageDir(cwd, newName);
 
     if (currentDir !== targetDir) {

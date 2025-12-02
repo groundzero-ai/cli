@@ -1,30 +1,26 @@
 import { dirname } from 'path';
 
-import type { PackageFile, PackageYml } from '../../types/index.js';
+import type { PackageFile } from '../../types/index.js';
 import { ensureDir, exists, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { resolveTargetDirectory, resolveTargetFilePath } from '../../utils/platform-mapper.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { UserCancellationError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { SourceEntry } from './source-collector.js';
-
-interface EnsuredPackageContext {
-  normalizedName: string;
-  packageDir: string;
-  packageConfig: PackageYml;
-}
+import type { PackageContext } from '../package-context.js';
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
 
 export async function copyFilesWithConflictResolution(
-  ensuredPackage: EnsuredPackageContext,
+  packageContext: PackageContext,
   entries: SourceEntry[]
 ): Promise<PackageFile[]> {
   const changedFiles: PackageFile[] = [];
-  const { packageDir, normalizedName } = ensuredPackage;
+  const { packageFilesDir, name } = packageContext;
 
   for (const entry of entries) {
-    const targetDir = resolveTargetDirectory(packageDir, entry.registryPath);
+    // Use packageFilesDir as base for file operations
+    const targetDir = resolveTargetDirectory(packageFilesDir, entry.registryPath);
     const destination = resolveTargetFilePath(targetDir, entry.registryPath);
 
     const sourceContent = await readTextFile(entry.sourcePath);
@@ -38,7 +34,7 @@ export async function copyFilesWithConflictResolution(
         continue;
       }
 
-      const decision = await promptConflictDecision(normalizedName, entry.registryPath);
+      const decision = await promptConflictDecision(name, entry.registryPath);
       if (decision === 'keep-existing') {
         logger.debug(`Kept existing file for ${entry.registryPath}`);
         continue;
