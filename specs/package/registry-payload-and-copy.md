@@ -5,6 +5,10 @@ The **registry payload** for a given version is defined as:
 - All files under `<package-root>/` **except**:
   - `package.index.yml`
   - Anything under `packages/` (nested packages are separate units)
+- Optional include/exclude filters in `package.yml` further refine the payload:
+  - `include` (array) lists glob-like patterns relative to the package root; when present, only matching files are considered.
+  - `exclude` (array) removes matching files after the include rules are applied.
+  - These filters can narrow the payload but can never override the hard exclusions above.
 
 Concretely:
 

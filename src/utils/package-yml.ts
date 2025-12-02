@@ -3,6 +3,17 @@ import { PackageYml } from '../types/index.js';
 import { readTextFile, writeTextFile } from './fs.js';
 import { isScopedName } from '../core/scoping/package-scoping.js';
 
+function normalizeStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const result = value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0);
+  return result.length > 0 ? result : undefined;
+}
+
 /**
  * Parse package.yml file with validation
  */
@@ -14,6 +25,19 @@ export async function parsePackageYml(packageYmlPath: string): Promise<PackageYm
     // Validate required fields
     if (!parsed.name || !parsed.version) {
       throw new Error('package.yml must contain name and version fields');
+    }
+
+    const includeFilters = normalizeStringArray(parsed.include);
+    const excludeFilters = normalizeStringArray(parsed.exclude);
+    if (includeFilters) {
+      parsed.include = includeFilters;
+    } else {
+      delete (parsed as any).include;
+    }
+    if (excludeFilters) {
+      parsed.exclude = excludeFilters;
+    } else {
+      delete (parsed as any).exclude;
     }
     
     return parsed;

@@ -1,38 +1,81 @@
-import { PackageFile, PackageYml } from '../../types';
+/**
+ * Registry write operations for save/pack commands.
+ *
+ * This module handles persisting a package version to the local registry at
+ * ~/.openpackage/registry/<name>/<version>/...
+ */
+
+import type { PackageFile, PackageYml } from '../../types/index.js';
+import type { PackageYmlInfo } from './package-yml-generator.js';
 import { normalizePackageName } from '../../utils/package-name.js';
 import { remove } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
 import { getPackageVersionPath } from '../directory.js';
-import { PackageYmlInfo } from './package-yml-generator.js';
 import { packageVersionExists } from '../../utils/package-versioning.js';
 import { writePackageFilesToDirectory } from '../../utils/package-copy.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SaveToRegistryResult {
+  success: boolean;
+  error?: string;
+  /** The config with normalized package name that was actually written. */
+  updatedConfig?: PackageYml;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Save package to local registry
+ * Save a package version to the local registry.
+ *
+ * - Normalizes the package name for consistent registry paths.
+ * - Clears any existing version directory before writing (idempotent overwrites).
+ * - Writes all provided files to the registry version directory.
+ *
+ * @param packageInfo - Metadata about the package (name, version, paths).
+ * @param files - The registry payload to persist.
+ * @returns Result indicating success/failure and the normalized config.
  */
 export async function savePackageToRegistry(
   packageInfo: PackageYmlInfo,
   files: PackageFile[]
-): Promise<{ success: boolean; error?: string; updatedConfig?: PackageYml }> {
+): Promise<SaveToRegistryResult> {
+  const { config } = packageInfo;
+  const normalizedName = normalizePackageName(config.name);
+  const normalizedConfig: PackageYml = { ...config, name: normalizedName };
 
-  const config = packageInfo.config;
+  const versionDir = getPackageVersionPath(normalizedName, normalizedConfig.version);
 
   try {
-    // Ensure package name is normalized for consistent registry paths
-    const normalizedConfig = { ...config, name: normalizePackageName(config.name) };
-    const targetPath = getPackageVersionPath(normalizedConfig.name, normalizedConfig.version);
+    await clearExistingVersion(normalizedName, normalizedConfig.version, versionDir);
+    await writePackageFilesToDirectory(versionDir, files);
 
-    // If version already exists, clear the directory first to remove old files
-    if (await packageVersionExists(normalizedConfig.name, normalizedConfig.version)) {
-      await remove(targetPath);
-      logger.debug(`Cleared existing version directory: ${targetPath}`);
-    }
-
-    await writePackageFilesToDirectory(targetPath, files);
-    
     return { success: true, updatedConfig: normalizedConfig };
   } catch (error) {
-    logger.error(`Failed to save package: ${error}`);
-    return { success: false, error: `Failed to save package: ${error}` };
+    const message = `Failed to save ${normalizedName}@${normalizedConfig.version}: ${error}`;
+    logger.error(message);
+    return { success: false, error: message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Remove an existing version directory if present (ensures clean overwrites).
+ */
+async function clearExistingVersion(
+  packageName: string,
+  version: string,
+  versionDir: string
+): Promise<void> {
+  if (await packageVersionExists(packageName, version)) {
+    await remove(versionDir);
+    logger.debug(`Cleared existing registry version: ${versionDir}`);
   }
 }

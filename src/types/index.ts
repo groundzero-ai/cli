@@ -68,6 +68,17 @@ export interface PackageYml {
   version: string;
   private?: boolean;
 
+  /**
+   * Optional glob-like include filters applied relative to the package root.
+   * When provided, only matching files are considered part of the package payload.
+   */
+  include?: string[];
+  /**
+   * Optional glob-like exclude filters applied relative to the package root.
+   * Applied after include filters (if any) to remove paths from the payload.
+   */
+  exclude?: string[];
+
   description?: string;
   keywords?: string[];
   author?: string;
