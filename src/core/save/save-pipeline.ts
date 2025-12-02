@@ -87,7 +87,7 @@ export async function runSavePipeline(
     };
   }
 
-  const indexRecord = await readPackageIndex(cwd, packageContext.config.name);
+  const indexRecord = await readPackageIndex(cwd, packageContext.config.name, packageContext.location);
   const workspaceHash = createWorkspaceHash(cwd);
   const workspaceTag = createWorkspaceTag(cwd);
 

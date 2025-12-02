@@ -60,7 +60,7 @@ export async function resolvePackageFilesWithConflicts(
 
   const localCandidates = [...localPlatformCandidates, ...localRootCandidates];
 
-  const indexRecord = await readPackageIndex(cwd, packageContext.config.name);
+  const indexRecord = await readPackageIndex(cwd, packageContext.config.name, packageContext.location);
 
   if (!indexRecord || Object.keys(indexRecord.files ?? {}).length === 0) {
     // No index yet (first save) – run root-only conflict resolution so prompts are shown for CLAUDE.md, WARP.md, etc.

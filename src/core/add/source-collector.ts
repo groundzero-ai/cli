@@ -1,5 +1,6 @@
 import { relative } from 'path';
 
+import { DIR_PATTERNS } from '../../constants/index.js';
 import { isDirectory, isFile, walkFiles } from '../../utils/fs.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import { mapPlatformFileToUniversal } from '../../utils/platform-mapper.js';
@@ -40,22 +41,28 @@ function deriveSourceEntry(absFilePath: string, cwd: string): SourceEntry | null
   const relativePath = relative(cwd, absFilePath);
   const normalizedRelPath = normalizePathForProcessing(relativePath);
 
+  // Check if this is a platform-specific file (e.g., .cursor/commands/test.md)
   const mapping = mapPlatformFileToUniversal(absFilePath);
   if (mapping) {
+    // Universal content: prefix with .openpackage/
     return {
       sourcePath: absFilePath,
-      registryPath: [mapping.subdir, mapping.relPath].filter(Boolean).join('/')
+      registryPath: [DIR_PATTERNS.OPENPACKAGE, mapping.subdir, mapping.relPath].filter(Boolean).join('/')
     };
   }
 
+  // Check if this is a platform root file (e.g., AGENTS.md, CLAUDE.md)
   const fileName = normalizedRelPath.split('/').pop();
   if (fileName && isPlatformRootFile(fileName) && !normalizedRelPath.includes('/')) {
+    // Root files: no prefix, stored at package root
     return {
       sourcePath: absFilePath,
       registryPath: fileName
     };
   }
 
+  // All other files: root-level content, no .openpackage/ prefix
+  // Stored at package root, outside .openpackage/
   return {
     sourcePath: absFilePath,
     registryPath: normalizedRelPath

@@ -19,7 +19,7 @@ import { getLatestStableVersion } from '../utils/package-versioning.js';
 import { resolveScopedNameForPushWithUserScope, isScopedName } from '../core/scoping/package-scoping.js';
 import { renameRegistryPackage } from '../core/registry/registry-rename.js';
 import { getLocalPackageDir } from '../utils/paths.js';
-import { FILE_PATTERNS } from '../constants/index.js';
+import { FILE_PATTERNS, DIR_PATTERNS } from '../constants/index.js';
 import { exists } from '../utils/fs.js';
 import { parsePackageYml } from '../utils/package-yml.js';
 import { applyWorkspacePackageRename } from '../core/save/workspace-rename.js';
@@ -32,8 +32,8 @@ async function tryRenameWorkspacePackage(
   newName: string
 ): Promise<void> {
   try {
-    const packageDir = getLocalPackageDir(cwd, oldName);
-    const packageYmlPath = join(packageDir, FILE_PATTERNS.PACKAGE_YML);
+    const packageRootDir = getLocalPackageDir(cwd, oldName);
+    const packageYmlPath = join(packageRootDir, DIR_PATTERNS.OPENPACKAGE, FILE_PATTERNS.PACKAGE_YML);
 
     if (!(await exists(packageYmlPath))) {
       return;
@@ -47,7 +47,8 @@ async function tryRenameWorkspacePackage(
       version: config.version,
       config,
       packageYmlPath,
-      packageFilesDir: packageDir,
+      packageRootDir,
+      packageFilesDir: join(packageRootDir, DIR_PATTERNS.OPENPACKAGE),
       location: 'nested',
       isCwdPackage: false,
       isNew: false

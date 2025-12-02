@@ -1,4 +1,4 @@
-import { resolve, relative } from 'path';
+import { resolve, relative, dirname } from 'path';
 
 import type { CommandResult } from '../../types/index.js';
 import type { Platform } from '../platforms.js';
@@ -8,6 +8,8 @@ import { readPackageFilesForRegistry } from '../../utils/package-copy.js';
 import { ensurePackageWithYml } from '../../utils/package-management.js';
 import { isWithinDirectory } from '../../utils/path-normalization.js';
 import { exists, isDirectory, isFile, ensureDir } from '../../utils/fs.js';
+import { writePackageYml } from '../../utils/package-yml.js';
+import { promptPackageDetails } from '../../utils/prompts.js';
 import { logger } from '../../utils/logger.js';
 import { collectSourceEntries } from './source-collector.js';
 import {
@@ -18,6 +20,9 @@ import { copyFilesWithConflictResolution } from './add-conflict-handler.js';
 import { 
   detectPackageContext, 
   getNoPackageDetectedMessage,
+  getPackageFilesDir,
+  getPackageYmlPath,
+  createPackageContext,
   type PackageContext 
 } from '../package-context.js';
 import { DIR_PATTERNS } from '../../constants/index.js';
@@ -117,13 +122,35 @@ async function resolveAddTargets(
     );
   }
 
-  // Detect package context
-  const context = await detectPackageContext(cwd);
+  // Detect package context, falling back to initializing root package when missing
+  let context = await detectPackageContext(cwd);
   if (!context) {
-    throw new Error(getNoPackageDetectedMessage());
+    const rootPackageYmlPath = getPackageYmlPath(cwd, 'root');
+    const hasRootPackage = await exists(rootPackageYmlPath);
+
+    if (hasRootPackage) {
+      throw new Error(getNoPackageDetectedMessage());
+    }
+
+    context = await initRootPackageForAdd(cwd);
   }
 
   return { type: 'detected', context, inputPath: singleArg };
+}
+
+async function initRootPackageForAdd(cwd: string): Promise<PackageContext> {
+  const packageFilesDir = getPackageFilesDir(cwd, 'root');
+  const packageYmlPath = getPackageYmlPath(cwd, 'root');
+
+  logger.info(
+    `No package detected at current directory; initializing root package in: ${packageFilesDir}`
+  );
+
+  await ensureDir(packageFilesDir);
+  const packageConfig = await promptPackageDetails();
+  await writePackageYml(packageYmlPath, packageConfig);
+
+  return createPackageContext(cwd, packageConfig, 'root');
 }
 
 async function buildAddPackageContext(
@@ -145,11 +172,15 @@ async function buildAddPackageContext(
   // Package doesn't exist - create as nested package
   const ensured = await ensurePackageWithYml(cwd, resolved.packageName, { interactive: true });
   
+  // ensured.packageDir is the content directory (.openpackage/), so package root is parent
+  const packageRootDir = dirname(ensured.packageDir);
+  
   return {
     name: ensured.normalizedName,
     version: ensured.packageConfig.version,
     config: ensured.packageConfig,
     packageYmlPath: ensured.packageYmlPath,
+    packageRootDir,
     packageFilesDir: ensured.packageDir,
     location: 'nested',
     isCwdPackage: false,
@@ -176,11 +207,12 @@ async function updatePackageIndex(
   cwd: string,
   packageContext: PackageContext
 ): Promise<void> {
-  const packageFiles = await readPackageFilesForRegistry(packageContext.packageFilesDir);
+  // readPackageFilesForRegistry expects the package root directory, not the content directory
+  const packageFiles = await readPackageFilesForRegistry(packageContext.packageRootDir);
   const detectedPlatforms: Platform[] = await getDetectedPlatforms(cwd);
   await buildMappingAndWriteIndex(
     cwd,
-    packageContext.name,
+    packageContext,
     packageFiles,
     detectedPlatforms,
     {

@@ -1,8 +1,8 @@
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 
+import { DIR_PATTERNS } from '../../constants/index.js';
 import type { PackageFile } from '../../types/index.js';
 import { ensureDir, exists, readTextFile, writeTextFile } from '../../utils/fs.js';
-import { resolveTargetDirectory, resolveTargetFilePath } from '../../utils/platform-mapper.js';
 import { safePrompts } from '../../utils/prompts.js';
 import { UserCancellationError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
@@ -11,17 +11,34 @@ import type { PackageContext } from '../package-context.js';
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
 
+/**
+ * Resolve the target path for a registry path.
+ * - If registryPath starts with .openpackage/, write to content directory
+ * - Otherwise, write to package root directory
+ */
+function resolveTargetPath(packageContext: PackageContext, registryPath: string): string {
+  const openpackagePrefix = `${DIR_PATTERNS.OPENPACKAGE}/`;
+  
+  if (registryPath.startsWith(openpackagePrefix)) {
+    // Universal content: strip prefix and write to content directory
+    const relativePath = registryPath.slice(openpackagePrefix.length);
+    return join(packageContext.packageFilesDir, relativePath);
+  }
+  
+  // Root-level content: write to package root directory
+  return join(packageContext.packageRootDir, registryPath);
+}
+
 export async function copyFilesWithConflictResolution(
   packageContext: PackageContext,
   entries: SourceEntry[]
 ): Promise<PackageFile[]> {
   const changedFiles: PackageFile[] = [];
-  const { packageFilesDir, name } = packageContext;
+  const { name } = packageContext;
 
   for (const entry of entries) {
-    // Use packageFilesDir as base for file operations
-    const targetDir = resolveTargetDirectory(packageFilesDir, entry.registryPath);
-    const destination = resolveTargetFilePath(targetDir, entry.registryPath);
+    // Resolve target path based on registry path format
+    const destination = resolveTargetPath(packageContext, entry.registryPath);
 
     const sourceContent = await readTextFile(entry.sourcePath);
     const destExists = await exists(destination);

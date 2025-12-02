@@ -1,6 +1,7 @@
+import { dirname } from 'path';
 import { normalizePackageName } from '../../utils/package-name.js';
 import { logger } from '../../utils/logger.js';
-import { getPackageFilesDir, getPackageYmlPath, type PackageContext } from '../package-context.js';
+import { getPackageFilesDir, getPackageYmlPath, getPackageRootDir, type PackageContext } from '../package-context.js';
 import { ensurePackageWithYml } from '../../utils/package-management.js';
 import { DEFAULT_VERSION, LOG_PREFIXES } from './constants.js';
 import { applyWorkspacePackageRename } from './workspace-rename.js';
@@ -28,11 +29,15 @@ export async function readOrCreateBasePackageYml(
     console.log(`✓ Found existing package ${ensured.packageConfig.name}@${ensured.packageConfig.version}`);
   }
 
+  // ensured.packageDir is the content directory (.openpackage/), so package root is parent
+  const packageRootDir = dirname(ensured.packageDir);
+  
   return {
     name: ensured.normalizedName,
     version: ensured.packageConfig.version,
     config: ensured.packageConfig,
     packageYmlPath: ensured.packageYmlPath,
+    packageRootDir,
     packageFilesDir: ensured.packageDir,
     location: 'nested',
     isCwdPackage: false,
@@ -59,6 +64,7 @@ export async function loadAndPreparePackage(
 
   await applyWorkspacePackageRename(cwd, ctx, renameTarget);
 
+  const packageRootDir = getPackageRootDir(cwd, 'nested', renameTarget);
   const packageYmlPath = getPackageYmlPath(cwd, 'nested', renameTarget);
   const packageFilesDir = getPackageFilesDir(cwd, 'nested', renameTarget);
 
@@ -66,6 +72,7 @@ export async function loadAndPreparePackage(
     ...ctx,
     name: renameTarget,
     packageYmlPath,
+    packageRootDir,
     packageFilesDir,
     config: { ...ctx.config, name: renameTarget }
   };

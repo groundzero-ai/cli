@@ -150,10 +150,9 @@ async function buildDefaultIncludeConfig(
   const includePatterns = new Set<string>();
   const hardIncludeFiles = new Set<string>();
 
-  for (const relPath of MANIFEST_RELATIVE_PATHS) {
-    includePatterns.add(relPath);
-    hardIncludeFiles.add(normalizePathForProcessing(relPath));
-  }
+  // Include package.yml (at .openpackage/package.yml relative to package root)
+  includePatterns.add(`${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`);
+  hardIncludeFiles.add(normalizePathForProcessing(`${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`));
 
   if (manifestInfo) {
     includePatterns.add(manifestInfo.relativePath);
@@ -178,15 +177,13 @@ async function buildDefaultIncludeConfig(
     includePatterns.add(rootFile);
   }
 
+  // packageDir is the package root, so look for subdirs at packageDir/.openpackage/<subdir>/
   await Promise.all(
     Array.from(universalSubdirs).map(async subdirName => {
-      const canonicalDir = `${DIR_PATTERNS.OPENPACKAGE}/${subdirName}`;
-      const absoluteDir = join(packageDir, canonicalDir);
-      if (!(await exists(absoluteDir))) {
-        return;
+      const absoluteDir = join(packageDir, DIR_PATTERNS.OPENPACKAGE, subdirName);
+      if (await exists(absoluteDir)) {
+        includePatterns.add(`${DIR_PATTERNS.OPENPACKAGE}/${subdirName}/**`);
       }
-
-      includePatterns.add(`${canonicalDir}/**`);
     })
   );
 

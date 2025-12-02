@@ -6,7 +6,7 @@
  * Nested packages store files under .openpackage/packages/<name>/<subdir>/
  */
 
-import { join } from 'path';
+import { join, dirname } from 'path';
 
 import { DIR_PATTERNS, FILE_PATTERNS, OPENPACKAGE_DIRS } from '../constants/index.js';
 import type { PackageYml } from '../types/index.js';
@@ -25,16 +25,19 @@ export type PackageLocation = 'root' | 'nested';
  * Unified package context used by all pipelines.
  * 
  * Key distinction:
- * - packageYmlPath: where package.yml lives
- * - packageFilesDir: where package content files live (rules/, commands/, etc.)
+ * - packageRootDir: the package root directory (parent of .openpackage/)
+ * - packageFilesDir: the content directory (.openpackage/) where package.yml and content live
+ * - packageYmlPath: where package.yml lives (inside .openpackage/)
  * 
  * For root packages:
- *   packageYmlPath = .openpackage/package.yml
- *   packageFilesDir = .openpackage/
+ *   packageRootDir = cwd/
+ *   packageFilesDir = cwd/.openpackage/
+ *   packageYmlPath = cwd/.openpackage/package.yml
  * 
  * For nested packages:
- *   packageYmlPath = .openpackage/packages/<name>/package.yml
- *   packageFilesDir = .openpackage/packages/<name>/
+ *   packageRootDir = cwd/.openpackage/packages/<name>/
+ *   packageFilesDir = cwd/.openpackage/packages/<name>/.openpackage/
+ *   packageYmlPath = cwd/.openpackage/packages/<name>/.openpackage/package.yml
  */
 export interface PackageContext {
   /** Normalized package name */
@@ -50,9 +53,16 @@ export interface PackageContext {
   packageYmlPath: string;
   
   /** 
-   * Absolute path to directory containing package files (rules/, commands/, etc.)
-   * - Root: <cwd>/.openpackage/
+   * Absolute path to the package root directory.
+   * - Root: <cwd>/
    * - Nested: <cwd>/.openpackage/packages/<name>/
+   */
+  packageRootDir: string;
+  
+  /** 
+   * Absolute path to the content directory (.openpackage/) containing package files
+   * - Root: <cwd>/.openpackage/
+   * - Nested: <cwd>/.openpackage/packages/<name>/.openpackage/
    */
   packageFilesDir: string;
   
@@ -79,11 +89,13 @@ export interface DetectedPackageContext {
 }
 
 /**
- * Get the package files directory based on location.
+ * Get the package root directory based on location.
+ * - Root: cwd/
+ * - Nested: cwd/.openpackage/packages/<name>/
  */
-export function getPackageFilesDir(cwd: string, location: PackageLocation, packageName?: string): string {
+export function getPackageRootDir(cwd: string, location: PackageLocation, packageName?: string): string {
   if (location === 'root') {
-    return join(cwd, DIR_PATTERNS.OPENPACKAGE);
+    return cwd;
   }
   
   if (!packageName) {
@@ -94,24 +106,35 @@ export function getPackageFilesDir(cwd: string, location: PackageLocation, packa
 }
 
 /**
- * Get the package.yml path based on location.
+ * Get the package content directory (.openpackage/) based on location.
+ * This is where package.yml, package.index.yml, and universal content live.
  */
-export function getPackageYmlPath(cwd: string, location: PackageLocation, packageName?: string): string {
+export function getPackageFilesDir(cwd: string, location: PackageLocation, packageName?: string): string {
   if (location === 'root') {
-    return join(cwd, DIR_PATTERNS.OPENPACKAGE, FILE_PATTERNS.PACKAGE_YML);
+    return join(cwd, DIR_PATTERNS.OPENPACKAGE);
   }
   
   if (!packageName) {
     throw new Error('Package name required for nested packages');
   }
   
+  // Nested: cwd/.openpackage/packages/<name>/.openpackage/
   return join(
     cwd,
     DIR_PATTERNS.OPENPACKAGE,
     OPENPACKAGE_DIRS.PACKAGES,
     normalizePackageName(packageName),
-    FILE_PATTERNS.PACKAGE_YML
+    DIR_PATTERNS.OPENPACKAGE
   );
+}
+
+/**
+ * Get the package.yml path based on location.
+ * package.yml is always inside the content directory (.openpackage/)
+ */
+export function getPackageYmlPath(cwd: string, location: PackageLocation, packageName?: string): string {
+  const contentDir = getPackageFilesDir(cwd, location, packageName);
+  return join(contentDir, FILE_PATTERNS.PACKAGE_YML);
 }
 
 /**
@@ -168,6 +191,7 @@ export async function detectPackageContext(
         version: config.version,
         config,
         packageYmlPath: rootPackageYmlPath,
+        packageRootDir: getPackageRootDir(cwd, 'root'),
         packageFilesDir: getPackageFilesDir(cwd, 'root'),
         location: 'root',
         isCwdPackage: true
@@ -190,6 +214,7 @@ export async function detectPackageContext(
           version: rootConfig.version,
           config: rootConfig,
           packageYmlPath: rootPackageYmlPath,
+          packageRootDir: getPackageRootDir(cwd, 'root'),
           packageFilesDir: getPackageFilesDir(cwd, 'root'),
           location: 'root',
           isCwdPackage: true
@@ -202,6 +227,7 @@ export async function detectPackageContext(
 
   // Check nested packages directory
   const nestedPackageYmlPath = getPackageYmlPath(cwd, 'nested', packageName);
+  const nestedPackageRootDir = getPackageRootDir(cwd, 'nested', packageName);
   const nestedPackageFilesDir = getPackageFilesDir(cwd, 'nested', packageName);
 
   if (await exists(nestedPackageYmlPath)) {
@@ -213,6 +239,7 @@ export async function detectPackageContext(
           version: nestedConfig.version,
           config: nestedConfig,
           packageYmlPath: nestedPackageYmlPath,
+          packageRootDir: nestedPackageRootDir,
           packageFilesDir: nestedPackageFilesDir,
           location: 'nested',
           isCwdPackage: false
@@ -243,11 +270,14 @@ export async function detectPackageContext(
         if (!parsedContent) continue;
 
         if (arePackageNamesEquivalent(parsedContent.name, packageName)) {
+          // dirPath is the content directory (.openpackage/), so package root is parent
+          const packageRootDir = dirname(dirPath);
           return {
             name: normalizedName,
             version: parsedContent.version,
             config: parsedContent,
             packageYmlPath: join(dirPath, FILE_PATTERNS.PACKAGE_YML),
+            packageRootDir,
             packageFilesDir: dirPath,
             location: 'nested',
             isCwdPackage: false
@@ -278,6 +308,7 @@ export function createPackageContext(
     version: config.version,
     config,
     packageYmlPath: getPackageYmlPath(cwd, location, location === 'nested' ? normalizedName : undefined),
+    packageRootDir: getPackageRootDir(cwd, location, location === 'nested' ? normalizedName : undefined),
     packageFilesDir: getPackageFilesDir(cwd, location, location === 'nested' ? normalizedName : undefined),
     location,
     isCwdPackage: location === 'root',

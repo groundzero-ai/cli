@@ -1,4 +1,4 @@
-import { dirname, join } from 'path';
+import { dirname } from 'path';
 import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
@@ -14,8 +14,8 @@ import {
   buildIndexMappingForPackageFiles,
   loadOtherPackageIndexes
 } from '../../utils/index-based-installer.js';
-import { getLocalPackageDir } from '../../utils/paths.js';
 import type { PackageFile } from '../../types/index.js';
+import type { PackageContext } from '../package-context.js';
 import { parseUniversalPath } from '../../utils/platform-file.js';
 import { mapUniversalToPlatform } from '../../utils/platform-mapper.js';
 import { isPlatformId, type Platform } from '../platforms.js';
@@ -290,21 +290,23 @@ function buildExactFileMapping(
 
 export async function buildMappingAndWriteIndex(
   cwd: string,
-  packageName: string,
+  packageContext: PackageContext,
   packageFiles: PackageFile[],
   platforms: Platform[],
   options: BuildIndexOptions = {}
 ): Promise<void> {
+  const packageName = packageContext.name;
+  const packageLocation = packageContext.location;
+
   try {
     // Read existing index and other indexes for conflict context
-    const previousIndex = await readPackageIndex(cwd, packageName);
+    const previousIndex = await readPackageIndex(cwd, packageName, packageLocation);
     const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
 
     // Resolve version (prefer previous index; otherwise read from package.yml)
     let version = options.versionOverride || previousIndex?.workspace?.version || '';
     if (!version) {
-      const packageDir = getLocalPackageDir(cwd, packageName);
-      const packageYmlPath = join(packageDir, 'package.yml');
+      const packageYmlPath = packageContext.packageYmlPath;
       if (await exists(packageYmlPath)) {
         try {
           const packageYml = await parsePackageYml(packageYmlPath);
@@ -354,8 +356,9 @@ export async function buildMappingAndWriteIndex(
       previousFilesWithoutDirKeys,
       newMapping
     );
+    const canonicalIndexPath = getPackageIndexPath(cwd, packageName, packageLocation);
     const indexRecord: PackageIndexRecord = {
-      path: getPackageIndexPath(cwd, packageName),
+      path: canonicalIndexPath,
       packageName,
       workspace: {
         hash: createWorkspaceHash(cwd),
