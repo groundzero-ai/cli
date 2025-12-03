@@ -341,8 +341,9 @@ public
 # data/
 # uploads/
 
-# CLI-specific working directories or cache
-.opencode/
+# Workspace specific directories
 .openpackage/
+.cursor/
+.opencode/
 
 # End of .gitignore
