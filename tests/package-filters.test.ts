@@ -123,11 +123,59 @@ async function runEnsurePackageDefaultsTest(): Promise<void> {
   }
 }
 
+async function runRootExcludesNestedPackagesTest(): Promise<void> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'package-filters-nested-exclude-'));
+
+  try {
+    // Root package manifest + content
+    await mkdir(join(tempDir, '.openpackage', 'commands'), { recursive: true });
+    await writeFile(
+      join(tempDir, '.openpackage', 'package.yml'),
+      ['name: nested-exclude-root', 'version: "1.0.0"', 'include:', '  - "**"', ''].join('\n'),
+      'utf8'
+    );
+    await writeFile(
+      join(tempDir, '.openpackage', 'commands', 'root.md'),
+      '# root',
+      'utf8'
+    );
+
+    // Nested package inside .openpackage/packages/<child>/
+    const nestedPackageDir = join(
+      tempDir,
+      '.openpackage',
+      'packages',
+      'child',
+      '.openpackage',
+      'commands'
+    );
+    await mkdir(nestedPackageDir, { recursive: true });
+    await writeFile(
+      join(tempDir, '.openpackage', 'packages', 'child', '.openpackage', 'package.yml'),
+      ['name: child', 'version: "0.1.0"', 'include:', '  - "**"', ''].join('\n'),
+      'utf8'
+    );
+    await writeFile(join(nestedPackageDir, 'nested.md'), '# nested', 'utf8');
+
+    const files = await readPackageFilesForRegistry(tempDir);
+    const paths = files.map(file => file.path);
+
+    assert(paths.includes('.openpackage/commands/root.md'));
+    assert(
+      paths.every(path => !path.startsWith('.openpackage/packages/child/')),
+      'root payload should not include nested package files'
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 await runUnitTests();
 await runIntegrationTest();
 await runDefaultFilteringTest();
 await runNestedManifestTest();
 await runEnsurePackageDefaultsTest();
+await runRootExcludesNestedPackagesTest();
 
 console.log('package-filters tests passed');
 

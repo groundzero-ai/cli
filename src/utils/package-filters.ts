@@ -1,8 +1,10 @@
 import { normalizePathForProcessing } from './path-normalization.js';
 import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
+import { DIR_PATTERNS, OPENPACKAGE_DIRS } from '../constants/index.js';
 
 const EXCLUDED_DIR_PREFIXES = [
-  'packages' // Nested packages are independent units; never copy inline
+  'packages', // Nested packages are independent units; never copy inline
+  `${DIR_PATTERNS.OPENPACKAGE}/${OPENPACKAGE_DIRS.PACKAGES}` // Current nested package layout under .openpackage/
 ];
 
 const EXCLUDED_FILES = new Set<string>([PACKAGE_INDEX_FILENAME]);
