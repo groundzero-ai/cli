@@ -44,7 +44,8 @@ import {
   ensureTrailingSlash,
   isDirKey,
   type PackageIndexRecord,
-  pruneNestedDirectories
+  pruneNestedDirectories,
+  type PackageIndexLocation
 } from './package-index-yml.js';
 import { createWorkspaceHash } from './version-generator.js';
 
@@ -1338,14 +1339,15 @@ export async function applyPlannedSyncForPackageFiles(
   version: string,
   packageFiles: PackageFile[],
   platforms: Platform[],
-  options: InstallOptions
+  options: InstallOptions,
+  location: PackageIndexLocation = 'nested'
 ): Promise<PlannedSyncOutcome> {
   const registryEntries = filterRegistryEntriesForPackageFiles(packageFiles);
 
   const plannedFiles = createPlannedFiles(registryEntries);
   attachTargetsToPlannedFiles(cwd, plannedFiles, platforms);
 
-  const previousIndex = await readPackageIndex(cwd, packageName);
+  const previousIndex = await readPackageIndex(cwd, packageName, location);
   const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
   const context = await buildExpandedIndexesContext(cwd, otherIndexes);
 
@@ -1375,7 +1377,7 @@ export async function applyPlannedSyncForPackageFiles(
     mapping = buildIndexMappingFromPlans(groupPlans);
     const workspaceHash = previousIndex?.workspace?.hash ?? createWorkspaceHash(cwd);
     const indexRecord: PackageIndexRecord = {
-      path: getPackageIndexPath(cwd, packageName),
+      path: getPackageIndexPath(cwd, packageName, location),
       packageName,
       workspace: {
         hash: workspaceHash,

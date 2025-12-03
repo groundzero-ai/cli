@@ -82,6 +82,7 @@ After the registry copy succeeds, the pipeline performs a **platform sync** pass
 ##### Purpose
 
 - Applies platform mapping rules to mirror the package's contents into platform‑specific workspaces and files (e.g. editor/IDE integrations, AI platforms, etc.).
+- Updates `package.index.yml` to reflect the **actual installed paths** after sync.
 
 ##### Operations
 
@@ -89,6 +90,14 @@ Distinguishes between:
 
 - Content that should be created or updated on platforms.
 - Content that should be removed when no longer present in the package.
+
+##### Index Updates
+
+After sync completes:
+
+- The `package.index.yml` is updated to include **all platform paths where files were actually created**.
+- This differs from the `add` command, which only records the source path.
+- Example: If a file was added from `.cursor/commands/test.md`, after sync the index will also include `.opencode/command/test.md` (if that platform is detected and the file was synced).
 
 ---
 

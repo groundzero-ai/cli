@@ -1,6 +1,6 @@
 ### Package Index File (`package.index.yml`)
 
-The `package.index.yml` file tracks the mapping between package files and their installed workspace locations.
+The `package.index.yml` file tracks the mapping between package files and their **actually installed** workspace locations.
 
 ---
 
@@ -10,6 +10,20 @@ The `package.index.yml` file tracks the mapping between package files and their 
 - **Nested package**: `cwd/.openpackage/packages/<name>/.openpackage/package.index.yml`
 
 > **Note**: `package.index.yml` is **never** included in the registry payload. It's workspace-local metadata.
+
+---
+
+#### Excluded Content
+
+The following files are **never** included in the index, even though they may exist in the package:
+
+| File | Reason |
+|------|--------|
+| `package.yml` | Package manifest; not synced to workspace |
+| `.openpackage/package.yml` | Same as above (path variant) |
+| `package.index.yml` | Index file itself; workspace-local metadata |
+
+The index only contains entries for content that is **actually synced** to workspace locations.
 
 ---
 
@@ -45,12 +59,28 @@ Registry keys are **relative to the package root**:
 
 #### Values (Installed Paths)
 
-Values are **relative to the workspace root (`cwd`)**:
+Values are **relative to the workspace root (`cwd`)** and represent **paths that actually exist**:
 
 | Content Type | Value Format | Example |
 |--------------|--------------|---------|
 | Universal content | Platform-specific paths | `.cursor/commands/test.md`, `.opencode/commands/test.md` |
 | Root-level content | Same as key | `ai/helper.md` |
+
+> **Important**: The index only records paths where files **actually exist**. If a file is only installed to one platform (e.g., `.cursor/`), only that path appears in the index—not hypothetical paths for other platforms.
+
+---
+
+#### Index Update Behavior
+
+The index is updated differently depending on the operation:
+
+| Operation | Behavior |
+|-----------|----------|
+| **Add** | Records only the source path that was used to add the file. If you add `.cursor/commands/test.md`, only that path is recorded. |
+| **Save/Sync** | Expands the index to include all platform paths where files were actually created during sync. |
+| **Install** | Populates the index with all platform paths where files were installed. |
+
+This ensures the index reflects the **current state** of the workspace, not hypothetical future states.
 
 ---
 
@@ -80,19 +110,31 @@ For **nested packages**, all mappings are included because:
 
 #### Complete Examples
 
-**Root package** (`cwd/.openpackage/package.index.yml`):
+**After `opkg add .cursor/commands/test.md`** (only source path recorded):
 
 ```yaml
 workspace:
   hash: abc123
-  version: 1.0.0
+  version: 1.0.0-abc123.xyz
 files:
   .openpackage/commands/test.md:
-    - .cursor/commands/test.md
-    - .opencode/commands/test.md
+    - .cursor/commands/test.md    # Only the source path that exists
+```
+
+**After `opkg save`** (all synced paths recorded):
+
+```yaml
+workspace:
+  hash: abc123
+  version: 1.0.0-abc123.xyz
+files:
+  .openpackage/commands/test.md:
+    - .cursor/commands/test.md    # Original source
+    - .opencode/command/test.md   # Synced by save
   .openpackage/rules/auth.md:
     - .cursor/rules/auth.mdc
-  # Note: <dir>/helper.md is SKIPPED (maps to itself)
+  # Note: package.yml is NOT included (it's the manifest, not synced content)
+  # Note: <dir>/helper.md is SKIPPED for root packages (maps to itself)
 ```
 
 **Nested package** (`cwd/.openpackage/packages/foo/.openpackage/package.index.yml`):
@@ -104,7 +146,7 @@ workspace:
 files:
   .openpackage/commands/test.md:
     - .cursor/commands/test.md
-    - .opencode/commands/test.md
+    - .opencode/command/test.md
   <dir>/helper.md:
     - <dir>/helper.md
   AGENTS.md:
@@ -115,11 +157,15 @@ files:
 
 #### Add Command Examples
 
-| Command | Package | Stored At | Registry Key | Values |
-|---------|---------|-----------|--------------|--------|
+When adding files, the index only records the **source path that exists**:
+
+| Command | Package | Stored At | Registry Key | Values (in index) |
+|---------|---------|-----------|--------------|-------------------|
 | `opkg add foo <dir>/foo.md` | Nested `foo` | `.openpackage/packages/foo/<dir>/foo.md` | `<dir>/foo.md` | `<dir>/foo.md` |
-| `opkg add foo .cursor/test/foo.md` | Nested `foo` | `.openpackage/packages/foo/.openpackage/test/foo.md` | `.openpackage/test/foo.md` | `.cursor/test/foo.md`, etc. |
+| `opkg add foo .cursor/test/foo.md` | Nested `foo` | `.openpackage/packages/foo/.openpackage/test/foo.md` | `.openpackage/test/foo.md` | `.cursor/test/foo.md` (only source) |
 | `opkg add <dir>/foo.md` | Root | `.openpackage/<dir>/foo.md` | `<dir>/foo.md` | SKIPPED |
-| `opkg add .cursor/test/foo.md` | Root | `.openpackage/test/foo.md` | `.openpackage/test/foo.md` | `.cursor/test/foo.md`, etc. |
+| `opkg add .cursor/test/foo.md` | Root | `.openpackage/test/foo.md` | `.openpackage/test/foo.md` | `.cursor/test/foo.md` (only source) |
+
+> **Note**: After `opkg save`, the index will expand to include other platform paths (e.g., `.opencode/test/foo.md`) once those files are actually synced.
 
 

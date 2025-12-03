@@ -39,10 +39,10 @@ export async function resolvePackageFilesWithConflicts(
   options: SaveConflictResolutionOptions = {}
 ): Promise<PackageFile[]> {
   const cwd = process.cwd();
-  // Use packageFilesDir from context instead of computing via getLocalPackageDir
-  const packageDir = packageContext.packageFilesDir;
+  const packageFilesDir = packageContext.packageFilesDir;
+  const packageRootDir = packageContext.packageRootDir;
 
-  if (!(await exists(packageDir)) || !(await isDirectory(packageDir))) {
+  if (!(await exists(packageFilesDir)) || !(await isDirectory(packageFilesDir))) {
     return [];
   }
 
@@ -52,9 +52,9 @@ export async function resolvePackageFilesWithConflicts(
     localRootCandidates,
     workspaceRootCandidates
   ] = await Promise.all([
-    loadLocalCandidates(packageDir),
+    loadLocalCandidates(packageRootDir),
     discoverWorkspaceCandidates(cwd, packageContext.config.name),
-    loadLocalRootSaveCandidates(packageDir, packageContext.config.name),
+    loadLocalRootSaveCandidates(packageRootDir, packageContext.config.name),
     discoverWorkspaceRootSaveCandidates(cwd, packageContext.config.name)
   ]);
 
@@ -67,7 +67,7 @@ export async function resolvePackageFilesWithConflicts(
     const rootGroups = buildCandidateGroups(localRootCandidates, workspaceRootCandidates);
 
     // Prune platform-specific root candidates that already exist locally (e.g., CLAUDE.md present)
-    await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageDir, rootGroups);
+    await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageRootDir, rootGroups);
 
     for (const group of rootGroups) {
       const hasLocal = !!group.local;
@@ -92,7 +92,7 @@ export async function resolvePackageFilesWithConflicts(
       const { selection, platformSpecific } = resolution;
 
       // Always write universal AGENTS.md from the selected root section
-      await writeRootSelection(packageDir, packageContext.config.name, group.local, selection);
+      await writeRootSelection(packageRootDir, packageContext.config.name, group.local, selection);
 
       // Persist platform-specific root selections (e.g., CLAUDE.md, WARP.md)
       for (const candidate of platformSpecific) {
@@ -102,7 +102,7 @@ export async function resolvePackageFilesWithConflicts(
         const platformRegistryPath = createPlatformSpecificRegistryPath(group.registryPath, platform);
         if (!platformRegistryPath) continue;
 
-        const targetPath = join(packageDir, platformRegistryPath);
+        const targetPath = join(packageRootDir, platformRegistryPath);
         try {
           await ensureDir(dirname(targetPath));
 
@@ -126,7 +126,7 @@ export async function resolvePackageFilesWithConflicts(
     }
 
     // After resolving root conflicts, return filtered files from local dir
-    return await readPackageFilesForRegistry(packageDir);
+    return await readPackageFilesForRegistry(packageRootDir);
   }
 
   const fileKeys = new Set<string>();
@@ -164,12 +164,12 @@ export async function resolvePackageFilesWithConflicts(
   const workspaceCandidates = [...filteredWorkspacePlatformCandidates, ...filteredWorkspaceRootCandidates];
 
   const groups = buildCandidateGroups(localCandidates, workspaceCandidates);
-  let frontmatterPlans = await buildFrontmatterMergePlans(packageDir, groups);
+  let frontmatterPlans = await buildFrontmatterMergePlans(packageRootDir, groups);
   const frontmatterPlanMap = new Map(frontmatterPlans.map(plan => [plan.registryPath, plan]));
   const pathsWithFrontmatterPlans = new Set(frontmatterPlanMap.keys());
 
   // Prune platform-specific workspace candidates that already have local platform-specific files
-  await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageDir, groups);
+  await pruneWorkspaceCandidatesWithLocalPlatformVariants(packageRootDir, groups);
 
   // Resolve conflicts and write chosen content back to local files
   for (const group of groups) {
@@ -198,7 +198,7 @@ export async function resolvePackageFilesWithConflicts(
     const { selection, platformSpecific } = resolution;
 
     if (group.registryPath === FILE_PATTERNS.AGENTS_MD && selection.isRootFile) {
-      await writeRootSelection(packageDir, packageContext.config.name, group.local, selection);
+      await writeRootSelection(packageRootDir, packageContext.config.name, group.local, selection);
       // Continue to platform-specific persistence below (don't skip it)
     } else if (pathsWithFrontmatterPlans.has(group.registryPath)) {
       // Only update markdown body; frontmatter will be handled by merge plans
@@ -207,7 +207,7 @@ export async function resolvePackageFilesWithConflicts(
         const selectionBody = selection.markdownBody ?? selection.content;
 
         if ((selectionBody ?? '').trim() !== (localBody ?? '').trim()) {
-          const targetPath = join(packageDir, group.registryPath);
+          const targetPath = join(packageRootDir, group.registryPath);
           const localFrontmatter = group.local.frontmatter;
           const updatedContent = composeMarkdown(localFrontmatter, selectionBody);
 
@@ -224,7 +224,7 @@ export async function resolvePackageFilesWithConflicts(
     } else {
       if (group.local && selection.contentHash !== group.local.contentHash) {
         // Overwrite local file content with selected content
-        const targetPath = join(packageDir, group.registryPath);
+        const targetPath = join(packageRootDir, group.registryPath);
         try {
           await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
           logger.debug(`Updated local file with selected content: ${group.registryPath}`);
@@ -233,7 +233,7 @@ export async function resolvePackageFilesWithConflicts(
         }
       } else if (!group.local) {
         // No local file existed; write the selected content to create it
-        const targetPath = join(packageDir, group.registryPath);
+        const targetPath = join(packageRootDir, group.registryPath);
         try {
           await ensureDir(dirname(targetPath));
           await writeTextFile(targetPath, selection.content, UTF8_ENCODING);
@@ -257,7 +257,7 @@ export async function resolvePackageFilesWithConflicts(
         continue;
       }
 
-      const targetPath = join(packageDir, platformRegistryPath);
+      const targetPath = join(packageRootDir, platformRegistryPath);
 
       try {
         await ensureDir(dirname(targetPath));
@@ -280,7 +280,7 @@ export async function resolvePackageFilesWithConflicts(
         if (pathsWithFrontmatterPlans.has(group.registryPath)) {
           const overrideRelativePath = getOverrideRelativePath(group.registryPath, platform);
           if (overrideRelativePath) {
-            const overrideFullPath = join(packageDir, overrideRelativePath);
+          const overrideFullPath = join(packageRootDir, overrideRelativePath);
             if (await exists(overrideFullPath)) {
               await remove(overrideFullPath);
               logger.debug(`Removed redundant platform override: ${overrideRelativePath}`);
@@ -305,17 +305,17 @@ export async function resolvePackageFilesWithConflicts(
 
   // After resolving conflicts by updating local files, simply read filtered files from local dir
   frontmatterPlans = frontmatterPlans.filter(plan => plan.workspaceEntries.length > 0);
-  await applyFrontmatterMergePlans(packageDir, frontmatterPlans);
-  return await readPackageFilesForRegistry(packageDir);
+  await applyFrontmatterMergePlans(packageRootDir, frontmatterPlans);
+  return await readPackageFilesForRegistry(packageRootDir);
 }
 
 async function writeRootSelection(
-  packageDir: string,
+  packageRootDir: string,
   packageName: string,
   localCandidate: SaveCandidate | undefined,
   selection: SaveCandidate
 ): Promise<void> {
-  const targetPath = `${packageDir}/${FILE_PATTERNS.AGENTS_MD}`;
+  const targetPath = join(packageRootDir, FILE_PATTERNS.AGENTS_MD);
   const sectionBody = (selection.sectionBody ?? selection.content).trim();
   const finalContent = sectionBody;
 

@@ -20,11 +20,12 @@ import {
   getNoPackageDetectedMessage,
   getPackageYmlPath,
   getPackageFilesDir,
+  getPackageRootDir,
   type PackageContext 
 } from '../package-context.js';
 import { applyWorkspacePackageRename } from './workspace-rename.js';
 
-export { SaveMode } from './name-resolution.js';
+export type { SaveMode } from './name-resolution.js';
 
 export interface SavePipelineOptions {
   mode: SaveMode;
@@ -78,11 +79,16 @@ export async function runSavePipeline(
       ? packageContext.packageFilesDir
       : getPackageFilesDir(cwd, 'nested', nameResolution.finalName);
 
+    const updatedPackageRootDir = packageContext.location === 'root'
+      ? packageContext.packageRootDir
+      : getPackageRootDir(cwd, 'nested', nameResolution.finalName);
+
     packageContext = {
       ...packageContext,
       name: nameResolution.finalName,
       packageYmlPath: updatedPackageYmlPath,
       packageFilesDir: updatedPackageFilesDir,
+      packageRootDir: updatedPackageRootDir,
       config: { ...packageContext.config, name: nameResolution.finalName }
     };
   }
@@ -157,7 +163,8 @@ export async function runSavePipeline(
     {
       force,
       conflictStrategy: force ? 'overwrite' : 'ask',
-      skipRootSync: packageContext.location === 'root'
+      skipRootSync: packageContext.location === 'root',
+      packageLocation: packageContext.location
     }
   );
 

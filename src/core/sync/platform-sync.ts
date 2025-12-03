@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger.js';
 import type { PackageFile, InstallOptions } from '../../types/index.js';
 import { syncRootFiles, type RootFileSyncResult } from './root-files-sync.js';
 import { applyPlannedSyncForPackageFiles } from '../../utils/index-based-installer.js';
+import type { PackageIndexLocation } from '../../utils/package-index-yml.js';
 
 /**
  * Result of platform sync operation
@@ -20,6 +21,7 @@ export interface PlatformSyncResult {
 
 export interface PlatformSyncOptions extends InstallOptions {
   skipRootSync?: boolean;
+  packageLocation?: PackageIndexLocation;
 }
 
 export async function performPlatformSync(
@@ -29,7 +31,7 @@ export async function performPlatformSync(
   packageFiles: PackageFile[],
   options: PlatformSyncOptions = {}
 ): Promise<PlatformSyncResult> {
-  const { skipRootSync, ...installOptions } = options;
+  const { skipRootSync, packageLocation = 'nested', ...installOptions } = options;
   const detectedPlatforms = await getDetectedPlatforms(cwd);
 
   logger.debug(
@@ -48,7 +50,8 @@ export async function performPlatformSync(
     packageVersion,
     packageFiles,
     detectedPlatforms,
-    syncOptions
+    syncOptions,
+    packageLocation
   );
 
   const rootSyncResult: RootFileSyncResult = skipRootSync

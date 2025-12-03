@@ -1,4 +1,4 @@
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
@@ -78,17 +78,28 @@ function pruneStaleKeysByCurrentFiles(
 }
 
 /**
- * Merge new mapping updates with existing index, respecting existing entries.
- * For directory keys (ending with /), prunes redundant nested child directories
- * to prevent adding subdirectories when a parent directory already exists.
+ * Merge new mapping updates with existing index.
+ * 
+ * @param previous - Previous index mapping
+ * @param updates - New mapping updates
+ * @param replaceExact - When true, replace values entirely for exact file keys instead of merging.
+ *                       This ensures the index reflects current state, not accumulated history.
  */
 function mergeMappingsRespectingExisting(
   previous: Record<string, string[]>,
-  updates: Record<string, string[]>
+  updates: Record<string, string[]>,
+  replaceExact: boolean = false
 ): Record<string, string[]> {
   const merged: Record<string, string[]> = { ...previous };
 
   for (const [key, newVals] of Object.entries(updates)) {
+    // For exact file keys (not directory keys), replace values when replaceExact is true
+    // This prevents stale paths from being preserved when files are re-indexed
+    if (replaceExact && !key.endsWith('/')) {
+      merged[key] = newVals.sort();
+      continue;
+    }
+
     const prevVals = merged[key] || [];
     // Union + de-dupe
     const union = Array.from(new Set([...prevVals, ...newVals]));
@@ -183,9 +194,13 @@ export interface BuildIndexOptions {
 
 /**
  * Build a mapping that preserves exact file keys for the provided packageFiles.
- * For universal subdirs, maps to platform-specific installed paths using detected platforms.
+ * For universal subdirs, maps to platform-specific installed paths that ACTUALLY EXIST.
  * For platform-specific paths (with .platform suffix), only maps to that specific platform.
  * For ai/ paths and other non-universal paths, keeps the value as the same path.
+ * 
+ * Only includes workspace paths where the file actually exists - this ensures the index
+ * reflects reality rather than hypothetical future installations. Sync operations will
+ * expand the index as files are actually created.
  * 
  * Filters files using the same logic as install/save: excludes root files, skippable paths,
  * and non-allowed registry paths to match the index building behavior.
@@ -193,10 +208,11 @@ export interface BuildIndexOptions {
  * Prunes redundant mappings: if platform-specific keys exist (e.g., setup.claude.md),
  * their target files are excluded from the universal key (e.g., setup.md) to avoid duplication.
  */
-function buildExactFileMapping(
+async function buildExactFileMapping(
+  cwd: string,
   packageFiles: PackageFile[],
   platforms: Platform[]
-): Record<string, string[]> {
+): Promise<Record<string, string[]>> {
   const mapping: Record<string, string[]> = {};
 
   // Collect platform-specific targets per base universal key (e.g., commands/nestjs/setup.md)
@@ -207,6 +223,12 @@ function buildExactFileMapping(
     if (values.size > 0) {
       mapping[key] = Array.from(values).sort();
     }
+  };
+
+  // Helper to check if a workspace path exists
+  const checkExists = async (relPath: string): Promise<boolean> => {
+    const absPath = join(cwd, relPath);
+    return await exists(absPath);
   };
 
   // First pass: record platform-specific target files keyed by base universal key
@@ -234,7 +256,7 @@ function buildExactFileMapping(
     }
   }
 
-  // Second pass: build exact mappings and prune universal values that are covered by platform-specific keys
+  // Second pass: build exact mappings, only including paths that actually exist
   for (const file of packageFiles) {
     const normalized = normalizeRegistryPath(file.path);
     if (isRootRegistryPath(normalized)) continue;
@@ -247,23 +269,29 @@ function buildExactFileMapping(
     const parsed = parseUniversalPath(key);
     if (parsed) {
       if (parsed.platformSuffix && isPlatformId(parsed.platformSuffix)) {
-        // Platform-specific registry key → only that platform target
+        // Platform-specific registry key → only that platform target if it exists
         try {
           const { absFile } = mapUniversalToPlatform(
             parsed.platformSuffix,
             parsed.universalSubdir as any,
             parsed.relPath
           );
-          values.add(absFile.replace(/\\/g, '/'));
+          const relPath = absFile.replace(/\\/g, '/');
+          if (await checkExists(relPath)) {
+            values.add(relPath);
+          }
         } catch {
           // Ignore unsupported subdir/platform combinations
         }
       } else {
-        // Universal registry key → map to all detected platforms, then prune duplicates
+        // Universal registry key → only include platform paths that actually exist
         for (const platform of platforms) {
           try {
             const { absFile } = mapUniversalToPlatform(platform, parsed.universalSubdir as any, parsed.relPath);
-            values.add(absFile.replace(/\\/g, '/'));
+            const relPath = absFile.replace(/\\/g, '/');
+            if (await checkExists(relPath)) {
+              values.add(relPath);
+            }
           } catch {
             // Ignore unsupported platforms
           }
@@ -278,8 +306,10 @@ function buildExactFileMapping(
         }
       }
     } else {
-      // Fallback: keep value as the same path
-      values.add(key);
+      // Fallback: keep value as the same path if it exists
+      if (await checkExists(key)) {
+        values.add(key);
+      }
     }
 
     addTargets(key, values);
@@ -299,6 +329,13 @@ export async function buildMappingAndWriteIndex(
   const packageLocation = packageContext.location;
 
   try {
+    // Filter to index-eligible files only (excludes package.yml, package.index.yml, etc.)
+    // These are manifest/metadata files that are NOT synced to workspace locations
+    const indexEligibleFiles = packageFiles.filter(f => {
+      const normalized = normalizeRegistryPath(f.path);
+      return isAllowedRegistryPath(normalized) && !isSkippableRegistryPath(normalized);
+    });
+
     // Read existing index and other indexes for conflict context
     const previousIndex = await readPackageIndex(cwd, packageName, packageLocation);
     const otherIndexes = await loadOtherPackageIndexes(cwd, packageName);
@@ -326,7 +363,7 @@ export async function buildMappingAndWriteIndex(
     // Build mapping using same flow as install
     let newMapping = await buildIndexMappingForPackageFiles(
       cwd,
-      packageFiles,
+      indexEligibleFiles,
       platforms,
       previousIndex,
       otherIndexes
@@ -336,12 +373,12 @@ export async function buildMappingAndWriteIndex(
     // - If preserveExactPaths is true: force exact file keys and strip dir keys
     // - Otherwise: preserve the planner's dir/file decisions (already respects workspace occupancy)
     if (options.preserveExactPaths) {
-      newMapping = buildExactFileMapping(packageFiles, platforms);
+      newMapping = await buildExactFileMapping(cwd, indexEligibleFiles, platforms);
     }
 
     // Prune stale keys from previous index based on current files in .openpackage
     // This ensures keys are updated when files/directories are moved or renamed
-    const currentPaths = packageFiles.map(f => f.path);
+    const currentPaths = indexEligibleFiles.map(f => f.path);
     const prunedPreviousFiles = pruneStaleKeysByCurrentFiles(
       previousIndex?.files || {},
       currentPaths
@@ -351,10 +388,13 @@ export async function buildMappingAndWriteIndex(
       Object.entries(prunedPreviousFiles).filter(([key]) => !key.endsWith('/'))
     );
 
-    // Merge and write index - respect existing entries (post-pruning) and prune redundant children
+    // Merge and write index
+    // When preserveExactPaths is true, replace values entirely to reflect current state
+    // (prevents stale platform paths from being preserved)
     const mergedFiles = mergeMappingsRespectingExisting(
       previousFilesWithoutDirKeys,
-      newMapping
+      newMapping,
+      options.preserveExactPaths ?? false
     );
     const canonicalIndexPath = getPackageIndexPath(cwd, packageName, packageLocation);
     const indexRecord: PackageIndexRecord = {
