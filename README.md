@@ -90,23 +90,38 @@ opkg install mongodb
 ## Usage
 
 > [!TIP]  
-> Formulas are essential to how OpenPackage works. We highly recommend reading [What are Formulas?](https://openpackage.dev/docs/what-are-packages) to understand how packages work.
+> We highly recommend reading [the packages doc](https://openpackage.dev/docs/packages) to understand how packages work.
 
-### Add files/dirs to package
+### Create a package
+
+#### In a project/workspace
+```bash title="Terminal"
+opkg init <package>
+```  
+Initializes a package at `.openpackage/packages/<package>/` and generates the package's `package.yml` manifest file. This method is ideal for creating/managing multiple packages within existing projects. 
 ```bash title="Terminal"
 opkg add <package> <path-to-dir-or-file>
 ```  
-Adds dirs or files to the package.  
+Use the `add` command to add files from the workspace to a package. You can also directly create/update the package files in `.openpackage/packages/<package>/` (see Package Structure below for details).
+
+
+#### In a dedicated codebase for the package
+```bash title="Terminal"
+opkg init
+```  
+Initializes a package at cwd and generates the package's `package.yml` manifest file. Use this to dedicate the codebase to the package itself (see Package Structure below for details on structuring a package).
+
 
 ### Save a package
 ```bash title="Terminal"
-opkg save <package>
+opkg save [package]
 ```  
-Save the set of dirs and files as a package for reuse and cross-platform sync (prerelease).
+Save the set of dirs and files as a package for reuse and cross-platform sync (prerelease).  
+Also performs sync of universal subdir content across detected AI coding platform dirs.
 
 ### Finalize/pack a package
 ```bash title="Terminal"
-opkg pack <package>
+opkg pack [package]
 ```  
 Save the package as a stable non-prerelease version ready for push (upload).
 
@@ -149,10 +164,36 @@ Use the `pull` command to download a package from the [official OpenPackage regi
 > [!TIP]  
 > Learn more by heading over to the [official docs](https://openpackage.dev/docs).
 
+## Package Structure
+
+Packages are composed using the following directory structure:
+
+```txt title="Structure"
+<package>
+├── .openpackage
+│   ├── package.yml # The OpenPackage manifest, required
+│   ├── rules/
+│   │   └── # Rule files
+│   ├── commands/
+│   │   └── # Command files (slash commands)
+│   ├── agents/
+│   │   └── # Agent files (subagents)
+│   └── skills/
+│       └── # Skill files (Claude Code skills)
+├── <dirs-or-files>
+│   └── # Any other root dirs or files (Ex: specs/, docs/, tests/, etc.)
+├── README.md # Metadata files (LICENSE.md, CONTRIBUTING.md, etc.)
+└── AGENTS.md # Platform root file
+```
+
+There are two ways to compose packages:
+- In a project workspace: `opkg init <package>` will create a package in `.openpackage/packages/<packages>/`
+- In a dedicated package codebase: `opkg init` will create a package at cwd (similar to npm, pypi, etc.)
+
 ## Supported Platforms
 
 OpenPackage performs installation and platform sync of files for supported AI coding platforms outlined by the table below.  
-Files and paths will be automatically converted to platform specific designations during `save` and `install`.
+Files and paths will be automatically converted to platform specific designations during `save` and `install`. The `platforms.jsonc` file includes the specifications for all supported platforms.
 
 > [!NOTE]  
 > OpenPackage searches and includes markdown files under supported platform directories as well as any other workspace directories.
