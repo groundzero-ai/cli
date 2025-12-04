@@ -1,11 +1,11 @@
 import { join, dirname } from 'path';
 import * as yaml from 'js-yaml';
+import { FILE_PATTERNS } from '../constants/index.js';
 import { exists, readTextFile, writeTextFile, ensureDir } from './fs.js';
 import { getLocalOpenPackageDir, getLocalPackageContentDir } from './paths.js';
 import { normalizePathForProcessing } from './path-normalization.js';
 import { logger } from './logger.js';
 
-export const PACKAGE_INDEX_FILENAME = 'package.index.yml';
 const HEADER_COMMENT = '# This file is managed by OpenPackage. Do not edit manually.';
 
 export type PackageIndexLocation = 'root' | 'nested';
@@ -31,12 +31,12 @@ export function getPackageIndexPath(
   location: PackageIndexLocation = 'nested'
 ): string {
   if (location === 'root') {
-    return join(getLocalOpenPackageDir(cwd), PACKAGE_INDEX_FILENAME);
+    return join(getLocalOpenPackageDir(cwd), FILE_PATTERNS.PACKAGE_INDEX_YML);
   }
 
   // Nested: use content directory (cwd/.openpackage/packages/<name>/.openpackage/)
   const contentDir = getLocalPackageContentDir(cwd, packageName);
-  return join(contentDir, PACKAGE_INDEX_FILENAME);
+  return join(contentDir, FILE_PATTERNS.PACKAGE_INDEX_YML);
 }
 
 export function ensureTrailingSlash(value: string): string {
@@ -144,7 +144,7 @@ export async function writePackageIndex(record: PackageIndexRecord): Promise<voi
   const { path: indexPath, files } = record;
   const workspaceVer = record.workspace?.version;
   if (!workspaceVer) {
-    throw new Error('workspace.version is required when writing package.index.yml');
+    throw new Error(`workspace.version is required when writing ${FILE_PATTERNS.PACKAGE_INDEX_YML}`);
   }
   const workspace: PackageIndexWorkspace = {
     hash: record.workspace?.hash,

@@ -23,7 +23,7 @@ export interface WipVersionComputationResult {
    */
   wipVersion: string;
   /**
-   * The last recorded workspace version from package.index.yml, if any.
+   * The last recorded workspace version from the package index file, if any.
    */
   lastWorkspaceVersion?: string;
   /**

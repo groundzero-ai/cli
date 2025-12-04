@@ -1,12 +1,30 @@
 import { Command } from 'commander';
 
 import type { CommandResult, InstallOptions } from '../types/index.js';
+import { DIR_PATTERNS, PACKAGE_PATHS } from '../constants/index.js';
 import { runBulkInstallPipeline } from '../core/install/bulk-install-pipeline.js';
 import { runInstallPipeline, determineResolutionMode } from '../core/install/install-pipeline.js';
 import { withErrorHandling } from '../utils/errors.js';
 import { normalizePlatforms } from '../utils/platform-mapper.js';
 import { parsePackageInput } from '../utils/package-name.js';
 import { logger } from '../utils/logger.js';
+import { normalizePathForProcessing } from '../utils/path-normalization.js';
+
+function assertTargetDirOutsideMetadata(targetDir: string): void {
+  const normalized = normalizePathForProcessing(targetDir ?? '.');
+  if (!normalized || normalized === '.') {
+    return; // default install root
+  }
+
+  if (
+    normalized === DIR_PATTERNS.OPENPACKAGE ||
+    normalized.startsWith(`${DIR_PATTERNS.OPENPACKAGE}/`)
+  ) {
+    throw new Error(
+      `Installation target '${targetDir}' cannot point inside ${DIR_PATTERNS.OPENPACKAGE} (reserved for metadata like ${PACKAGE_PATHS.INDEX_RELATIVE}). Choose a workspace path outside metadata.`
+    );
+  }
+}
 
 export function validateResolutionFlags(options: InstallOptions & { local?: boolean; remote?: boolean }): void {
   if (options.remote && options.local) {
@@ -19,6 +37,7 @@ async function installCommand(
   targetDir: string,
   options: InstallOptions
 ): Promise<CommandResult> {
+  assertTargetDirOutsideMetadata(targetDir);
   options.resolutionMode = determineResolutionMode(options);
   logger.debug('Install resolution mode selected', { mode: options.resolutionMode });
 

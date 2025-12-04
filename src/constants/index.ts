@@ -13,6 +13,7 @@ export const FILE_PATTERNS = {
   MDC_FILES: '.mdc',
   TOML_FILES: '.toml',
   PACKAGE_YML: 'package.yml',
+  PACKAGE_INDEX_YML: 'package.index.yml',
   README_MD: 'README.md',
   // Platform-specific root files
   AGENTS_MD: 'AGENTS.md',
@@ -38,6 +39,22 @@ export const OPENPACKAGE_DIRS = {
   PACKAGES: 'packages',
   CACHE: 'cache',
   RUNTIME: 'runtime'
+} as const;
+
+/**
+ * Canonical paths within a package (relative to the package root).
+ */
+export const PACKAGE_PATHS = {
+  /**
+   * The canonical location of the package manifest within a package:
+   * <package-root>/.openpackage/package.yml
+   */
+  MANIFEST_RELATIVE: `${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`,
+  /**
+   * The canonical location of the package index file within a package:
+   * <package-root>/.openpackage/package.index.yml
+   */
+  INDEX_RELATIVE: `${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_INDEX_YML}`,
 } as const;
 
 export const DEPENDENCY_ARRAYS = {

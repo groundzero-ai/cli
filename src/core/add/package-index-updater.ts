@@ -1,4 +1,5 @@
 import { dirname, join } from 'path';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
@@ -177,17 +178,17 @@ function collapseFileEntriesToDirKeys(
 }
 
 /**
- * Build mapping from PackageFile[] and write/merge to package.index.yml.
+ * Build mapping from PackageFile[] and write/merge to package index file.
  * Automatically collapses file entries into directory keys when appropriate.
  */
 export interface BuildIndexOptions {
   /**
    * When true, do not collapse file entries into directory keys.
-   * Keeps exact file paths as keys in package.index.yml.
+   * Keeps exact file paths as keys in the package index file.
    */
   preserveExactPaths?: boolean;
   /**
-   * Force the version written to package.index.yml (defaults to previous/index/package.yml resolution).
+   * Force the version written to the package index file (defaults to previous/index/package.yml resolution).
    */
   versionOverride?: string;
 }
@@ -329,7 +330,7 @@ export async function buildMappingAndWriteIndex(
   const packageLocation = packageContext.location;
 
   try {
-    // Filter to index-eligible files only (excludes package.yml, package.index.yml, etc.)
+    // Filter to index-eligible files only (excludes package.yml, package index file, etc.)
     // These are manifest/metadata files that are NOT synced to workspace locations
     const indexEligibleFiles = packageFiles.filter(f => {
       const normalized = normalizeRegistryPath(f.path);
@@ -407,9 +408,9 @@ export async function buildMappingAndWriteIndex(
       files: mergedFiles
     };
     await writePackageIndex(indexRecord);
-    logger.debug(`Updated package.index.yml for ${packageName}@${version}`);
+    logger.debug(`Updated ${FILE_PATTERNS.PACKAGE_INDEX_YML} for ${packageName}@${version}`);
   } catch (error) {
-    logger.warn(`Failed to update package.index.yml for ${packageName}: ${error}`);
+    logger.warn(`Failed to update ${FILE_PATTERNS.PACKAGE_INDEX_YML} for ${packageName}: ${error}`);
   }
 }
 

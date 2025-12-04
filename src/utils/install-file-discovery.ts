@@ -1,5 +1,5 @@
 import { packageManager } from '../core/package.js';
-import { FILE_PATTERNS } from '../constants/index.js';
+import { FILE_PATTERNS, PACKAGE_PATHS } from '../constants/index.js';
 import type { PackageFile } from '../types/index.js';
 import { getPlatformDefinition, type Platform } from '../core/platforms.js';
 
@@ -44,7 +44,7 @@ export async function discoverAndCategorizeFiles(
   const pathBasedFiles: PackageFile[] = [];
   for (const file of pkg.files) {
     const p = file.path;
-    if (p === 'package.yml') continue; // never install registry package.yml
+    if (p === FILE_PATTERNS.PACKAGE_YML || p === PACKAGE_PATHS.INDEX_RELATIVE) continue; // never install registry package metadata files
     // Root files handled separately
     pathBasedFiles.push(file);
   }

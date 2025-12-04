@@ -8,6 +8,7 @@ import { createHttpClient, HttpClient } from '../utils/http-client.js';
 import { extractPackageFromTarball, verifyTarballIntegrity, ExtractedPackage } from '../utils/tarball.js';
 import { logger } from '../utils/logger.js';
 import { ConfigError, ValidationError } from '../utils/errors.js';
+import { PACKAGE_PATHS } from '../constants/index.js';
 
 const NETWORK_ERROR_PATTERN = /(fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|network)/i;
 
@@ -234,7 +235,9 @@ function buildPackageMetadata(
   fallbackName: string,
   fallbackVersion: string
 ): PackageYml {
-  const packageFile = extracted.files.find(file => file.path === 'package.yml');
+  const packageFile = extracted.files.find(
+    file => file.path === PACKAGE_PATHS.MANIFEST_RELATIVE
+  );
 
   if (packageFile) {
     try {

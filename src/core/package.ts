@@ -26,6 +26,7 @@ import {
   resolveVersionRange,
   isExactVersion
 } from '../utils/version-ranges.js';
+import { PACKAGE_PATHS } from '../constants/index.js';
 
 /**
  * Package management operations
@@ -78,8 +79,8 @@ export class PackageManager {
     }
     
     try {
-      // Load package.yml for metadata
-      const packageYmlPath = join(packagePath, 'package.yml');
+      // Load package.yml for metadata (always under .openpackage/)
+      const packageYmlPath = join(packagePath, PACKAGE_PATHS.MANIFEST_RELATIVE);
       if (!(await exists(packageYmlPath))) {
         throw new PackageNotFoundError(packageName);
       }

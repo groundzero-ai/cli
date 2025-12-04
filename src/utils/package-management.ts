@@ -1,8 +1,8 @@
-import { basename, join, relative } from 'path';
+import { basename, relative } from 'path';
 import semver from 'semver';
 import { PackageYml, PackageDependency } from '../types/index.js';
 import { parsePackageYml, writePackageYml } from './package-yml.js';
-import { exists, ensureDir, writeTextFile, walkFiles, remove } from './fs.js';
+import { exists, ensureDir } from './fs.js';
 import { logger } from './logger.js';
 import { getLocalOpenPackageDir, getLocalPackageYmlPath, getLocalPackagesDir, getLocalPackageDir } from './paths.js';
 import { DEPENDENCY_ARRAYS } from '../constants/index.js';
@@ -10,8 +10,6 @@ import { createCaretRange, hasExplicitPrereleaseIntent, isPrereleaseVersion } fr
 import { extractBaseVersion } from './version-generator.js';
 import { normalizePackageName, arePackageNamesEquivalent } from './package-name.js';
 import { packageManager } from '../core/package.js';
-import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
-import { FILE_PATTERNS } from '../constants/index.js';
 import { promptPackageDetailsForNamed } from './prompts.js';
 import { writePackageFilesToDirectory } from './package-copy.js';
 import { getPackageFilesDir, getPackageYmlPath } from '../core/package-context.js';
@@ -269,7 +267,7 @@ export async function addPackageToYml(
 
 /**
  * Copy the full package directory from the local registry into the project structure
- * Removes all existing files except package.index.yml before writing new files
+ * Removes all existing files except the package index file before writing new files
  */
 export async function writeLocalPackageFromRegistry(
   cwd: string,

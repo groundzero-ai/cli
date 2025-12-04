@@ -63,7 +63,7 @@ export function getLocalPackageDir(cwd: string, packageName: string): string {
 
 /**
  * Get the content directory (.openpackage/) for a nested package.
- * This is where package.yml, package.index.yml, and universal content live.
+ * This is where package.yml, the package index file, and universal content live.
  */
 export function getLocalPackageContentDir(cwd: string, packageName: string): string {
   return join(getLocalPackageDir(cwd, packageName), DIR_PATTERNS.OPENPACKAGE);

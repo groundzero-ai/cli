@@ -11,9 +11,8 @@
 import { join, relative, dirname } from 'path';
 
 import type { PackageFile } from '../types/index.js';
-import { DIR_PATTERNS, FILE_PATTERNS } from '../constants/index.js';
+import { DIR_PATTERNS, FILE_PATTERNS, PACKAGE_PATHS } from '../constants/index.js';
 import { getAllPlatforms, getPlatformDefinition } from '../core/platforms.js';
-import { PACKAGE_INDEX_FILENAME } from './package-index-yml.js';
 import {
   exists,
   ensureDir,
@@ -39,7 +38,7 @@ interface DefaultIncludeConfig {
 
 const MANIFEST_RELATIVE_PATHS = Object.freeze([
   FILE_PATTERNS.PACKAGE_YML,
-  `${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`
+  PACKAGE_PATHS.MANIFEST_RELATIVE
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +49,7 @@ const MANIFEST_RELATIVE_PATHS = Object.freeze([
  * Read package files from disk and return a registry-ready payload.
  *
  * Applies two layers of filtering:
- *   1. Static exclusions (package.index.yml, packages/** nested dirs).
+ *   1. Static exclusions (package index file, packages/** nested dirs).
  *   2. Manifest-based include/exclude patterns from package.yml.
  *
  * @param packageDir - Absolute path to the package root directory.
@@ -151,8 +150,8 @@ async function buildDefaultIncludeConfig(
   const hardIncludeFiles = new Set<string>();
 
   // Include package.yml (at .openpackage/package.yml relative to package root)
-  includePatterns.add(`${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`);
-  hardIncludeFiles.add(normalizePathForProcessing(`${DIR_PATTERNS.OPENPACKAGE}/${FILE_PATTERNS.PACKAGE_YML}`));
+  includePatterns.add(PACKAGE_PATHS.MANIFEST_RELATIVE);
+  hardIncludeFiles.add(normalizePathForProcessing(PACKAGE_PATHS.MANIFEST_RELATIVE));
 
   if (manifestInfo) {
     includePatterns.add(manifestInfo.relativePath);
@@ -199,7 +198,7 @@ async function buildDefaultIncludeConfig(
 
 export interface WritePackageFilesOptions {
   /**
-   * When true, preserve the package.index.yml file even if it's not in the
+   * When true, preserve the package index file even if it's not in the
    * incoming file list. Useful when writing to the local cache where the
    * index should persist across updates.
    */
@@ -228,7 +227,7 @@ export async function writePackageFilesToDirectory(
   const pathsToKeep = new Set<string>(files.map(f => normalizePathForProcessing(f.path)));
 
   if (options.preserveIndexFile) {
-    pathsToKeep.add(PACKAGE_INDEX_FILENAME);
+    pathsToKeep.add(FILE_PATTERNS.PACKAGE_INDEX_YML);
   }
 
   // Remove stale files (but never touch protected paths like packages/**)

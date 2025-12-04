@@ -107,7 +107,7 @@ export function getPackageRootDir(cwd: string, location: PackageLocation, packag
 
 /**
  * Get the package content directory (.openpackage/) based on location.
- * This is where package.yml, package.index.yml, and universal content live.
+ * This is where package.yml, the package index file, and universal content live.
  */
 export function getPackageFilesDir(cwd: string, location: PackageLocation, packageName?: string): string {
   if (location === 'root') {

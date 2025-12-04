@@ -20,10 +20,11 @@ import {
   listAllPackages
 } from './directory.js';
 import { parsePackageYml } from '../utils/package-yml.js';
-import { 
-  resolveVersionRange, 
-  isExactVersion, 
+import {
+  resolveVersionRange,
+  isExactVersion,
 } from '../utils/version-ranges.js';
+import { PACKAGE_PATHS } from '../constants/index.js';
 
 /**
  * Local registry operations for managing packages
@@ -58,7 +59,13 @@ export class RegistryManager {
             // Process each version
             for (const version of versions) {
               const packagePath = getPackageVersionPath(packageName, version);
-              const packageYmlPath = join(packagePath, 'package.yml');
+              const packageYmlPath = join(
+                packagePath,
+                PACKAGE_PATHS.MANIFEST_RELATIVE
+              );
+              if (!(await exists(packageYmlPath))) {
+                continue;
+              }
               const metadata = await parsePackageYml(packageYmlPath);
               
               // Apply filter if provided
@@ -80,7 +87,13 @@ export class RegistryManager {
             if (!latestVersion) continue;
             
             const packagePath = getPackageVersionPath(packageName, latestVersion);
-            const packageYmlPath = join(packagePath, 'package.yml');
+            const packageYmlPath = join(
+              packagePath,
+              PACKAGE_PATHS.MANIFEST_RELATIVE
+            );
+            if (!(await exists(packageYmlPath))) {
+              continue;
+            }
             const metadata = await parsePackageYml(packageYmlPath);
             
             // Apply filter if provided
@@ -171,7 +184,10 @@ export class RegistryManager {
       }
 
       const packagePath = getPackageVersionPath(actualPackageName, targetVersion);
-      const packageYmlPath = join(packagePath, 'package.yml');
+      const packageYmlPath = join(
+        packagePath,
+        PACKAGE_PATHS.MANIFEST_RELATIVE
+      );
 
       if (!(await exists(packageYmlPath))) {
         throw new PackageNotFoundError(packageName);

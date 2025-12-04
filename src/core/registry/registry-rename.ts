@@ -3,6 +3,7 @@ import { getPackagePath } from '../directory.js';
 import { exists, listDirectories, renameDirectory } from '../../utils/fs.js';
 import { parsePackageYml, writePackageYml } from '../../utils/package-yml.js';
 import { logger } from '../../utils/logger.js';
+import { PACKAGE_PATHS } from '../../constants/index.js';
 
 /**
  * Rename a package directory inside the local registry and update metadata.
@@ -28,7 +29,11 @@ export async function renameRegistryPackage(oldName: string, newName: string): P
 
   const versionDirs = await listDirectories(newPath);
   for (const version of versionDirs) {
-    const packageYmlPath = join(newPath, version, 'package.yml');
+    const packageYmlPath = join(
+      newPath,
+      version,
+      PACKAGE_PATHS.MANIFEST_RELATIVE
+    );
     if (!(await exists(packageYmlPath))) {
       continue;
     }

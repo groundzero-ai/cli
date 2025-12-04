@@ -12,6 +12,7 @@ import { registryManager } from './registry.js';
 import { selectInstallVersionUnified, RemoteVersionLookupError } from './install/version-selection.js';
 import { InstallResolutionMode, type PackageRemoteResolutionOutcome } from './install/types.js';
 import { extractRemoteErrorReason } from '../utils/error-reasons.js';
+import { PACKAGE_PATHS } from '../constants/index.js';
 
 /**
  * Resolved package interface for dependency resolution
@@ -431,7 +432,9 @@ export async function resolveDependencies(
   });
   
   // 5. Parse dependencies from package's package.yml
-  const packageYmlFile = pkg.files.find(f => f.path === 'package.yml');
+  const packageYmlFile =
+    pkg.files.find(f => f.path === PACKAGE_PATHS.MANIFEST_RELATIVE) ||
+    pkg.files.find(f => f.path === 'package.yml');
   if (packageYmlFile) {
     const config = yaml.load(packageYmlFile.content) as PackageYml;
     

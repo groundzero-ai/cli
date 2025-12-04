@@ -1,5 +1,4 @@
-import { FILE_PATTERNS } from '../../constants/index.js';
-import { PACKAGE_INDEX_FILENAME } from '../../utils/package-index-yml.js';
+import { FILE_PATTERNS, PACKAGE_PATHS } from '../../constants/index.js';
 import { findFilesByExtension, getFileMtime } from '../../utils/file-processing.js';
 import { readTextFile } from '../../utils/fs.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
@@ -21,7 +20,10 @@ export async function loadLocalCandidates(packageDir: string): Promise<SaveCandi
   for (const entry of entries) {
     const normalizedPath = normalizeRegistryPath(entry.relativePath);
 
-    if (normalizedPath === PACKAGE_INDEX_FILENAME) {
+    if (
+      normalizedPath === FILE_PATTERNS.PACKAGE_INDEX_YML ||
+      normalizedPath === PACKAGE_PATHS.INDEX_RELATIVE
+    ) {
       continue;
     }
 

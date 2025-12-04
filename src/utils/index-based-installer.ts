@@ -36,7 +36,6 @@ import { parseUniversalPath } from './platform-file.js';
 import { getPlatformDefinition } from '../core/platforms.js';
 
 import {
-  PACKAGE_INDEX_FILENAME,
   getPackageIndexPath,
   readPackageIndex,
   writePackageIndex,
@@ -472,7 +471,7 @@ export async function loadOtherPackageIndexes(
 
   for (const entry of directories) {
     if (entry.packageName === excludePackage) continue;
-    const indexPath = join(entry.dir, PACKAGE_INDEX_FILENAME);
+    const indexPath = join(entry.dir, FILE_PATTERNS.PACKAGE_INDEX_YML);
     if (!(await exists(indexPath))) continue;
 
     const record = await readPackageIndex(cwd, entry.packageName);

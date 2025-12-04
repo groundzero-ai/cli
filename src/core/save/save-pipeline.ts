@@ -1,4 +1,5 @@
 import { CommandResult, PackageFile } from '../../types/index.js';
+import { PACKAGE_PATHS } from '../../constants/index.js';
 import { ensureRegistryDirectories } from '../directory.js';
 import { logger } from '../../utils/logger.js';
 import { addPackageToYml, createWorkspacePackageYml } from '../../utils/package-management.js';
@@ -139,7 +140,9 @@ export async function runSavePipeline(
   }
 
   const effectiveConfig = { ...packageContext.config, version: targetVersion };
-  const packageFiles = await resolvePackageFilesWithConflicts(packageContext, { force });
+  const packageFiles = (await resolvePackageFilesWithConflicts(packageContext, { force })).filter(
+    file => file.path !== PACKAGE_PATHS.INDEX_RELATIVE
+  );
 
   const registrySave = await savePackageToRegistry(
     { ...packageContext, config: effectiveConfig },

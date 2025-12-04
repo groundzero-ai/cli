@@ -362,7 +362,7 @@ async function uninstallPackageCommand(
       await removeEmptyDirectories(openpackagePath);
     }
 
-    // Discover platform-specific files BEFORE removing package directories (to access package.index.yml files)
+    // Discover platform-specific files BEFORE removing package directories (to access package index files)
     const discoveredByPackage = await Promise.all(
       packagesToRemove.map(async (name) => ({ name, files: await discoverPackageFilesForUninstall(name) }))
     );
